@@ -30,6 +30,7 @@ class LibraryGame {
     this.last,
     this.coverTitle,
     this.installed = true,
+    this.steamAppId,
   });
 
   final String id;
@@ -49,10 +50,13 @@ class LibraryGame {
   /// False when couchlinkd did not find the game on this PC.
   final bool installed;
 
+  /// Steam app id, for "Install on Steam" and the Steam cover when the catalog has none.
+  final int? steamAppId;
+
   /// The recipe id (the library id of a game is its recipe).
   String get recipe => id;
 
-  LibraryGame copyWith({String? name, bool? installed, int? minPlayers, int? maxPlayers}) => LibraryGame(
+  LibraryGame copyWith({String? name, bool? installed, int? minPlayers, int? maxPlayers, int? steamAppId}) => LibraryGame(
         id: id,
         name: name ?? this.name,
         tier: tier,
@@ -65,6 +69,7 @@ class LibraryGame {
         last: last,
         coverTitle: coverTitle,
         installed: installed ?? this.installed,
+        steamAppId: steamAppId ?? this.steamAppId,
       );
 
   String get playersLabel => minPlayers == maxPlayers ? '$minPlayers' : '$minPlayers to $maxPlayers';
@@ -207,7 +212,7 @@ String _steamText(String steam) => switch (steam) {
 LibraryGame libraryGameOf(GameInfo g) {
   for (final s in sampleGames) {
     if (s.id == g.recipe) {
-      return s.copyWith(name: g.game, installed: g.installed, minPlayers: g.minPlayers, maxPlayers: g.maxPlayers);
+      return s.copyWith(name: g.game, installed: g.installed, minPlayers: g.minPlayers, maxPlayers: g.maxPlayers, steamAppId: g.steamAppId);
     }
   }
   var h = 0;
@@ -228,5 +233,6 @@ LibraryGame libraryGameOf(GameInfo g) {
     net: _steamText(g.steam),
     coverTitle: plain == g.game ? null : plain,
     installed: g.installed,
+    steamAppId: g.steamAppId,
   );
 }

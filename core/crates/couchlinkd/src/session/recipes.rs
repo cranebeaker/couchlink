@@ -120,9 +120,28 @@ pub fn require_met(game_dir: &Path, r: &couchlink_core::recipe::Require) -> bool
     }
 }
 
-/// Locator for Steam games: the recipe's `match.steamAppId` in any Steam library on this PC.
+/// Locator for Steam games: the recipe's `match.steamAppId` in any Steam library on this PC. A game folder Steam has
+/// no manifest for (copied in, restored from a backup, a library Steam forgot) is found by `match.exe` instead.
 pub fn steam_locator() -> Locator {
-    Arc::new(|r: &Recipe| couchlink_steam::find_app(r.matching.steam_app_id?).map(|a| a.install_dir))
+    Arc::new(|r: &Recipe| {
+        if let Some(app) = r.matching.steam_app_id.and_then(couchlink_steam::find_app) {
+            return Some(app.install_dir);
+        }
+        find_in_common(&couchlink_steam::steam_libraries(), r.matching.exe.as_deref()?)
+    })
+}
+
+/// The first `steamapps/common/<game>` folder of these libraries that has `exe` at its top.
+pub fn find_in_common(libraries: &[PathBuf], exe: &str) -> Option<PathBuf> {
+    for lib in libraries {
+        let Ok(dirs) = std::fs::read_dir(lib.join("steamapps").join("common")) else { continue };
+        let mut found: Vec<PathBuf> = dirs.flatten().map(|e| e.path()).filter(|d| d.join(exe).is_file()).collect();
+        found.sort();
+        if let Some(d) = found.into_iter().next() {
+            return Some(d);
+        }
+    }
+    None
 }
 
 /// Folders of this PC that recipes may use as `$APPDATA`, `$LOCALAPPDATA`, `$USERPROFILE` and `$DOCUMENTS`.
@@ -208,6 +227,7 @@ pub fn game_info(locators: &[Locator], r: &Recipe) -> GameInfo {
         steam: r.steam,
         source: r.source.clone(),
         options: couchlink_core::OptionInfo::list(r),
+        steam_app_id: r.matching.steam_app_id,
     }
 }
 
@@ -223,6 +243,19 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn a_steam_game_without_a_manifest_is_found_by_its_exe() {
+        let lib = temp("common");
+        let game = lib.join("steamapps").join("common").join("Subnautica");
+        std::fs::create_dir_all(&game).unwrap();
+        std::fs::write(game.join("Subnautica.exe"), b"MZ").unwrap();
+        std::fs::create_dir_all(lib.join("steamapps").join("common").join("SubnauticaZero")).unwrap();
+        let missing = lib.join("no-such-drive");
+        assert_eq!(find_in_common(&[missing, lib.clone()], "Subnautica.exe"), Some(game));
+        assert_eq!(find_in_common(&[lib.clone()], "Other.exe"), None);
+        let _ = std::fs::remove_dir_all(&lib);
     }
 
     fn recipe_json(id: &str, game: &str, exe: &str) -> String {

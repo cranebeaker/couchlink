@@ -37,7 +37,8 @@ void main() {
       for (final id in ['fnv', 'stardew', 'rl', 'b2', 'dx', 'div2', 'pw64', 'hades', 'l4d2', 'ug']) {
         expect(byKey('game-$id'), findsOneWidget, reason: id);
       }
-      expect(find.text('10 games'), findsOneWidget);
+      expect(find.descendant(of: byKey('section-installed'), matching: find.text('8 games')), findsOneWidget);
+      expect(find.descendant(of: byKey('section-more'), matching: find.text('2 games')), findsOneWidget);
 
       // Not installed: l4d2 and ug come after every installed game, dimmed.
       expect(find.text('Not installed'), findsNWidgets(2));
@@ -80,6 +81,8 @@ void main() {
     testWidgets('a game that is not installed opens a sheet that says so, and Play stays off', (tester) async {
       final fake = fastFake();
       await pumpApp(tester, fake, view: AppView.library, size: const Size(1400, 1300));
+      await tester.ensureVisible(byKey('game-l4d2'));
+      await settle(tester);
       await tester.tap(byKey('game-l4d2'));
       await settle(tester);
       expect(byKey('sheet-recheck'), findsOneWidget);
@@ -91,6 +94,40 @@ void main() {
       await tester.pump();
       expect(fake.startedRecipes, isEmpty);
       expect(byKey('launch-card'), findsNothing);
+    });
+  });
+
+  group('missing Steam games', () {
+    testWidgets('a missing Steam game offers Install on Steam, and a click outside closes the sheet', (tester) async {
+      final fake = fastFake(games: const [
+        GameInfo(recipe: 'subnautica-nitrox', game: 'Subnautica (Nitrox)', installed: false, minPlayers: 1, maxPlayers: 4, steam: 'shared', steamAppId: 264710),
+        GameInfo(recipe: 'testgame', game: 'Couchlink test game', installed: true, path: 'D:/g', minPlayers: 1, maxPlayers: 4),
+      ]);
+      await pumpApp(tester, fake, view: AppView.library, size: const Size(1400, 1300));
+      final opened = <Uri>[];
+      scopeOf(tester).ui.openUrl = (u) async {
+        opened.add(u);
+        return true;
+      };
+      await tester.tap(byKey('game-subnautica-nitrox'));
+      await settle(tester);
+      expect(byKey('sheet-install'), findsOneWidget);
+      expect(byKey('sheet-recheck'), findsOneWidget);
+      await tester.tap(byKey('sheet-install'));
+      await tester.pump();
+      expect(opened, [Uri.parse('steam://install/264710')]);
+
+      expect(scopeOf(tester).ui.sheetGameId, 'subnautica-nitrox');
+      await tester.tapAt(const Offset(600, 600));
+      await settle(tester);
+      expect(scopeOf(tester).ui.sheetGameId, isNull, reason: 'a click beside the sheet closes it');
+    });
+
+    test('a game without a catalog cover uses its Steam library art', () {
+      final g = libraryGameOf(const GameInfo(recipe: 'among-us', game: 'Among Us', installed: false, steamAppId: 945360));
+      expect(coverFor(null, g), 'https://cdn.cloudflare.steamstatic.com/steam/apps/945360/library_600x900.jpg');
+      expect(coverFor(null, libraryGameOf(const GameInfo(recipe: 'x', game: 'No Steam'))), isNull);
+      expect(GameInfo.fromJson({'recipe': 'a', 'game': 'A', 'steam_app_id': 22380}).steamAppId, 22380);
     });
   });
 

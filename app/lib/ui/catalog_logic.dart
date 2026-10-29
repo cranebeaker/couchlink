@@ -95,12 +95,20 @@ String relativeTime(DateTime then, DateTime now) {
 /// Lowercase letters and digits only, so "Fallout: New Vegas" and "fallout new vegas" compare equal.
 String normalizeTitle(String t) => t.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
 
-/// Cover art URL of the first catalog entry that has the library game's title, if any.
+/// Cover art for a library game: the catalog entry with its title, else Steam's portrait library art for its app id.
 String? coverFor(Catalog? catalog, LibraryGame game) {
-  if (catalog == null || catalog.isEmpty) return null;
-  final want = normalizeTitle(game.coverTitle ?? game.name);
-  for (final e in catalog.entries) {
-    if (e.coverUrl != null && normalizeTitle(e.title) == want) return e.coverUrl;
+  if (catalog != null && !catalog.isEmpty) {
+    final want = normalizeTitle(game.coverTitle ?? game.name);
+    for (final e in catalog.entries) {
+      if (e.coverUrl != null && normalizeTitle(e.title) == want) return e.coverUrl;
+    }
   }
-  return null;
+  final id = game.steamAppId;
+  return id == null ? null : steamCoverUrl(id);
 }
+
+/// Steam's 600x900 library capsule of an app (the same shape as the Library cards).
+String steamCoverUrl(int appId) => 'https://cdn.cloudflare.steamstatic.com/steam/apps/$appId/library_600x900.jpg';
+
+/// Opens Steam's install dialog for an app.
+Uri steamInstallUri(int appId) => Uri.parse('steam://install/$appId');

@@ -1031,8 +1031,9 @@ fn rawkbm_feeds_a_copy(arch: &str) {
     let c = kbm_start(arch, &s, "d", guard.name(), |_| {}, &["--rawinput"]);
 
     let key = |vk: u16, scan: u16, flags: u16| rawkbm::Input::Key { vk, scan, flags };
-    // The other keyboard belongs to nobody: it only asks to join and never reaches the copy.
-    assert_eq!(rawkbm::test_input(&k2.id, key(vkc::Z, sc::Z, 0)), Some(rawkbm::RawKbmEvent::Press(k2.id.clone())));
+    // The other keyboard belongs to nobody: typing on it does nothing, Enter asks to join, and it never reaches the copy.
+    assert_eq!(rawkbm::test_input(&k2.id, key(vkc::Z, sc::Z, 0)), None);
+    assert_eq!(rawkbm::test_input(&k2.id, key(vkc::RETURN, 0x1C, 0)), Some(rawkbm::RawKbmEvent::Press(k2.id.clone())));
     assert_eq!(rawkbm::test_input(&k1.id, key(vkc::A, sc::A, 0)), None);
     let r = c.wait_log("KD vk=65");
     assert!(!log_has(&r, "KD vk=90"), "an unowned keyboard reached the copy: {:?}", log_of(&r));
@@ -1053,6 +1054,9 @@ fn rawkbm_listener_starts_and_lists_keyboards_and_mice() {
     rawkbm::start().expect("the Raw Input listener starts");
     rawkbm::start().expect("starting twice is fine");
     let devs = rawkbm::devices();
+    for d in &devs {
+        println!("  {} {}", d.id, d.name);
+    }
     let mut ids: Vec<&str> = devs.iter().map(|d| d.id.as_str()).collect();
     ids.sort();
     ids.dedup();

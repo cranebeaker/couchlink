@@ -436,6 +436,7 @@ class GameInfo {
     this.maxPlayers = 4,
     this.steam = 'none',
     this.source = 'builtin',
+    this.steamAppId,
   });
 
   final String recipe;
@@ -452,6 +453,9 @@ class GameInfo {
 
   /// builtin | imported | user
   final String source;
+
+  /// The game's Steam app id, when it is a Steam game.
+  final int? steamAppId;
 
   factory GameInfo.fromJson(Map<String, dynamic> j) {
     final p = j['players'];
@@ -471,6 +475,7 @@ class GameInfo {
       maxPlayers: hi < lo ? lo : hi,
       steam: _str(j['steam'], 'none'),
       source: _str(j['source'], 'builtin'),
+      steamAppId: j['steam_app_id'] is num ? (j['steam_app_id'] as num).toInt() : null,
     );
   }
 }

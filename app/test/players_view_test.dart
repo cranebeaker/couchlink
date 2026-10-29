@@ -3,6 +3,7 @@ import 'package:couchlink/daemon/fake_client.dart';
 import 'package:couchlink/daemon/models.dart';
 import 'package:couchlink/ui/app_state.dart';
 import 'package:couchlink/ui/kit.dart';
+import 'package:couchlink/ui/players_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,6 +11,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'helpers.dart';
 
 void main() {
+  test('the shared keyboard and mouse is hidden once the real ones are listed, unless it is seated', () {
+    Device d(String id, {int? seat}) => Device(id: id, kind: 'kbm', name: id, family: 'kbm', connection: 'usb', seat: seat);
+    List<String> ids(DaemonState s) => visibleDevices(s).map((x) => x.id).toList();
+    expect(ids(DaemonState(devices: [d('kbm:system'), d('pad:1')])), ['kbm:system', 'pad:1']);
+    expect(ids(DaemonState(devices: [d('kbm:system'), d('kbd:1'), d('mouse:2')])), ['kbd:1', 'mouse:2']);
+    expect(ids(DaemonState(devices: [d('kbm:system', seat: 0), d('kbd:1')])), ['kbm:system', 'kbd:1'], reason: 'someone sits with it');
+  });
+
   testWidgets('shows the four seats and the devices', (tester) async {
     final fake = newFake();
     await pumpApp(tester, fake);

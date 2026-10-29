@@ -7,7 +7,8 @@
 //! `RIDEV_DEVNOTIFY` for plug and unplug). Each `WM_INPUT` names the device it came from. The device list comes from
 //! `GetRawInputDeviceList`; ids hash the device path, so a keyboard keeps its id across restarts and replugs into the
 //! same port. Input from a device that is attached to a seat goes into that seat's feed; input from any other
-//! device is only watched for press to join (first key down or mouse button down), nothing else is kept.
+//! device is only watched for press to join (Enter on a keyboard; a mouse joins from the app), nothing else is kept.
+//! Typing and clicking while using the PC never takes a seat.
 //!
 //! The use, mirroring `padfeed.rs`:
 //!
@@ -64,7 +65,7 @@ pub enum RawKbmEvent {
     Added(RawDevice),
     /// A device was unplugged.
     Removed(String),
-    /// A key went down or a mouse button was pressed on a device that no seat feed owns: press to join.
+    /// Enter went down on a keyboard that no seat feed owns: press to join.
     Press(String),
 }
 
@@ -137,6 +138,68 @@ pub fn uniquify_names(devices: &mut [RawDevice]) {
     }
 }
 
+/// The container Windows gives every device that is built into the PC itself (laptop keyboard, touchpad). It does not
+/// tell one physical device from another, so those are told apart by their parent device instead.
+const COMPUTER_CONTAINER: &str = "{00000000-0000-0000-ffff-ffffffffffff}";
+
+/// One keyboard or mouse interface as Raw Input lists it, with what Windows knows about the device behind it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Interface {
+    pub kind: Kind,
+    pub path: String,
+    pub handle: u64,
+    /// Product name from the device (None when it could not be read).
+    pub name: Option<String>,
+    /// Container id: the same for every interface of one physical device (a keyboard with media keys and a mouse
+    /// collection is three interfaces in one container).
+    pub container: Option<String>,
+    /// Instance id of the parent device node.
+    pub parent: Option<String>,
+}
+
+/// True for a software device: its parent is a `ROOT\` node (virtual HID drivers such as remote-control apps, remote
+/// desktop). Nobody can play on those, so they are not listed.
+pub fn is_virtual(i: &Interface) -> bool {
+    match &i.parent {
+        Some(p) => p.to_uppercase().starts_with("ROOT\\"),
+        None => i.path.to_uppercase().contains("#ROOT#") || i.path.to_uppercase().starts_with("\\\\?\\ROOT#"),
+    }
+}
+
+/// What makes interfaces one physical device: the container, or for built-in devices the parent node, or the path.
+pub fn group_key(i: &Interface) -> String {
+    match (&i.container, &i.parent) {
+        (Some(c), _) if !c.eq_ignore_ascii_case(COMPUTER_CONTAINER) => c.to_lowercase(),
+        (_, Some(p)) => p.to_lowercase(),
+        _ => i.path.to_lowercase(),
+    }
+}
+
+/// One device per physical keyboard or mouse: software devices are dropped and the interfaces of one device share its
+/// id and name (input from any of them is that device's input). A device with any keyboard interface is a keyboard.
+pub fn group(interfaces: Vec<Interface>) -> Vec<RawDevice> {
+    let real: Vec<Interface> = interfaces.into_iter().filter(|i| !is_virtual(i)).collect();
+    let mut keys: Vec<String> = Vec::new();
+    for i in &real {
+        let k = group_key(i);
+        if !keys.contains(&k) {
+            keys.push(k);
+        }
+    }
+    let mut out = Vec::new();
+    for key in keys {
+        let members: Vec<&Interface> = real.iter().filter(|i| group_key(i) == key).collect();
+        let kind = if members.iter().any(|i| i.kind == Kind::Keyboard) { Kind::Keyboard } else { Kind::Mouse };
+        let first = members.iter().find(|i| i.kind == kind).copied().unwrap_or(members[0]);
+        let name = members.iter().find_map(|i| i.name.clone()).unwrap_or_else(|| path_name(kind, &first.path));
+        let id = device_id(kind, &key);
+        for m in members {
+            out.push(RawDevice { id: id.clone(), kind, name: name.clone(), path: m.path.clone(), handle: m.handle });
+        }
+    }
+    out
+}
+
 /// Name of the shared-memory section for one seat of one session.
 pub fn feed_name(session: impl Display, seat: u32) -> String {
     format!("Local\\couchlink-kbm-{session}-{seat}")
@@ -180,8 +243,8 @@ fn registry() -> std::sync::MutexGuard<'static, Registry> {
     REGISTRY.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-const BUTTON_DOWN_MASK: u16 =
-    mouse_flags::LEFT_DOWN | mouse_flags::RIGHT_DOWN | mouse_flags::MIDDLE_DOWN | mouse_flags::X1_DOWN | mouse_flags::X2_DOWN;
+/// The key that asks for a seat.
+const VK_RETURN: u16 = 0x0D;
 
 impl Registry {
     fn device(&self, id: &str) -> Option<&RawDevice> {
@@ -208,6 +271,8 @@ impl Registry {
             }
         }
         match input {
+            // Only Enter joins: any other key or a click is someone using the PC, not asking for a seat.
+            Input::Key { vk, .. } if vk != VK_RETURN => None,
             Input::Key { vk, flags, .. } => {
                 if flags & key_flags::BREAK != 0 {
                     self.held.remove(&(device.to_string(), vk));
@@ -218,37 +283,60 @@ impl Registry {
                     None
                 }
             }
-            Input::Mouse { flags, .. } => (flags & BUTTON_DOWN_MASK != 0).then(|| RawKbmEvent::Press(device.to_string())),
+            Input::Mouse { .. } => None,
         }
     }
 
-    /// Adds a device (or updates a known one); gives back the event to announce, if it is new or changed.
-    fn add_device(&mut self, mut dev: RawDevice) -> Option<RawKbmEvent> {
-        // Two different paths can fold to one id; the later one gets a salted id.
-        let mut salt = 0;
-        let base = dev.path.clone();
-        while self.devices.iter().any(|d| d.id == dev.id && d.path != dev.path) {
-            salt += 1;
-            dev.id = device_id(dev.kind, &format!("{base}#{salt}"));
+    /// Adds an interface (or updates a known one) and gives back what to announce: `Added` the first time a device id
+    /// appears, `Removed` for an id whose last interface moved to another id.
+    fn add_device(&mut self, dev: RawDevice) -> Vec<RawKbmEvent> {
+        let mut out = Vec::new();
+        let old = self.devices.iter().find(|d| d.handle == dev.handle).cloned();
+        if let Some(o) = &old {
+            if o.id == dev.id && o.path == dev.path && o.kind == dev.kind {
+                return out;
+            }
         }
-        let mut all: Vec<RawDevice> = self.devices.iter().filter(|d| d.id != dev.id).cloned().collect();
-        all.push(dev.clone());
-        uniquify_names(&mut all);
-        let renamed = all.iter().find(|d| d.id == dev.id).cloned().unwrap_or(dev);
-        let changed = match self.device(&renamed.id) {
-            Some(old) => old != &renamed,
-            None => true,
-        };
-        self.devices = all;
+        let known = self.devices.iter().any(|d| d.id == dev.id && d.handle != dev.handle);
+        self.devices.retain(|d| d.handle != dev.handle);
+        if let Some(o) = old {
+            if o.id != dev.id && !self.devices.iter().any(|d| d.id == o.id) {
+                out.push(RawKbmEvent::Removed(o.id));
+            }
+        }
+        let id = dev.id.clone();
+        self.devices.push(dev);
+        self.rename();
+        if !known {
+            if let Some(d) = self.device(&id).cloned() {
+                out.push(RawKbmEvent::Added(d));
+            }
+        }
         self.update_handles();
-        changed.then_some(RawKbmEvent::Added(renamed))
+        out
+    }
+
+    /// Numbers devices that share a name (two of the same keyboard), one number per device id.
+    fn rename(&mut self) {
+        let mut unique: Vec<RawDevice> = Vec::new();
+        for d in &self.devices {
+            if !unique.iter().any(|u| u.id == d.id) {
+                unique.push(d.clone());
+            }
+        }
+        uniquify_names(&mut unique);
+        for d in self.devices.iter_mut() {
+            if let Some(u) = unique.iter().find(|u| u.id == d.id) {
+                d.name = u.name.clone();
+            }
+        }
     }
 
     fn remove_device(&mut self, handle: u64) -> Option<RawKbmEvent> {
         let id = self.id_of_handle(handle)?;
-        self.devices.retain(|d| d.id != id);
+        self.devices.retain(|d| d.handle != handle);
         self.update_handles();
-        Some(RawKbmEvent::Removed(id))
+        (!self.devices.iter().any(|d| d.id == id)).then_some(RawKbmEvent::Removed(id))
     }
 
     /// The seat feeds carry the device handles (`hDevice` of the WM_INPUT the game sees).
@@ -281,7 +369,13 @@ fn deliver(events: Vec<RawKbmEvent>) {
 
 /// The keyboards and mice that are plugged in now (empty until [`start`] ran).
 pub fn devices() -> Vec<RawDevice> {
-    registry().devices.clone()
+    let mut out: Vec<RawDevice> = Vec::new();
+    for d in &registry().devices {
+        if !out.iter().any(|o| o.id == d.id) {
+            out.push(d.clone());
+        }
+    }
+    out
 }
 
 /// One device by id.
@@ -295,9 +389,8 @@ pub fn device(id: &str) -> Option<RawDevice> {
 pub fn subscribe(f: impl Fn(RawKbmEvent) + Send + Sync + 'static) {
     let f = Arc::new(f);
     let present = {
-        let mut reg = registry();
-        reg.subscribers.push(f.clone());
-        reg.devices.clone()
+        registry().subscribers.push(f.clone());
+        devices()
     };
     for d in present {
         f(RawKbmEvent::Added(d));
@@ -381,7 +474,11 @@ mod win {
     use std::sync::mpsc;
     use std::time::Duration;
 
+    use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
+        CM_Get_DevNode_PropertyW, CM_Get_Device_IDW, CM_Get_Parent, CM_Locate_DevNodeW, CM_LOCATE_DEVNODE_NORMAL, CR_SUCCESS,
+    };
     use windows_sys::Win32::Devices::HumanInterfaceDevice::{HidD_GetManufacturerString, HidD_GetProductString};
+    use windows_sys::Win32::Devices::Properties::DEVPKEY_Device_ContainerId;
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, HWND, INVALID_HANDLE_VALUE, LPARAM, LRESULT, WPARAM};
     use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING};
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -460,7 +557,7 @@ mod win {
             let found = enumerate();
             let events: Vec<RawKbmEvent> = {
                 let mut reg = registry();
-                found.into_iter().filter_map(|d| reg.add_device(d)).collect()
+                found.into_iter().flat_map(|d| reg.add_device(d)).collect()
             };
             deliver(events);
             let _ = ready.send(Ok(()));
@@ -488,9 +585,7 @@ mod win {
             let mut reg = registry();
             let mut out = Vec::new();
             for d in found {
-                if let Some(e) = reg.add_device(d) {
-                    out.push(e);
-                }
+                out.extend(reg.add_device(d));
             }
             out
         } else if what == GIDC_REMOVAL {
@@ -558,9 +653,7 @@ mod win {
                 {
                     let mut r = registry();
                     for d in found {
-                        if let Some(e) = r.add_device(d) {
-                            events.push(e);
-                        }
+                        events.extend(r.add_device(d));
                     }
                 }
                 deliver(events);
@@ -652,10 +745,57 @@ mod win {
             if path.is_empty() {
                 continue;
             }
-            let name = hid_name(&path).unwrap_or_else(|| path_name(kind, &path));
-            out.push(RawDevice { id: device_id(kind, &path), kind, name, path, handle: item.hDevice as usize as u64 });
+            let (container, parent) = node_info(&path);
+            out.push(Interface { kind, name: hid_name(&path), path, handle: item.hDevice as usize as u64, container, parent });
         }
-        out
+        group(out)
+    }
+
+    /// `\\?\HID#VID_1&PID_2&MI_00#7&abc&0&0000#{guid}` is the interface of device `HID\VID_1&PID_2&MI_00\7&abc&0&0000`.
+    fn instance_id(path: &str) -> String {
+        let p = path.strip_prefix(r"\\?\").unwrap_or(path);
+        let p = match p.rfind("#{") {
+            Some(at) => &p[..at],
+            None => p,
+        };
+        p.replace('#', "\\")
+    }
+
+    /// Container id and parent instance id of the device behind a Raw Input path (None for what cannot be read).
+    fn node_info(path: &str) -> (Option<String>, Option<String>) {
+        let inst = wide(&instance_id(path));
+        // SAFETY: NUL-terminated id; fixed-size output buffers whose sizes are passed in.
+        unsafe {
+            let mut node = 0u32;
+            if CM_Locate_DevNodeW(&mut node, inst.as_ptr(), CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS {
+                return (None, None);
+            }
+            let mut ty = 0u32;
+            let mut guid = [0u8; 16];
+            let mut size = guid.len() as u32;
+            let container = (CM_Get_DevNode_PropertyW(node, &DEVPKEY_Device_ContainerId, &mut ty, guid.as_mut_ptr(), &mut size, 0) == CR_SUCCESS
+                && size == 16)
+                .then(|| {
+                    let d1 = u32::from_le_bytes([guid[0], guid[1], guid[2], guid[3]]);
+                    let d2 = u16::from_le_bytes([guid[4], guid[5]]);
+                    let d3 = u16::from_le_bytes([guid[6], guid[7]]);
+                    format!(
+                        "{{{d1:08x}-{d2:04x}-{d3:04x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}}}",
+                        guid[8], guid[9], guid[10], guid[11], guid[12], guid[13], guid[14], guid[15]
+                    )
+                });
+            let mut parent_node = 0u32;
+            let parent = if CM_Get_Parent(&mut parent_node, node, 0) == CR_SUCCESS {
+                let mut buf = [0u16; 512];
+                (CM_Get_Device_IDW(parent_node, buf.as_mut_ptr(), buf.len() as u32, 0) == CR_SUCCESS).then(|| {
+                    let n = buf.iter().position(|c| *c == 0).unwrap_or(buf.len());
+                    String::from_utf16_lossy(&buf[..n])
+                })
+            } else {
+                None
+            };
+            (container, parent)
+        }
     }
 }
 
@@ -666,10 +806,8 @@ mod win {
 pub fn test_add_device(kind: Kind, path: &str, handle: u64) -> RawDevice {
     let dev = RawDevice { id: device_id(kind, path), kind, name: path_name(kind, path), path: path.to_string(), handle };
     let mut reg = registry();
-    match reg.add_device(dev.clone()) {
-        Some(RawKbmEvent::Added(d)) => d,
-        _ => reg.device(&dev.id).cloned().unwrap_or(dev),
-    }
+    let _ = reg.add_device(dev.clone());
+    reg.device(&dev.id).cloned().unwrap_or(dev)
 }
 
 /// Routes one input as if the device had produced it; returns the press-to-join event, if any.
@@ -712,6 +850,82 @@ pub fn test_attach(name: &str, devices: &[String]) -> Result<KbmGuard, String> {
 
 #[cfg(test)]
 mod tests {
+    use super::{group, is_virtual, Interface};
+
+    fn iface(kind: Kind, path: &str, handle: u64, name: &str, container: &str, parent: &str) -> Interface {
+        Interface {
+            kind,
+            path: path.into(),
+            handle,
+            name: (!name.is_empty()).then(|| name.to_string()),
+            container: (!container.is_empty()).then(|| container.to_string()),
+            parent: (!parent.is_empty()).then(|| parent.to_string()),
+        }
+    }
+
+    #[test]
+    fn one_device_per_physical_keyboard_and_no_software_devices() {
+        let kc = "{2d61bd26-207f-11f1-b19d-8c902d512b5c}";
+        let comp = "{00000000-0000-0000-FFFF-FFFFFFFFFFFF}";
+        let list = vec![
+            iface(Kind::Keyboard, r"\\?\HID#VID_3434&PID_0313&MI_02&Col04#7&85c42d6&0&0003#{884b96c3}", 1, "Keychron V1", kc, r"USB\VID_3434&PID_0313&MI_02\6&28597f&1&0002"),
+            iface(Kind::Keyboard, r"\\?\HID#UVHID&Col04#1&2d595ca7&0&0003#{884b96c3}", 2, "Unified Virtual HID", comp, r"ROOT\HIDCLASS\0000"),
+            iface(Kind::Mouse, r"\\?\HID#VID_3434&PID_0313&MI_02&Col01#7&85c42d6&0&0000#{378de44c}", 3, "Keychron V1", kc, r"USB\VID_3434&PID_0313&MI_02\6&28597f&1&0002"),
+            iface(Kind::Keyboard, r"\\?\HID#VID_3434&PID_0313&MI_00#7&39de7329&0&0000#{884b96c3}", 4, "Keychron V1", kc, r"USB\VID_3434&PID_0313&MI_00\6&28597f&1&0000"),
+            iface(Kind::Mouse, r"\\?\HID#UVHID&Col05#1&2d595ca7&0&0004#{378de44c}", 5, "Unified Virtual HID", comp, r"ROOT\HIDCLASS\0000"),
+            iface(Kind::Mouse, r"\\?\HID#VID_1AF3&PID_0001#6&abebfa6&0&0000#{378de44c}", 6, "ZOWIE Gaming mouse", "{9277a2ae-2066-11f1-b19d-8c902d512b5c}", r"USB\VID_1AF3&PID_0001\5&2cf64626&0&5"),
+            iface(Kind::Mouse, r"\\?\Root#RDP_MOU#0000#{378de44c}", 7, "", "", ""),
+        ];
+        assert!(is_virtual(&list[1]) && is_virtual(&list[6]) && !is_virtual(&list[0]));
+        let devs = group(list);
+        let mut ids: Vec<&str> = devs.iter().map(|d| d.id.as_str()).collect();
+        ids.dedup();
+        assert_eq!(ids.len(), 2, "the Keychron and the mouse: {devs:?}");
+        let keychron: Vec<_> = devs.iter().filter(|d| d.name == "Keychron V1").collect();
+        assert_eq!(keychron.len(), 3, "all three interfaces stay, so input from any of them counts");
+        assert!(keychron.iter().all(|d| d.id == keychron[0].id && d.kind == Kind::Keyboard && d.id.starts_with("kbd:")));
+        assert!(devs.iter().any(|d| d.name == "ZOWIE Gaming mouse" && d.id.starts_with("mouse:")));
+    }
+
+    #[test]
+    fn built_in_devices_are_told_apart_by_parent_and_twins_get_numbers() {
+        let comp = "{00000000-0000-0000-ffff-ffffffffffff}";
+        let devs = group(vec![
+            iface(Kind::Keyboard, r"\\?\ACPI#PNP0303#4&1#{884b96c3}", 1, "", comp, r"ACPI\PNP0A08\0"),
+            iface(Kind::Mouse, r"\\?\HID#ELAN0001&Col01#5&1#{378de44c}", 2, "Touchpad", comp, r"ACPI\ELAN0001\1"),
+        ]);
+        assert_eq!(devs.len(), 2);
+        assert_ne!(devs[0].id, devs[1].id, "keyboard and touchpad are two devices although both are in the computer container");
+    }
+
+    #[test]
+    fn interfaces_of_one_device_are_announced_once_and_removed_with_the_last() {
+        let _l = test_lock();
+        test_reset();
+        let kc = "{11111111-0000-0000-0000-000000000001}";
+        let devs = group(vec![
+            iface(Kind::Keyboard, r"\\?\HID#VID_1&PID_1&MI_00#a#{884b96c3}", 901, "Board", kc, r"USB\VID_1&PID_1&MI_00\x"),
+            iface(Kind::Mouse, r"\\?\HID#VID_1&PID_1&MI_02#b#{378de44c}", 902, "Board", kc, r"USB\VID_1&PID_1&MI_02\x"),
+        ]);
+        let mut events = Vec::new();
+        {
+            let mut reg = registry();
+            for d in devs.clone() {
+                events.extend(reg.add_device(d));
+            }
+            for d in devs.clone() {
+                assert!(reg.add_device(d).is_empty(), "a second enumeration announces nothing");
+            }
+        }
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert_eq!(devices().iter().filter(|d| d.name == "Board").count(), 1);
+        let id = devs[0].id.clone();
+        assert_eq!(registry().route(&id, Input::Key { vk: 0x0D, scan: 0x1C, flags: 0 }), Some(RawKbmEvent::Press(id.clone())));
+        assert_eq!(registry().remove_device(901), None, "one interface is still there");
+        assert_eq!(registry().remove_device(902), Some(RawKbmEvent::Removed(id)));
+        test_reset();
+    }
+
     use super::*;
 
     const KBD1: &str = r"\\?\HID#VID_046D&PID_C31C#7&2f1c3b9a&0&0000#{884b96c3-56ef-11d1-bc8c-00a0c91405dd}";
@@ -767,18 +981,20 @@ mod tests {
         test_reset();
         let k = test_add_device(Kind::Keyboard, KBD1, 11);
         let m = test_add_device(Kind::Mouse, MOUSE1, 12);
-        let down = Input::Key { vk: 0x41, scan: 0x1E, flags: 0 };
-        let up = Input::Key { vk: 0x41, scan: 0x1E, flags: key_flags::BREAK };
-        assert_eq!(test_input(&k.id, down), Some(RawKbmEvent::Press(k.id.clone())));
+        let typing = Input::Key { vk: 0x41, scan: 0x1E, flags: 0 };
+        assert_eq!(test_input(&k.id, typing), None, "typing does not take a seat");
+        let down = Input::Key { vk: 0x0D, scan: 0x1C, flags: 0 };
+        let up = Input::Key { vk: 0x0D, scan: 0x1C, flags: key_flags::BREAK };
+        assert_eq!(test_input(&k.id, down), Some(RawKbmEvent::Press(k.id.clone())), "Enter does");
         assert_eq!(test_input(&k.id, down), None, "key repeat does not join again");
         assert_eq!(test_input(&k.id, up), None);
         assert_eq!(test_input(&k.id, down), Some(RawKbmEvent::Press(k.id.clone())), "a new press does");
         assert_eq!(test_input(&m.id, Input::Mouse { dx: 5, dy: 5, flags: 0, wheel: 0 }), None, "moving does not join");
         assert_eq!(test_input(&m.id, Input::Mouse { dx: 0, dy: 0, flags: mouse_flags::WHEEL, wheel: 120 }), None);
         assert_eq!(
-            test_input(&m.id, Input::Mouse { dx: 0, dy: 0, flags: mouse_flags::RIGHT_DOWN, wheel: 0 }),
-            Some(RawKbmEvent::Press(m.id.clone())),
-            "a click joins"
+            test_input(&m.id, Input::Mouse { dx: 0, dy: 0, flags: mouse_flags::LEFT_DOWN, wheel: 0 }),
+            None,
+            "a click is using the PC, not joining (a mouse joins from the app)"
         );
         test_reset();
     }
@@ -797,7 +1013,7 @@ mod tests {
         assert_eq!(test_input(&k1.id, Input::Key { vk: 0x41, scan: 0x1E, flags: 0 }), None, "owned: no press to join");
         assert_eq!(test_input(&m.id, Input::Mouse { dx: 3, dy: 4, flags: mouse_flags::LEFT_DOWN, wheel: 0 }), None);
         // another keyboard that no seat owns still joins
-        assert_eq!(test_input(&k2.id, Input::Key { vk: 0x42, scan: 0x30, flags: 0 }), Some(RawKbmEvent::Press(k2.id.clone())));
+        assert_eq!(test_input(&k2.id, Input::Key { vk: 0x0D, scan: 0x1C, flags: 0 }), Some(RawKbmEvent::Press(k2.id.clone())));
         {
             let reg = registry();
             let s = reg.seats.iter().find(|s| s.name == guard.name()).unwrap();

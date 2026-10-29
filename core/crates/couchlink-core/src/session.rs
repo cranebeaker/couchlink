@@ -72,6 +72,9 @@ pub struct GameInfo {
     /// The choices the recipe offers before a start (`start_session` takes `options`).
     #[serde(default)]
     pub options: Vec<OptionInfo>,
+    /// The game's Steam app id (`match.steamAppId`), for the install link and cover art.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steam_app_id: Option<u32>,
 }
 
 /// One recipe option as `list_games` shows it. An option with no `choices` takes short free text (`text`).

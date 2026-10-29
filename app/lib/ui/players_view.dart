@@ -101,7 +101,7 @@ class _PlayersViewState extends State<PlayersView> with SingleTickerProviderStat
             PageHead(
               title: 'Who’s playing?',
               subtitle:
-                  'Press any button on a controller to take a seat. Drag a device onto a seat to move it.',
+                  'Press A on a controller or Enter on a keyboard to take a seat. Drag a device onto a seat to move it.',
               trailing: CButton(key: const ValueKey('identify-all'), label: 'Find all controllers', small: true, onTap: st.takenSeats.isEmpty ? null : () => _identifyAll(st)),
             ),
             const SectionLabel('Devices', sub: 'found on this PC', top: 4),
@@ -135,6 +135,16 @@ class _PlayersViewState extends State<PlayersView> with SingleTickerProviderStat
 
 // ------------------------------------------------------------------ devices
 
+/// The devices to show. The shared "Keyboard and mouse" (`kbm:system`) stands for the PC's keyboard and mouse
+/// together; once Couchlink lists the real ones one by one it is left out, unless someone is seated with it.
+List<Device> visibleDevices(DaemonState state) {
+  final own = state.devices.any((d) => d.id.startsWith('kbd:') || d.id.startsWith('mouse:'));
+  return [
+    for (final d in state.devices)
+      if (!(own && d.id == 'kbm:system' && state.seatOfDevice(d.id) == null)) d,
+  ];
+}
+
 class _DevicesRow extends StatelessWidget {
   const _DevicesRow({required this.state, required this.breath});
 
@@ -150,7 +160,7 @@ class _DevicesRow extends StatelessWidget {
       spacing: 10,
       runSpacing: 10,
       children: [
-        for (final d in state.devices) _DeviceChip(key: ValueKey('device-${d.id}'), device: d, seat: state.seatOfDevice(d.id), breath: breath),
+        for (final d in visibleDevices(state)) _DeviceChip(key: ValueKey('device-${d.id}'), device: d, seat: state.seatOfDevice(d.id), breath: breath),
       ],
     );
   }

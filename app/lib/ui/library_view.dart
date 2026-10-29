@@ -112,22 +112,29 @@ class _LibraryViewState extends State<LibraryView> {
                     ),
                   ),
                 ),
-              SectionLabel('Ready for the couch', sub: '${list.length} ${list.length == 1 ? 'game' : 'games'}'),
               if (scope.client.games == null) const _Note('Looking for your games'),
               if (scope.client.games != null && all.isEmpty)
                 const _Note('Couchlink found no game recipes yet. Add one to the recipes folder and it shows up here.'),
-              LayoutBuilder(builder: (context, box) {
-                const gap = 18.0;
-                final cols = ((box.maxWidth + gap) / (168 + gap)).floor().clamp(1, 12);
-                final w = (box.maxWidth - gap * (cols - 1)) / cols;
-                return Wrap(
-                  spacing: gap,
-                  runSpacing: gap,
-                  children: [
-                    for (final g in list) SizedBox(width: w, child: _GameCard(game: g, selected: g.id == picked?.id, coverUrl: coverFor(catalog, g))),
-                  ],
-                );
-              }),
+              // Your games first, then every other game Couchlink can split, so the whole list is always there.
+              for (final (label, games, key) in [
+                ('On this PC', list.where((g) => g.installed).toList(), 'section-installed'),
+                ('More games for the couch', list.where((g) => !g.installed).toList(), 'section-more'),
+              ])
+                if (games.isNotEmpty) ...[
+                  SectionLabel(label, key: ValueKey(key), sub: '${games.length} ${games.length == 1 ? 'game' : 'games'}'),
+                  LayoutBuilder(builder: (context, box) {
+                    const gap = 18.0;
+                    final cols = ((box.maxWidth + gap) / (168 + gap)).floor().clamp(1, 12);
+                    final w = (box.maxWidth - gap * (cols - 1)) / cols;
+                    return Wrap(
+                      spacing: gap,
+                      runSpacing: gap,
+                      children: [
+                        for (final g in games) SizedBox(width: w, child: _GameCard(game: g, selected: g.id == picked?.id, coverUrl: coverFor(catalog, g))),
+                      ],
+                    );
+                  }),
+                ],
               if (problems.isNotEmpty) ...[
                 const SizedBox(height: 18),
                 _Note(
@@ -248,7 +255,13 @@ class _GameSheetState extends State<GameSheet> {
         };
         return LayoutBuilder(builder: (context, box) {
           final w = box.maxWidth < 380 ? box.maxWidth : 380.0;
-          return Align(
+          return Stack(children: [
+            // A click anywhere outside the sheet closes it.
+            if (open)
+              Positioned.fill(
+                child: GestureDetector(key: const ValueKey('sheet-outside'), behavior: HitTestBehavior.opaque, onTap: ui.closeSheet),
+              ),
+            Align(
             alignment: Alignment.centerRight,
             child: IgnorePointer(
               ignoring: !open,
@@ -306,7 +319,14 @@ class _GameSheetState extends State<GameSheet> {
                                 const SizedBox(height: 14),
                                 if (g.installed)
                                   CButton(key: const ValueKey('sheet-go'), label: 'Choose players', primary: true, onTap: () => ui.go(AppView.players))
-                                else ...[
+                                else if (g.steamAppId != null) ...[
+                                  Text('Couchlink could not find this game on this PC. Install it with Steam, then check again.', style: txt(context, size: 13, color: c.ink2)),
+                                  const SizedBox(height: 14),
+                                  Wrap(spacing: 10, runSpacing: 10, children: [
+                                    CButton(key: const ValueKey('sheet-install'), label: 'Install on Steam', primary: true, onTap: () => ui.openUrl(steamInstallUri(g.steamAppId!))),
+                                    CButton(key: const ValueKey('sheet-recheck'), label: 'Check again', onTap: () => runCmd(context, scope.client.listGames)),
+                                  ]),
+                                ] else ...[
                                   Text('Couchlink could not find this game on this PC. Install it, then check again.', style: txt(context, size: 13, color: c.ink2)),
                                   const SizedBox(height: 14),
                                   CButton(key: const ValueKey('sheet-recheck'), label: 'Check again', primary: true, onTap: () => runCmd(context, scope.client.listGames)),
@@ -321,7 +341,8 @@ class _GameSheetState extends State<GameSheet> {
                 ),
               ),
             ),
-          );
+          ),
+          ]);
         });
       },
     );
