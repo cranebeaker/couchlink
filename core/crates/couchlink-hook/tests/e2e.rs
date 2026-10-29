@@ -1479,7 +1479,7 @@ fn proxy_without_config_is_inert_x86() {
 }
 
 #[test]
-fn proxy_pick_chooses_version_for_the_test_target_and_reports_a_taken_name() {
+fn proxy_pick_prefers_the_specific_import_and_reports_taken_names() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     ensure_built();
     for arch in ["x64", "x86"] {
@@ -1487,16 +1487,22 @@ fn proxy_pick_chooses_version_for_the_test_target_and_reports_a_taken_name() {
         let dir = s.dir("game");
         let exe = dir.join("test_target.exe");
         fs::copy(target_exe(arch), &exe).unwrap();
+        // The test target imports dinput8.dll and version.dll; the more specific name wins.
         let p = proxy::pick(&dir, &exe).unwrap();
-        assert_eq!(p.name, Some("version"), "{p:?}");
+        assert_eq!(p.name, Some("dinput8"), "{p:?}");
         assert_eq!(p.x86, arch == "x86");
         assert_eq!(p.dir, dir);
-        // The file for that name is taken and nothing else is imported, so nothing fits and the caller injects.
-        fs::write(dir.join("version.dll"), b"a mod loader").unwrap();
+        // A mod loader already uses that name: the next import is used, and the reason is reported.
+        fs::write(dir.join("dinput8.dll"), b"a mod loader").unwrap();
+        let p = proxy::pick(&dir, &exe).unwrap();
+        assert_eq!(p.name, Some("version"), "{p:?}");
+        assert_eq!(p.skipped.len(), 1, "{p:?}");
+        assert!(proxy::install("dinput8", arch == "x86", &dir).is_err(), "a foreign file must not be replaced");
+        // Both names taken: nothing fits and the caller injects.
+        fs::write(dir.join("version.dll"), b"another loader").unwrap();
         let p = proxy::pick(&dir, &exe).unwrap();
         assert_eq!(p.name, None);
-        assert_eq!(p.skipped.len(), 1, "{p:?}");
-        assert!(proxy::install("version", arch == "x86", &p.dir).is_err(), "a foreign file must not be replaced");
+        assert_eq!(p.skipped.len(), 2, "{p:?}");
         // Our own stand-in left by an earlier session is recognised: it counts as free and is replaced.
         fs::remove_file(dir.join("version.dll")).unwrap();
         let installed = proxy::install("version", arch == "x86", &dir).unwrap();
@@ -1506,4 +1512,61 @@ fn proxy_pick_chooses_version_for_the_test_target_and_reports_a_taken_name() {
         proxy::uninstall(&installed).unwrap();
         assert!(!installed.exists());
     }
+}
+
+/// Other players' controllers are hidden from DirectInput, Raw Input and HID; the copy's own one stays visible.
+/// Uses whatever controllers are plugged in: with none, only the "nothing leaks" half has something to check.
+fn proxy_pads_only_own(arch: &str) {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let s = Scratch::new(&format!("proxy-pads-{arch}"));
+    let args = ["--xinput", "none", "--pads"];
+    let mut plain = proxy_start(arch, &s, "plain", "version", None, &args);
+    let base = plain.result()["pads"].clone();
+    plain.finish();
+    let strs = |v: &Value| -> Vec<String> { v.as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default() };
+    let (base_raw, base_hid, base_di) = (strs(&base["raw"]), strs(&base["hid"]), strs(&base["dinput"]));
+    println!("  {arch}: controllers without the hook: raw {} hid {} dinput {}", base_raw.len(), base_hid.len(), base_di.len());
+
+    let none = HookConfig { own_pads: Some(vec![]), ..Default::default() };
+    let opts = HookOptions { xinput: true, test_pads: Some(vec![]) };
+    let mut hidden = proxy_start(arch, &s, "hidden", "version", Some((&none, &opts)), &args);
+    let r = hidden.result()["pads"].clone();
+    let st = hidden.status();
+    assert!(st.hooks.pads, "{st:?}");
+    assert!(strs(&r["raw"]).is_empty() && strs(&r["hid"]).is_empty() && strs(&r["dinput"]).is_empty(), "no controller may leak: {r}");
+    assert_eq!(r["dinput_enumerated"], 0, "{r}");
+    assert!(r["hid_refused"].as_u64().unwrap_or(0) >= base_hid.len() as u64, "{r}");
+    if !(base_raw.is_empty() && base_hid.is_empty()) {
+        assert!(st.counter("pads_hidden") > 0, "{st:?}");
+    }
+    hidden.finish();
+
+    // The copy's own controller: its HID path (as SDL reports it) keeps it visible everywhere.
+    let Some(own) = base_hid.first().or(base_raw.first()).cloned() else {
+        println!("  SKIP the own-controller half: no controller plugged in");
+        return;
+    };
+    let mine = HookConfig { own_pads: Some(vec![own.to_uppercase()]), ..Default::default() };
+    let mut c = proxy_start(arch, &s, "mine", "version", Some((&mine, &opts)), &args);
+    let r = c.result()["pads"].clone();
+    let norm = |p: &str| p.to_lowercase().split("#{").next().unwrap_or("").trim_start_matches(r"\?\").to_string();
+    let want = norm(&own);
+    for (api, list, base) in [("raw", strs(&r["raw"]), &base_raw), ("hid", strs(&r["hid"]), &base_hid), ("dinput", strs(&r["dinput"]), &base_di)] {
+        let seen: Vec<String> = list.iter().map(|p| norm(p)).collect();
+        assert!(seen.iter().all(|p| *p == want), "{api}: only the own controller: {seen:?}");
+        if base.iter().any(|p| norm(p) == want) {
+            assert!(seen.contains(&want), "{api}: the own controller stays visible: {r}");
+        }
+    }
+    c.finish();
+}
+
+#[test]
+fn proxy_pads_only_own_x64() {
+    proxy_pads_only_own("x64");
+}
+
+#[test]
+fn proxy_pads_only_own_x86() {
+    proxy_pads_only_own("x86");
 }

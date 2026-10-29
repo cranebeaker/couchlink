@@ -31,6 +31,7 @@ class LibraryGame {
     this.coverTitle,
     this.installed = true,
     this.steamAppId,
+    this.setup = const [],
   });
 
   final String id;
@@ -53,10 +54,16 @@ class LibraryGame {
   /// Steam app id, for "Install on Steam" and the Steam cover when the catalog has none.
   final int? steamAppId;
 
+  /// One-time steps before the first game.
+  final List<SetupStep> setup;
+
+  /// Installed and every one-time step done: Play can start it.
+  bool get ready => installed && setup.every((s) => s.done);
+
   /// The recipe id (the library id of a game is its recipe).
   String get recipe => id;
 
-  LibraryGame copyWith({String? name, bool? installed, int? minPlayers, int? maxPlayers, int? steamAppId}) => LibraryGame(
+  LibraryGame copyWith({String? name, bool? installed, int? minPlayers, int? maxPlayers, int? steamAppId, List<SetupStep>? setup}) => LibraryGame(
         id: id,
         name: name ?? this.name,
         tier: tier,
@@ -70,6 +77,7 @@ class LibraryGame {
         coverTitle: coverTitle,
         installed: installed ?? this.installed,
         steamAppId: steamAppId ?? this.steamAppId,
+        setup: setup ?? this.setup,
       );
 
   String get playersLabel => minPlayers == maxPlayers ? '$minPlayers' : '$minPlayers to $maxPlayers';
@@ -212,7 +220,7 @@ String _steamText(String steam) => switch (steam) {
 LibraryGame libraryGameOf(GameInfo g) {
   for (final s in sampleGames) {
     if (s.id == g.recipe) {
-      return s.copyWith(name: g.game, installed: g.installed, minPlayers: g.minPlayers, maxPlayers: g.maxPlayers, steamAppId: g.steamAppId);
+      return s.copyWith(name: g.game, installed: g.installed, minPlayers: g.minPlayers, maxPlayers: g.maxPlayers, steamAppId: g.steamAppId, setup: g.setup);
     }
   }
   var h = 0;
@@ -234,5 +242,6 @@ LibraryGame libraryGameOf(GameInfo g) {
     coverTitle: plain == g.game ? null : plain,
     installed: g.installed,
     steamAppId: g.steamAppId,
+    setup: g.setup,
   );
 }

@@ -43,6 +43,7 @@ add_library(hook_core OBJECT
   src/kbm_dinput.cpp
   src/kbm_cursor.cpp
   src/child_hook.cpp
+  src/pads_hook.cpp
   ${MINHOOK_SRC})
 target_include_directories(hook_core PRIVATE src ${MINHOOK_DIR}/include)
 target_compile_definitions(hook_core PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
@@ -94,7 +95,7 @@ endforeach()
 add_executable(couchlink_test_target tests/test_target.cpp)
 target_compile_definitions(couchlink_test_target PRIVATE UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
 target_compile_options(couchlink_test_target PRIVATE /W3 /utf-8 /EHsc)
-target_link_libraries(couchlink_test_target PRIVATE user32 shell32 ole32 dinput8 dxguid)
+target_link_libraries(couchlink_test_target PRIVATE user32 shell32 ole32 dinput8 dxguid setupapi hid)
 
 foreach(t couchlink_hook ${CL_PROXY_TARGETS})
   if(t STREQUAL "couchlink_hook")

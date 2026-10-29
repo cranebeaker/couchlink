@@ -26,6 +26,23 @@ pub fn set_xinput_slot(id: u32, slot: Option<u32>) {
     };
 }
 
+/// Device path of each SDL pad (its HID path, `XInput#n` for an XInput pad, empty for a virtual one). Filled by the SDL thread.
+static PAD_PATHS: LazyLock<Mutex<HashMap<u32, String>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub fn set_pad_path(id: u32, path: Option<String>) {
+    let mut map = PAD_PATHS.lock().unwrap_or_else(|e| e.into_inner());
+    match path.filter(|p| !p.is_empty()) {
+        Some(p) => map.insert(id, p),
+        None => map.remove(&id),
+    };
+}
+
+/// The device paths of the pads seated here, for `own_pads`: the copy sees these controllers and no others.
+fn own_pad_paths(devices: &[String]) -> Vec<String> {
+    let map = PAD_PATHS.lock().unwrap_or_else(|e| e.into_inner());
+    devices.iter().filter_map(|d| d.strip_prefix("pad:")?.parse::<u32>().ok()).filter_map(|id| map.get(&id).cloned()).collect()
+}
+
 /// The XInput slot for the first seated device that has one (`pad:<sdl id>`).
 fn pad_slot(devices: &[String]) -> Option<u32> {
     let map = XINPUT_SLOTS.lock().unwrap_or_else(|e| e.into_inner());
@@ -128,6 +145,8 @@ impl Launcher for HookLauncher {
             kbm_feed: kbm.as_ref().map(|g| g.name().to_string()),
             fake_cursor: kbm.is_some(),
             hook_children: spec.hook_children,
+            // Games that read controllers through DirectInput, Raw Input or HID see only this seat's.
+            own_pads: Some(own_pad_paths(&spec.devices)),
         };
         if let Some(s) = stand_in_for(spec) {
             if let Some(launched) = launch_with_stand_in(spec, &s, &config, &mut feed, &mut kbm)? {
@@ -306,11 +325,12 @@ mod tests {
 
         HookLauncher.prepare(&spec, &mut journal).unwrap();
         assert_eq!(journal.changes().len(), 1, "the stand-in is journalled before it is written");
-        assert!(!game.join("version.dll").exists());
+        let stand_in = game.join(format!("{}.dll", proxy::pick(&game, &exe).unwrap().name.expect("the target imports a stand-in name")));
+        assert!(!stand_in.exists());
 
         let mut launched = HookLauncher.launch(&spec).unwrap();
         assert!(launched.hooked);
-        assert!(proxy::is_ours(&game.join("version.dll")), "the target imports version.dll, so that is the stand-in used");
+        assert!(proxy::is_ours(&stand_in), "the stand-in for the target's import is placed next to it");
         // The config file is gone once the stand-in has it.
         let leftovers = std::fs::read_dir(std::env::temp_dir().join("couchlink-hook")).map(|d| d.count()).unwrap_or(0);
         assert!(leftovers < 1000);
@@ -326,7 +346,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(300));
         let report = journal.replay(&undoers);
         assert!(report.failed.is_empty(), "{:?}", report.failed);
-        assert!(!game.join("version.dll").exists(), "undo removes the stand-in");
+        assert!(!stand_in.exists(), "undo removes the stand-in");
         let _ = std::fs::remove_dir_all(&root);
     }
 }

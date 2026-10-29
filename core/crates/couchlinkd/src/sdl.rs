@@ -389,6 +389,7 @@ impl Worker {
                 self.virtuals.remove(&id);
                 if self.pads.remove(&id).is_some() {
                     crate::session::hook::set_xinput_slot(id, None);
+                    crate::session::hook::set_pad_path(id, None);
                     crate::session::padfeed::disconnect(&format!("pad:{id}"));
                     self.batteries.remove(&id);
                     let _ = self.events.send(SdlEvent::PadRemoved(id));
@@ -435,6 +436,7 @@ impl Worker {
         };
         self.batteries.insert(id, (battery, charging));
         crate::session::hook::set_xinput_slot(id, xinput_slot(id));
+        crate::session::hook::set_pad_path(id, pad.path());
         self.pads.insert(id, pad);
         let _ = self.events.send(SdlEvent::PadAdded(info));
     }

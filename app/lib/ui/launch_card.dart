@@ -22,6 +22,12 @@ Future<void> playGame(BuildContext context, LibraryGame game) async {
     scope.ui.openLaunch();
     return;
   }
+  if (game.installed && !game.ready) {
+    scope.ui.go(AppView.library);
+    scope.ui.selectGame(game.id, openSheet: true);
+    scope.toaster.show('One-time setup first, then Play');
+    return;
+  }
   final st = scope.client.state;
   if (st == null || st.takenSeats.isEmpty) {
     scope.toaster.show('Pick your players first');

@@ -10,6 +10,7 @@ import '../daemon/models.dart';
 import '../layout/layout_math.dart';
 import '../theme/tokens.dart';
 import 'app_state.dart';
+import 'catalog_logic.dart';
 import 'controls_view.dart';
 import 'discover_view.dart';
 import 'dev_view.dart';
@@ -526,7 +527,9 @@ class PartyBar extends StatelessWidget {
                     ? 'Pick a game'
                     : !game.installed
                         ? 'Not installed'
-                        : ok
+                        : !game.ready
+                            ? 'Set up first'
+                            : ok
                             ? 'Play with $n'
                             : 'Need ${game.minPlayers} players';
             final names = taken.map((i) => st.seats[i]!.name).join(', ');
@@ -537,7 +540,7 @@ class PartyBar extends StatelessWidget {
                   child: _Slot(
                     key: const ValueKey('party-game'),
                     onTap: () => scope.ui.go(AppView.library),
-                    leading: SizedBox(width: 42, height: 42, child: GameArt(colors: game?.art ?? noGameArt, radius: 9)),
+                    leading: SizedBox(width: 42, height: 42, child: GameArt(colors: game?.art ?? noGameArt, radius: 9, coverUrl: game == null ? null : coverFor(scope.client.catalog, game))),
                     label: 'Game',
                     value: game?.name ?? 'No game yet',
                   ),

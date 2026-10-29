@@ -41,6 +41,11 @@ pub struct HookConfig {
     /// lock renaming (locks get the suffix of the first process, so launcher and game still see each other's
     /// objects). Programs under the Windows folder are left alone. Off by default.
     pub hook_children: bool,
+    /// Device paths of this copy's own controllers (as SDL, Raw Input or SetupAPI report them). When set, every other
+    /// game controller is hidden from the copy's DirectInput, Raw Input and HID opens, so a game that reads pads
+    /// without XInput still sees only its player's. `Some(vec![])` hides them all; `None` leaves them alone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub own_pads: Option<Vec<String>>,
 }
 
 /// Switches that are not part of the launch contract.
@@ -87,6 +92,7 @@ pub struct HookFlags {
     pub feed: bool,
     pub kbm: bool,
     pub children: bool,
+    pub pads: bool,
 }
 
 /// A process the hooked process started, as the hook reports it.
@@ -167,6 +173,7 @@ mod tests {
             kbm_feed: Some(r"Local\couchlink-kbm-s-0".into()),
             fake_cursor: true,
             hook_children: true,
+            own_pads: Some(vec![r"\?\HID#VID_054C&PID_0CE6#1#{4d1e55b2}".into()]),
         };
         let m = config_message(&cfg, &HookOptions::default());
         assert_eq!(m["cmd"], "config");
@@ -179,6 +186,8 @@ mod tests {
         assert_eq!(m["config"]["kbm_feed"], r"Local\couchlink-kbm-s-0");
         assert_eq!(m["config"]["fake_cursor"], true);
         assert_eq!(m["config"]["hook_children"], true);
+        assert_eq!(m["config"]["own_pads"][0], r"\?\HID#VID_054C&PID_0CE6#1#{4d1e55b2}");
+        assert!(config_message(&HookConfig::default(), &HookOptions::default())["config"].get("own_pads").is_none());
     }
 
     #[test]

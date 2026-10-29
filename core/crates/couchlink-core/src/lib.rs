@@ -25,7 +25,7 @@ pub use profile::{Profile, ProfileSummary};
 pub use protocol::{Command, Event, InputSample, Reply, Request};
 pub use recipe::Recipe;
 pub use screens::Screen;
-pub use session::{GameInfo, OptionInfo, SeatPlan, SeatStatus, SessionInfo, SessionState, Step};
+pub use session::{GameInfo, OptionInfo, SeatPlan, SeatStatus, SessionInfo, SessionState, Step, SetupStep};
 pub use seats::{SeatError, SeatManager};
 pub use types::{Connection, Device, DeviceKind, Display, Family, Layout, ProfileRef, Seat, State};
 

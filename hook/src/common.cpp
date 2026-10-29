@@ -20,6 +20,7 @@ const char* const kCounterNames[C_COUNT] = {
     "kbm_events",         "kbm_key_messages", "kbm_char_messages", "kbm_mouse_messages", "kbm_raw_messages",
     "kbm_real_dropped",   "kbm_state_queries", "kbm_cursor_queries", "kbm_dinput_reads", "kbm_raw_reads",
     "children_hooked",    "children_failed",   "children_skipped",
+    "pads_hidden",
 };
 
 std::atomic<uint64_t> g_counters[C_COUNT];
@@ -82,7 +83,8 @@ std::string StatusJson() {
     r += std::string(",\"hooks\":{\"xinput\":") + flag(g_features.xinput) + ",\"focus\":" + flag(g_features.focus) +
          ",\"names\":" + flag(g_features.names) + ",\"cow\":" + flag(g_features.cow) +
          ",\"saves\":" + flag(g_features.saves) + ",\"feed\":" + flag(g_features.feed) +
-         ",\"kbm\":" + flag(g_features.kbm) + ",\"children\":" + flag(g_features.children) + "}";
+         ",\"kbm\":" + flag(g_features.kbm) + ",\"children\":" + flag(g_features.children) +
+         ",\"pads\":" + flag(g_features.pads) + "}";
     r += ",\"counters\":{";
     for (int i = 0; i < C_COUNT; ++i) {
         if (i) r += ",";

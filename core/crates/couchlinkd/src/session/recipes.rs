@@ -218,6 +218,11 @@ pub fn locate(locators: &[Locator], recipe: &Recipe) -> Option<PathBuf> {
 
 pub fn game_info(locators: &[Locator], r: &Recipe) -> GameInfo {
     let path = locate(locators, r);
+    let setup = r
+        .requires
+        .iter()
+        .map(|q| couchlink_core::SetupStep { text: q.hint.clone(), done: path.as_deref().is_some_and(|p| require_met(p, q)) })
+        .collect();
     GameInfo {
         recipe: r.id.clone(),
         game: r.game.clone(),
@@ -228,6 +233,7 @@ pub fn game_info(locators: &[Locator], r: &Recipe) -> GameInfo {
         source: r.source.clone(),
         options: couchlink_core::OptionInfo::list(r),
         steam_app_id: r.matching.steam_app_id,
+        setup,
     }
 }
 

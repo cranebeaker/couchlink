@@ -48,6 +48,10 @@ typedef HRESULT(STDMETHODCALLTYPE* DataFn)(void*, DWORD, void*, LPDWORD, DWORD);
 typedef HRESULT(STDMETHODCALLTYPE* NoArgFn)(void*);
 typedef ULONG(STDMETHODCALLTYPE* ReleaseFn)(void*);
 typedef HRESULT(STDMETHODCALLTYPE* CapsFn)(void*, DIDEVCAPS*);
+typedef HRESULT(STDMETHODCALLTYPE* GetPropFn)(void*, REFGUID, DIPROPHEADER*);
+typedef BOOL(CALLBACK* EnumCb)(const void*, LPVOID);
+typedef HRESULT(STDMETHODCALLTYPE* EnumFn)(void*, DWORD, EnumCb, LPVOID, DWORD);
+std::map<void*, void*> g_enum_tramp;  // EnumDevices target -> trampoline
 
 void* VtableEntry(void* obj, int index) { return (*reinterpret_cast<void***>(obj))[index]; }
 
@@ -174,6 +178,19 @@ void HookDeviceClass(void* dev) {
     ApplyHooks();
 }
 
+// Another player's controller (pads_hook.cpp), judged by the HID path DirectInput reports for the device.
+bool DeviceHidden(void* dev) {
+    if (!g_cfg.hide_pads) return false;
+    DIPROPGUIDANDPATH p = {};
+    p.diph.dwSize = sizeof(p);
+    p.diph.dwHeaderSize = sizeof(DIPROPHEADER);
+    p.diph.dwHow = DIPH_DEVICE;
+    if (FAILED(reinterpret_cast<GetPropFn>(VtableEntry(dev, 5))(dev, DIPROP_GUIDANDPATH, &p.diph))) return false;
+    return PadPathHidden(p.wszPath);
+}
+
+void ReleaseDevice(void* dev) { reinterpret_cast<ReleaseFn>(VtableEntry(dev, 2))(dev); }
+
 HRESULT STDMETHODCALLTYPE CreateDeviceCommon(void* self, REFGUID guid, void** out, LPUNKNOWN outer) {
     CreateDeviceFn orig = Tramp<CreateDeviceFn>(g_create_tramp, self, 3);
     if (!orig) return E_FAIL;
@@ -188,7 +205,13 @@ HRESULT STDMETHODCALLTYPE CreateDeviceCommon(void* self, REFGUID guid, void** ou
         if (t == DI8DEVTYPE_KEYBOARD) type = kKeyboard;
         else if (t == DI8DEVTYPE_MOUSE) type = kMouse;
     }
-    if (!type) return hr;
+    if (!type && DeviceHidden(dev)) {
+        ReleaseDevice(dev);
+        *out = nullptr;
+        Bump(C_PADS_HIDDEN);
+        return DIERR_DEVICENOTREG;
+    }
+    if (!type || !g_kbm) return hr;
     HookDeviceClass(dev);
     {
         Lock l;
@@ -203,9 +226,63 @@ HRESULT STDMETHODCALLTYPE d_CreateDevice(void* self, REFGUID guid, void** out, L
     return CreateDeviceCommon(self, guid, out, outer);
 }
 
+// EnumDevices with other players' controllers left out. DIDEVICEINSTANCEA and W share the head that is read here:
+// dwSize, guidInstance (offset 4), guidProduct, dwDevType (offset 36).
+struct EnumCtx {
+    EnumCb cb;
+    LPVOID ctx;
+    void* di;
+};
+
+std::map<std::string, bool> g_instance_hidden;  // guidInstance bytes -> hidden
+
+bool InstanceHidden(void* di, const GUID& inst) {
+    std::string key(reinterpret_cast<const char*>(&inst), sizeof(GUID));
+    {
+        Lock l;
+        auto it = g_instance_hidden.find(key);
+        if (it != g_instance_hidden.end()) return it->second;
+    }
+    bool hidden = false;
+    CreateDeviceFn orig = Tramp<CreateDeviceFn>(g_create_tramp, di, 3);
+    void* dev = nullptr;
+    if (orig && SUCCEEDED(orig(di, inst, &dev, nullptr)) && dev) {
+        hidden = DeviceHidden(dev);
+        ReleaseDevice(dev);
+    }
+    Lock l;
+    g_instance_hidden[key] = hidden;
+    return hidden;
+}
+
+BOOL CALLBACK EnumFilter(const void* inst, LPVOID p) {
+    auto* c = static_cast<EnumCtx*>(p);
+    const uint8_t* b = static_cast<const uint8_t*>(inst);
+    GUID guid;
+    DWORD dev_type;
+    memcpy(&guid, b + 4, sizeof(guid));
+    memcpy(&dev_type, b + 36, sizeof(dev_type));
+    DWORD t = dev_type & 0xFF;
+    if (t != DI8DEVTYPE_KEYBOARD && t != DI8DEVTYPE_MOUSE && InstanceHidden(c->di, guid)) {
+        Bump(C_PADS_HIDDEN);
+        return DIENUM_CONTINUE;
+    }
+    return c->cb(inst, c->ctx);
+}
+
+HRESULT STDMETHODCALLTYPE d_EnumDevices(void* self, DWORD type, EnumCb cb, LPVOID ctx, DWORD flags) {
+    EnumFn orig = Tramp<EnumFn>(g_enum_tramp, self, 4);
+    if (!orig) return E_FAIL;
+    if (!g_cfg.hide_pads || !cb) return orig(self, type, cb, ctx, flags);
+    EnumCtx c{cb, ctx, self};
+    return orig(self, type, &EnumFilter, &c, flags);
+}
+
 HRESULT WINAPI d_DirectInput8Create(HINSTANCE inst, DWORD ver, REFIID riid, LPVOID* out, LPUNKNOWN outer) {
     HRESULT hr = o_DirectInput8Create(inst, ver, riid, out, outer);
     if (SUCCEEDED(hr) && out && *out) HookSlot(*out, 3, reinterpret_cast<void*>(&d_CreateDevice), g_create_tramp, "IDirectInput8::CreateDevice");
+    if (SUCCEEDED(hr) && out && *out && g_cfg.hide_pads)
+        HookSlot(*out, 4, reinterpret_cast<void*>(&d_EnumDevices), g_enum_tramp, "IDirectInput8::EnumDevices");
     if (SUCCEEDED(hr)) ApplyHooks();
     return hr;
 }
@@ -229,13 +306,14 @@ void HookModule(HMODULE m) {
 }  // namespace
 
 void DInputModuleLoaded(HMODULE m, const wchar_t* path) {
-    if (g_cfg.kbm_feed.empty() || !g_kbm) return;
+    if ((g_cfg.kbm_feed.empty() || !g_kbm) && !g_cfg.hide_pads) return;
     const wchar_t* base = wcsrchr(path, L'\\');
     base = base ? base + 1 : path;
     if (_wcsicmp(base, L"dinput8.dll") == 0) HookModule(m);
 }
 
 void InstallKbmDInput() {
+    if ((g_cfg.kbm_feed.empty() || !g_kbm) && !g_cfg.hide_pads) return;
     HMODULE m = GetModuleHandleW(L"dinput8.dll");
     if (m) HookModule(m);
     // Not loaded yet: the LoadLibrary watch in xinput_hook.cpp calls DInputModuleLoaded when it is.

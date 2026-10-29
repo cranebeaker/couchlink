@@ -117,6 +117,19 @@ bool ParseConfig(const Json& j, Config& cfg, std::string& err) {
     if (const Json* v = j.get("kbm_feed"); v && v->isStr() && !v->s.empty()) cfg.kbm_feed = Widen(v->s);
     if (const Json* v = j.get("fake_cursor")) cfg.fake_cursor = v->asBool(false);
     if (const Json* v = j.get("hook_children")) cfg.hook_children = v->asBool(false);
+    if (const Json* v = j.get("own_pads"); v && v->isArr()) {
+        cfg.hide_pads = true;
+        for (const Json& p : v->a) {
+            if (!p.isStr() || p.s.empty()) continue;
+            // Same normal form as pads_hook.cpp NormPad: lower case, no \\?\ prefix, no #{interface class}.
+            std::wstring w = Widen(p.s);
+            for (auto& ch : w) ch = static_cast<wchar_t>(towlower(ch));
+            if (w.rfind(L"\\\\?\\", 0) == 0 || w.rfind(L"\\\\.\\", 0) == 0) w = w.substr(4);
+            size_t g = w.rfind(L"#{");
+            if (g != std::wstring::npos) w.resize(g);
+            cfg.own_pads.push_back(w);
+        }
+    }
     if (const Json* v = j.get("copy_id")) cfg.copy_id = v->isNum() ? static_cast<uint32_t>(v->asInt(0)) : 0;
     if (const Json* v = j.get("depth")) cfg.depth = v->isNum() ? static_cast<uint32_t>(v->asInt(0)) : 0;
     cfg.raw = j;
@@ -217,6 +230,7 @@ std::string ApplyConfig(const Json& c) {
     InstallKbm();
     InstallMessages();
     InstallChildren();
+    InstallPads();
     ApplyHooks();
     return StatusJson();
 }

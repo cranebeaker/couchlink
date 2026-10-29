@@ -437,6 +437,7 @@ class GameInfo {
     this.steam = 'none',
     this.source = 'builtin',
     this.steamAppId,
+    this.setup = const [],
   });
 
   final String recipe;
@@ -457,6 +458,9 @@ class GameInfo {
   /// The game's Steam app id, when it is a Steam game.
   final int? steamAppId;
 
+  /// One-time steps before the first game, each with whether it is done.
+  final List<SetupStep> setup;
+
   factory GameInfo.fromJson(Map<String, dynamic> j) {
     final p = j['players'];
     var lo = 1;
@@ -476,8 +480,20 @@ class GameInfo {
       steam: _str(j['steam'], 'none'),
       source: _str(j['source'], 'builtin'),
       steamAppId: j['steam_app_id'] is num ? (j['steam_app_id'] as num).toInt() : null,
+      setup: [
+        if (j['setup'] is List)
+          for (final x in j['setup'] as List)
+            if (x is Map) SetupStep(_str(x['text']), done: x['done'] == true),
+      ],
     );
   }
+}
+
+/// A one-time step before the first game (a recipe's `requires`).
+class SetupStep {
+  const SetupStep(this.text, {this.done = false});
+  final String text;
+  final bool done;
 }
 
 /// A recipe file couchlinkd could not read (`errors` of `list_games`).

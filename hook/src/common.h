@@ -49,6 +49,8 @@ struct Config {
     std::wstring kbm_feed;  // name of the keyboard and mouse feed section, empty = none
     bool fake_cursor = false;  // draw an overlay cursor for the copy's fake mouse
     bool hook_children = false;  // inject this DLL into every process this process starts
+    bool hide_pads = false;  // own_pads was given: hide every game controller not in it
+    std::vector<std::wstring> own_pads;  // this copy's controllers, as normalised device paths (pads_hook.cpp)
     uint32_t copy_id = 0;  // pid of the process the host injected first (suffix of renamed locks); 0 = this process
     uint32_t depth = 0;  // 0 for the process the host injected, +1 per child generation
     Json raw;  // the config exactly as received, handed on to children
@@ -62,7 +64,8 @@ extern volatile KbmHeader* g_kbm;
 
 // Which hook groups ended up installed (reported in status).
 struct Features {
-    bool xinput = false, focus = false, names = false, cow = false, saves = false, feed = false, kbm = false, children = false;
+    bool xinput = false, focus = false, names = false, cow = false, saves = false, feed = false, kbm = false, children = false,
+         pads = false;
 };
 extern Features g_features;
 // This DLL's own module handle.
@@ -98,6 +101,7 @@ enum Counter {
     C_CHILDREN_HOOKED,
     C_CHILDREN_FAILED,
     C_CHILDREN_SKIPPED,
+    C_PADS_HIDDEN,
     C_COUNT
 };
 void Bump(Counter c, uint64_t n = 1);
@@ -131,6 +135,13 @@ void InstallMessages();  // GetMessage / PeekMessage / TranslateMessage filters 
 void InstallKbm();
 void InstallKbmDInput();
 void InstallChildren();
+void InstallPads();
+// Other players' controllers (pads_hook.cpp). True when this copy must not see the HID device at `path`.
+bool PadPathHidden(const wchar_t* path);
+// Same for a Raw Input device handle.
+bool PadHandleHidden(HANDLE device);
+// False for a WM_INPUT from a hidden controller.
+bool PadsKeepMessage(const MSG* m);
 // A module was loaded into the process (called by the LoadLibrary watch in xinput_hook.cpp).
 void DInputModuleLoaded(HMODULE m, const wchar_t* path);
 

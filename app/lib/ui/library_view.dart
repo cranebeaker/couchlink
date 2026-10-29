@@ -83,7 +83,7 @@ class _LibraryViewState extends State<LibraryView> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('READY TO PLAY', style: txt(context, size: 11, weight: FontWeight.w600, color: c.ink3, ls: .04, height: 1.3)),
+                                Text(r.ready ? 'READY TO PLAY' : 'ONE-TIME SETUP NEEDED', style: txt(context, size: 11, weight: FontWeight.w600, color: r.ready ? c.ink3 : c.warn, ls: .04, height: 1.3)),
                                 const SizedBox(height: 10),
                                 Text(r.name, style: txt(context, size: 22, weight: FontWeight.w700, display: true, ls: -.02, height: 1.2)),
                                 const SizedBox(height: 10),
@@ -158,6 +158,14 @@ class _LibraryViewState extends State<LibraryView> {
 /// "Maya", "Maya and Theo", "Maya, Theo and Kai".
 String _join(List<String> names) =>
     names.length < 2 ? names.join() : '${names.sublist(0, names.length - 1).join(', ')} and ${names.last}';
+
+/// A recipe hint as a sentence: capital first letter, full stop at the end.
+String _sentence(String t) {
+  final s = t.trim();
+  if (s.isEmpty) return s;
+  final first = s[0].toUpperCase() + s.substring(1);
+  return first.endsWith('.') ? first : '$first.';
+}
 
 class _Note extends StatelessWidget {
   const _Note(this.text);
@@ -320,8 +328,37 @@ class _GameSheetState extends State<GameSheet> {
                                     if (!g.installed) const _Fact('On this PC', 'Not installed'),
                                   ]),
                                 ),
+                                if (g.setup.isNotEmpty) ...[
+                                  const SizedBox(height: 18),
+                                  Text('Before your first game', key: const ValueKey('sheet-setup'), style: txt(context, size: 13, weight: FontWeight.w600)),
+                                  const SizedBox(height: 8),
+                                  for (final (i, step) in g.setup.indexed)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 3),
+                                          child: Container(
+                                            key: ValueKey('setup-$i-${step.done ? 'done' : 'todo'}'),
+                                            width: 12,
+                                            height: 12,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: step.done ? c.ok : null,
+                                              border: Border.all(color: step.done ? c.ok : c.ink3, width: 1.5),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(child: Text(_sentence(step.text), style: txt(context, size: 13, color: step.done ? c.ink3 : c.ink2))),
+                                      ]),
+                                    ),
+                                  Text('Only once: Couchlink remembers it for every game after this.', style: txt(context, size: 12, color: c.ink3)),
+                                ],
                                 const SizedBox(height: 14),
-                                if (g.installed)
+                                if (g.installed && !g.ready)
+                                  CButton(key: const ValueKey('sheet-recheck'), label: 'I did it, check again', primary: true, onTap: () => runCmd(context, scope.client.listGames))
+                                else if (g.installed)
                                   CButton(key: const ValueKey('sheet-go'), label: 'Choose players', primary: true, onTap: () => ui.go(AppView.players))
                                 else if (g.steamAppId != null) ...[
                                   Text('Couchlink could not find this game on this PC. Install it with Steam, then check again.', style: txt(context, size: 13, color: c.ink2)),

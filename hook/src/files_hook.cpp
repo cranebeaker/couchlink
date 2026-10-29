@@ -138,8 +138,17 @@ bool PrepareOpen(const wchar_t* in, DWORD access, DWORD disp, std::wstring& out)
 
 inline bool Skip(const void* p) { return ReentryGuard::active() || !p || !(g_saves || g_cow); }
 
+// Another player's controller: the game is told it is not there (pads_hook.cpp).
+bool RefusePad(const wchar_t* name) {
+    if (!PadPathHidden(name)) return false;
+    Bump(C_PADS_HIDDEN);
+    SetLastError(ERROR_FILE_NOT_FOUND);
+    return true;
+}
+
 HANDLE WINAPI d_CreateFileW(LPCWSTR name, DWORD access, DWORD share, LPSECURITY_ATTRIBUTES sa, DWORD disp, DWORD flags,
                             HANDLE tmpl) {
+    if (RefusePad(name)) return INVALID_HANDLE_VALUE;
     if (Skip(name)) return o_CreateFileW(name, access, share, sa, disp, flags, tmpl);
     std::wstring path;
     if (PrepareOpen(name, access, disp, path)) name = path.c_str();
@@ -149,6 +158,7 @@ HANDLE WINAPI d_CreateFileW(LPCWSTR name, DWORD access, DWORD share, LPSECURITY_
 
 HANDLE WINAPI d_CreateFileA(LPCSTR name, DWORD access, DWORD share, LPSECURITY_ATTRIBUTES sa, DWORD disp, DWORD flags,
                             HANDLE tmpl) {
+    if (g_cfg.hide_pads && name && !ReentryGuard::active() && RefusePad(Widen(name).c_str())) return INVALID_HANDLE_VALUE;
     if (Skip(name)) return o_CreateFileA(name, access, share, sa, disp, flags, tmpl);
     int n = MultiByteToWideChar(CP_ACP, 0, name, -1, nullptr, 0);
     if (n <= 1) return o_CreateFileA(name, access, share, sa, disp, flags, tmpl);
@@ -163,6 +173,7 @@ HANDLE WINAPI d_CreateFileA(LPCSTR name, DWORD access, DWORD share, LPSECURITY_A
 }
 
 HANDLE WINAPI d_CreateFile2(LPCWSTR name, DWORD access, DWORD share, DWORD disp, LPCREATEFILE2_EXTENDED_PARAMETERS ext) {
+    if (RefusePad(name)) return INVALID_HANDLE_VALUE;
     if (Skip(name)) return o_CreateFile2(name, access, share, disp, ext);
     std::wstring path;
     if (PrepareOpen(name, access, disp, path)) name = path.c_str();
@@ -313,7 +324,16 @@ HRESULT WINAPI d_SHGetFolderPathW(HWND wnd, int csidl, HANDLE token, DWORD flags
 void InstallFiles() {
     g_cow = !g_cfg.cow_root.empty();
     g_saves = !g_cfg.saves.empty();
-    if (!g_cow && !g_saves) return;
+    if (!g_cow && !g_saves) {
+        // Only hiding other players' controllers: the three opens are all that is needed.
+        if (!g_cfg.hide_pads) return;
+        HMODULE k = GetModuleHandleW(L"kernelbase.dll");
+        if (!k) k = GetModuleHandleW(L"kernel32.dll");
+        HK(k, CreateFileW);
+        HK(k, CreateFileA);
+        HK(k, CreateFile2);
+        return;
+    }
     InitializeCriticalSection(&g_cow_lock);
     HMODULE k = GetModuleHandleW(L"kernelbase.dll");
     if (!k) k = GetModuleHandleW(L"kernel32.dll");

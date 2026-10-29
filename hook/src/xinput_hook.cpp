@@ -374,7 +374,7 @@ void MaybeHookLoaded(HMODULE m) {
     }
     DWORD n = GetModuleFileNameW(m, path, ARRAYSIZE(path));
     if (n == 0 || n >= ARRAYSIZE(path)) return;
-    DInputModuleLoaded(m, path);  // no-op without a keyboard / mouse feed
+    DInputModuleLoaded(m, path);  // no-op without a keyboard / mouse feed or pad hiding
     if (!g_cfg.xinput) return;
     std::string name;
     if (!IsXInputName(path, &name)) return;
@@ -418,7 +418,7 @@ HMODULE WINAPI d_LoadLibraryA(LPCSTR n) {
 
 void InstallXInput() {
     // The module watch below also serves the DirectInput hook of the keyboard / mouse feed.
-    if (!g_cfg.xinput && g_cfg.kbm_feed.empty()) return;
+    if (!g_cfg.xinput && g_cfg.kbm_feed.empty() && !g_cfg.hide_pads) return;
     // Modules already in the process (static imports, DLLs next to the exe).
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, GetCurrentProcessId());
     if (snap != INVALID_HANDLE_VALUE) {

@@ -18,6 +18,7 @@ BOOL(WINAPI* o_TranslateMessage)(const MSG*) = nullptr;
 
 // True = deliver the message to the game.
 bool Keep(MSG* m) {
+    if (!PadsKeepMessage(m)) return false;
     FocusFixPosted(m);
     if (g_kbm) return KbmFilterMessage(m);
     return true;
@@ -67,7 +68,7 @@ BOOL WINAPI d_TranslateMessage(const MSG* m) {
 #define HK(mod, name) InstallHook(mod, #name, reinterpret_cast<void*>(&d_##name), reinterpret_cast<void**>(&o_##name))
 
 void InstallMessages() {
-    if (!g_cfg.focus && g_cfg.kbm_feed.empty()) return;
+    if (!g_cfg.focus && g_cfg.kbm_feed.empty() && !g_cfg.hide_pads) return;
     HMODULE u = GetModuleHandleW(L"user32.dll");
     if (!u) u = LoadLibraryW(L"user32.dll");
     HK(u, GetMessageW);

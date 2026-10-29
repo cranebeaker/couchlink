@@ -75,6 +75,16 @@ pub struct GameInfo {
     /// The game's Steam app id (`match.steamAppId`), for the install link and cover art.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub steam_app_id: Option<u32>,
+    /// One-time steps the player does before the first game (the recipe's `requires`), each with whether it is done.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub setup: Vec<SetupStep>,
+}
+
+/// A one-time step before the first game, as `list_games` shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SetupStep {
+    pub text: String,
+    pub done: bool,
 }
 
 /// One recipe option as `list_games` shows it. An option with no `choices` takes short free text (`text`).

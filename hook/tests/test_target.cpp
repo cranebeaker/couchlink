@@ -10,6 +10,8 @@
 #include <dinput.h>
 
 #include <cstdio>
+#include <setupapi.h>
+#include <hidsdi.h>
 
 // A static import of version.dll, so a stand-in version.dll next to this exe is loaded at process start.
 #pragma comment(lib, "version.lib")
@@ -30,6 +32,7 @@ struct Args {
     bool known_docs = false;
     bool no_window = false;
     bool use_version = false;  // call GetFileVersionInfoSizeW so version.dll is a loaded import
+    bool pads = false;         // list the game controllers DirectInput, Raw Input and HID let this process see
     bool poll_xinput = false;  // keep reading XInput and rewrite the output file whenever it changes
     bool kbm = false;          // keyboard / mouse mode: log window messages, sample key and cursor state, until the wait file
     bool inject_real = false;  // post "real looking" (unsigned) keyboard and mouse messages to the own window
@@ -571,6 +574,7 @@ int wmain(int argc, wchar_t** argv) {
         else if (k == L"--no-window") a.no_window = true;
         else if (k == L"--poll-xinput") a.poll_xinput = true;
         else if (k == L"--use-version") a.use_version = true;
+        else if (k == L"--pads") a.pads = true;
         else if (k == L"--kbm") a.kbm = true;
         else if (k == L"--inject-real") a.inject_real = true;
         else if (k == L"--rawinput") a.rawinput = true;
@@ -633,6 +637,98 @@ int wmain(int argc, wchar_t** argv) {
         DWORD handle = 0;
         DWORD size = GetFileVersionInfoSizeW(L"C:\\Windows\\System32\\kernel32.dll", &handle);
         j += ",\"version_dll\":{\"size_nonzero\":" + B(size > 0) + "}";
+    }
+
+    // ---- game controllers through the other APIs (own_pads hides other players' ones)
+    if (a.pads) {
+        auto isPad = [](USHORT page, USHORT usage) { return page == 1 && (usage == 4 || usage == 5 || usage == 8); };
+        auto list = [](const std::vector<std::wstring>& v) {
+            std::string r = "[";
+            for (size_t i = 0; i < v.size(); ++i) r += (i ? "," : "") + Q(v[i]);
+            return r + "]";
+        };
+        // Raw Input
+        std::vector<std::wstring> raw;
+        UINT n = 0;
+        GetRawInputDeviceList(nullptr, &n, sizeof(RAWINPUTDEVICELIST));
+        std::vector<RAWINPUTDEVICELIST> devs(n + 4);
+        UINT cap = (UINT)devs.size();
+        UINT got = GetRawInputDeviceList(devs.data(), &cap, sizeof(RAWINPUTDEVICELIST));
+        for (UINT i = 0; got != (UINT)-1 && i < got; ++i) {
+            if (devs[i].dwType != RIM_TYPEHID) continue;
+            RID_DEVICE_INFO info = {};
+            info.cbSize = sizeof(info);
+            UINT sz = sizeof(info);
+            if (GetRawInputDeviceInfoW(devs[i].hDevice, RIDI_DEVICEINFO, &info, &sz) == (UINT)-1) continue;
+            if (!isPad(info.hid.usUsagePage, info.hid.usUsage)) continue;
+            wchar_t name[512] = {};
+            UINT chars = 512;
+            GetRawInputDeviceInfoW(devs[i].hDevice, RIDI_DEVICENAME, name, &chars);
+            raw.push_back(name);
+        }
+        // HID through SetupAPI and CreateFile
+        std::vector<std::wstring> hid;
+        int refused = 0;
+        GUID hg;
+        HidD_GetHidGuid(&hg);
+        HDEVINFO set = SetupDiGetClassDevsW(&hg, nullptr, nullptr, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+        if (set != INVALID_HANDLE_VALUE) {
+            SP_DEVICE_INTERFACE_DATA itf = {};
+            itf.cbSize = sizeof(itf);
+            for (DWORD i = 0; SetupDiEnumDeviceInterfaces(set, nullptr, &hg, i, &itf); ++i) {
+                DWORD need = 0;
+                SetupDiGetDeviceInterfaceDetailW(set, &itf, nullptr, 0, &need, nullptr);
+                std::vector<BYTE> buf(need + 8);
+                auto* det = reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_W*>(buf.data());
+                det->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
+                if (!SetupDiGetDeviceInterfaceDetailW(set, &itf, det, need, nullptr, nullptr)) continue;
+                HANDLE f = CreateFileW(det->DevicePath, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+                if (f == INVALID_HANDLE_VALUE) {
+                    if (GetLastError() == ERROR_FILE_NOT_FOUND) ++refused;
+                    continue;
+                }
+                PHIDP_PREPARSED_DATA pp = nullptr;
+                if (HidD_GetPreparsedData(f, &pp)) {
+                    HIDP_CAPS caps = {};
+                    if (HidP_GetCaps(pp, &caps) == HIDP_STATUS_SUCCESS && isPad(caps.UsagePage, caps.Usage)) hid.push_back(det->DevicePath);
+                    HidD_FreePreparsedData(pp);
+                }
+                CloseHandle(f);
+            }
+            SetupDiDestroyDeviceInfoList(set);
+        }
+        // DirectInput 8
+        std::vector<std::wstring> di_paths;
+        int di_enum = 0, di_refused = 0;
+        IDirectInput8W* di = nullptr;
+        if (SUCCEEDED(DirectInput8Create(GetModuleHandleW(nullptr), DIRECTINPUT_VERSION, IID_IDirectInput8W, (void**)&di, nullptr)) && di) {
+            std::vector<GUID> found;
+            di->EnumDevices(
+                DI8DEVCLASS_GAMECTRL,
+                [](LPCDIDEVICEINSTANCEW inst, LPVOID ctx) -> BOOL {
+                    static_cast<std::vector<GUID>*>(ctx)->push_back(inst->guidInstance);
+                    return DIENUM_CONTINUE;
+                },
+                &found, DIEDFL_ATTACHEDONLY);
+            di_enum = (int)found.size();
+            for (const GUID& g : found) {
+                IDirectInputDevice8W* dev = nullptr;
+                if (FAILED(di->CreateDevice(g, &dev, nullptr)) || !dev) {
+                    ++di_refused;
+                    continue;
+                }
+                DIPROPGUIDANDPATH gp = {};
+                gp.diph.dwSize = sizeof(gp);
+                gp.diph.dwHeaderSize = sizeof(DIPROPHEADER);
+                gp.diph.dwHow = DIPH_DEVICE;
+                if (SUCCEEDED(dev->GetProperty(DIPROP_GUIDANDPATH, &gp.diph))) di_paths.push_back(gp.wszPath);
+                dev->Release();
+            }
+            di->Release();
+        }
+        j += ",\"pads\":{\"raw\":" + list(raw) + ",\"hid\":" + list(hid) + ",\"hid_refused\":" + std::to_string(refused) +
+             ",\"dinput_enumerated\":" + std::to_string(di_enum) + ",\"dinput\":" + list(di_paths) +
+             ",\"dinput_refused\":" + std::to_string(di_refused) + "}";
     }
 
     // ---- xinput
