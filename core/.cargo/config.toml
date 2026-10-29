@@ -1,0 +1,6 @@
+[env]
+# SDL's bundled CMake files declare an old minimum version that CMake 4 rejects.
+CMAKE_POLICY_VERSION_MINIMUM = "3.5"
+# A machine-wide Android toolchain file in the environment would hijack the
+# desktop SDL build, so blank it.
+CMAKE_TOOLCHAIN_FILE = { value = "", force = true }

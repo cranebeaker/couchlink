@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "subnautica-nitrox",
+  "game": "Subnautica (Nitrox)",
+  "match": { "steamAppId": 264710, "exe": "Subnautica.exe" },
+  "players": [1, 4],
+  "mode": "instances",
+  "steam": "shared",
+  "present": "window",
+  "launch": {
+    "exe": "Subnautica.exe",
+    "args": "-vrmode none -screen-fullscreen 0 -popupwindow -screen-width $WIDTH -screen-height $HEIGHT",
+    "env": {
+      "NITROX_LAUNCHER_PATH": "$NITROX",
+      "NITROX_HOST_HOME": "$APPDATA/Nitrox",
+      "SteamGameId": "264710",
+      "SteamAppId": "264710",
+      "WINEPREFIX": "couchlink-no-discord"
+    },
+    "first": {
+      "exe": "$NITROX/Nitrox.Server.Subnautica.exe",
+      "args": "--save \"$WORLD\" --game-path \"$GAMEDIR\"",
+      "wait": "port:11000"
+    }
+  },
+  "files": { "copy": [], "link": "none", "saves": [] },
+  "registry": [
+    { "key": "HKCU\\SOFTWARE\\Nitrox", "name": "IsMultipleGameInstancesAllowed", "type": "string", "value": "True" }
+  ],
+  "locks": [],
+  "input": { "xinput": true, "dinput": false, "rawinput": false },
+  "window": { "borderless": true, "settle_ms": 5000, "wait_ms": 180000 },
+  "vars": { "WORLD": "Couchlink" },
+  "find": {
+    "NITROX": {
+      "file": "Nitrox.Launcher.exe",
+      "near": ["$USERPROFILE/Downloads", "$USERPROFILE/Desktop", "$USERPROFILE/Documents", "$LOCALAPPDATA/Programs", "$USERPROFILE/Games"],
+      "depth": 2
+    }
+  },
+  "requires": [
+    { "file": "Subnautica_Data/Managed/Assembly-CSharp.dll", "contains": "NitroxPatcher", "hint": "open the Nitrox launcher and press Play Multiplayer once, then close the game. Nitrox installs itself into the game folder at that moment." }
+  ]
+}

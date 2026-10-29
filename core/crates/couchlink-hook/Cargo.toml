@@ -1,0 +1,42 @@
+[package]
+name = "couchlink-hook"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Couchlink input hook host side: start a game copy suspended, inject couchlink_hook.dll, configure it over a pipe"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_IO",
+    "Win32_System_Kernel",
+    "Win32_System_Memory",
+    "Win32_System_Pipes",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Wdk_System_Threading",
+] }
+
+[dev-dependencies]
+couchlink-core = { path = "../couchlink-core" }
+# The Win32_UI_Input, Win32_Devices_HumanInterfaceDevice, Win32_Graphics_Gdi and Win32_System_LibraryLoader features are
+# for the daemon's rawkbm.rs, which the e2e test includes by path.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_UI_Shell",
+    "Win32_System_Com",
+    "Win32_UI_Input",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Devices_HumanInterfaceDevice",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_Storage_FileSystem",
+] }

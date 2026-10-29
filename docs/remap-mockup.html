@@ -1,0 +1,642 @@
+<title>Couchlink Controls</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: the Couchlink window opened on one player's Controls page. Header (who, which pad, profile),
+   tabs (Buttons, Sticks, Triggers, Gyro, Layers), a body per tab, and a status strip about double input. */
+:root {
+  --ground: #0b0c10; --window: #15161b; --pane: #1c1d23; --raised: #24252d;
+  --hair: rgba(255,255,255,.08); --hair-strong: rgba(255,255,255,.14);
+  --ink: #f4f4f6; --ink-2: #a6a7b0; --ink-3: #6d6e78;
+  --accent: #0a84ff; --accent-ink: #fff; --glass: rgba(28,29,35,.78);
+  --seat: #0a84ff; --ok: #30d158; --warn: #ffb340; --danger: #ff6b6b;
+  --body: #2a2b33; --body-edge: #3a3b45; --btn: #3b3c47; --btn-ink: #d9dae0;
+  --shell-top: #3a3b46; --shell-bot: #1f2026; --shell-edge: rgba(255,255,255,.07); --key-top: #474855; --key-bot: #2c2d35; --well: #15161b; --pad-shadow: rgba(0,0,0,.55); --hl: rgba(255,255,255,.10);
+  --shadow: 0 30px 80px rgba(0,0,0,.55), 0 2px 6px rgba(0,0,0,.4);
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --ground: #e9e9ee; --window: #f6f6f8; --pane: #ffffff; --raised: #f0f0f4;
+    --hair: rgba(0,0,0,.08); --hair-strong: rgba(0,0,0,.14);
+    --ink: #1d1d1f; --ink-2: #5f6068; --ink-3: #8e8f97; --accent: #007aff; --glass: rgba(255,255,255,.8);
+    --seat: #007aff; --ok: #23a94a; --warn: #c97a00; --danger: #d93a3a;
+    --body: #e4e4ea; --body-edge: #cfd0d8; --btn: #ffffff; --btn-ink: #3a3b42; --shell-top: #fbfbfd; --shell-bot: #dcdce4; --shell-edge: rgba(0,0,0,.08); --key-top: #ffffff; --key-bot: #e6e6ec; --well: #c9c9d2; --pad-shadow: rgba(40,40,70,.22); --hl: rgba(255,255,255,.9);
+    --shadow: 0 30px 70px rgba(30,30,50,.18), 0 2px 6px rgba(30,30,50,.08);
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --ground: #e9e9ee; --window: #f6f6f8; --pane: #ffffff; --raised: #f0f0f4;
+  --hair: rgba(0,0,0,.08); --hair-strong: rgba(0,0,0,.14);
+  --ink: #1d1d1f; --ink-2: #5f6068; --ink-3: #8e8f97; --accent: #007aff; --glass: rgba(255,255,255,.8);
+  --seat: #007aff; --ok: #23a94a; --warn: #c97a00; --danger: #d93a3a;
+  --body: #e4e4ea; --body-edge: #cfd0d8; --btn: #ffffff; --btn-ink: #3a3b42; --shell-top: #fbfbfd; --shell-bot: #dcdce4; --shell-edge: rgba(0,0,0,.08); --key-top: #ffffff; --key-bot: #e6e6ec; --well: #c9c9d2; --pad-shadow: rgba(40,40,70,.22); --hl: rgba(255,255,255,.9);
+  --shadow: 0 30px 70px rgba(30,30,50,.18), 0 2px 6px rgba(30,30,50,.08);
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { background: var(--ground); color: var(--ink); font: 14px/1.45 var(--font); -webkit-font-smoothing: antialiased; margin: 0;
+  padding-block: 24px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.caption { text-align: center; color: var(--ink-3); font-size: 12px; margin: 0 auto 14px; max-width: 74ch; }
+svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+.win { max-width: 1200px; margin: 0 auto; background: var(--window); border-radius: 14px; overflow: hidden; border: 1px solid var(--hair-strong); box-shadow: var(--shadow);
+  display: grid; grid-template-rows: 38px auto auto 1fr auto; min-height: 760px; }
+.titlebar { display: flex; align-items: center; gap: 8px; padding: 0 16px; border-bottom: 1px solid var(--hair); font-size: 12px; color: var(--ink-3); }
+.titlebar b { color: var(--ink); font-weight: 600; }
+.titlebar svg.mark { width: 18px; height: 18px; }
+
+.head { display: flex; align-items: center; gap: 16px; padding: 18px 26px 14px; flex-wrap: wrap; }
+.back { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; color: var(--accent); font-size: 13px; padding: 4px 6px 4px 0; }
+.badge { width: 40px; height: 40px; border-radius: 12px; background: var(--seat); color: #fff; display: grid; place-items: center; font: 800 20px/1 var(--font-display); }
+.who h1 { margin: 0; font: 700 24px/1.15 var(--font-display); letter-spacing: -.02em; }
+.who .dev { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 12.5px; margin-top: 2px; }
+.batt { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.head .spacer { flex: 1; }
+.btn { border: 1px solid var(--hair); background: var(--raised); border-radius: 999px; padding: 7px 14px; font-weight: 600; font-size: 13px; display: inline-flex; align-items: center; gap: 7px; }
+.btn:hover { border-color: var(--hair-strong); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.btn.small { padding: 5px 11px; font-size: 12px; }
+.profile { position: relative; }
+.profile .btn { padding-right: 10px; }
+.menu { position: absolute; right: 0; top: calc(100% + 6px); width: 280px; background: var(--glass); backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  border: 1px solid var(--hair-strong); border-radius: 12px; padding: 6px; box-shadow: var(--shadow); z-index: 20; }
+.menu h6 { margin: 8px 10px 4px; font-size: 11px; color: var(--ink-3); font-weight: 600; }
+.menu button { display: flex; width: 100%; align-items: center; gap: 10px; border: 0; background: none; padding: 7px 10px; border-radius: 8px; text-align: left; font-size: 13px; }
+.menu button:hover { background: var(--hair); }
+.menu button small { margin-left: auto; color: var(--ink-3); font-size: 11.5px; }
+
+.tabs { display: flex; gap: 4px; padding: 0 26px; border-bottom: 1px solid var(--hair); overflow-x: auto; }
+.tab { border: 0; background: none; padding: 10px 12px; font-size: 13.5px; color: var(--ink-2); display: flex; align-items: center; gap: 7px; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+.tab .n { font-size: 11px; background: var(--accent); color: #fff; border-radius: 999px; padding: 0 6px; font-weight: 700; }
+
+.body { padding: 22px 26px 26px; min-width: 0; }
+.pane { display: none; } .pane.on { display: block; animation: rise .28s cubic-bezier(.2,.8,.2,1); }
+@keyframes rise { from { transform: translateY(5px); opacity: .5 } to { transform: none; opacity: 1 } }
+
+/* buttons tab */
+.split { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 22px; align-items: start; }
+.card { background: var(--pane); border: 1px solid var(--hair); border-radius: 18px; padding: 18px; min-width: 0; }
+.card h3 { margin: 0 0 4px; font-size: 14px; }
+.card .sub { margin: 0 0 12px; color: var(--ink-2); font-size: 12.5px; }
+.pad-wrap { position: relative; }
+.pad-wrap .hint { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 12.5px; margin-top: 8px; flex-wrap: wrap; }
+.listening { color: var(--accent); font-weight: 600; animation: breathe 1.4s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: .35 } }
+svg.pad { width: 100%; height: auto; display: block; max-width: 100%; overflow: visible; }
+.pad .ctl { cursor: pointer; }
+.pad .ctl .k { fill: url(#gKey); stroke: var(--shell-edge); stroke-width: 1; transition: fill .08s; }
+.pad .ctl .ring { fill: none; stroke: transparent; stroke-width: 3; transition: stroke .15s; }
+.pad .ctl:hover .ring { stroke: color-mix(in srgb, var(--accent) 45%, transparent); }
+.pad .ctl.changed .ring { stroke: color-mix(in srgb, var(--accent) 60%, transparent); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.pad .ctl.sel .ring { stroke: var(--accent); stroke-width: 3; stroke-dasharray: none; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 70%, transparent)); }
+.pad .ctl.down .k { fill: var(--seat); }
+.pad .ctl.down .lbl { fill: #fff !important; }
+.pad .lbl { fill: var(--btn-ink); font: 700 12px var(--font-display); text-anchor: middle; dominant-baseline: central; pointer-events: none; letter-spacing: .02em; }
+.pad .small { font-size: 9.5px; fill: var(--ink-3); font-weight: 600; }
+.pad .call rect { fill: var(--pane); stroke: color-mix(in srgb, var(--accent) 55%, transparent); }
+.pad .call text { fill: var(--accent); font: 600 11.5px var(--font); dominant-baseline: central; }
+.pad .call text tspan.from { fill: var(--ink-2); font-weight: 700; }
+.pad .call path { fill: none; stroke: color-mix(in srgb, var(--accent) 60%, transparent); stroke-width: 1.2; }
+.pad .call circle { fill: var(--accent); }
+
+.list { display: grid; gap: 2px; max-height: 470px; overflow-y: auto; margin: 0 -6px; padding: 0 6px; }
+.row { display: grid; grid-template-columns: 34px minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 7px 8px; border-radius: 10px; border: 0; background: none; text-align: left; width: 100%; }
+.row:hover { background: var(--hair); }
+.row.sel { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.glyph { min-width: 28px; padding: 0 5px; height: 28px; border-radius: 8px; background: var(--raised); border: 1px solid var(--hair-strong); display: grid; place-items: center; font: 700 10.5px var(--font-display); color: var(--ink-2); }
+.row b { font-size: 13px; font-weight: 600; display: block; }
+.row small { color: var(--ink-3); font-size: 11.5px; }
+.chip { font-size: 12px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--hair-strong); color: var(--ink-2); white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+.chip.changed { border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.chip.off { color: var(--ink-3); text-decoration: line-through; }
+
+.inspector { margin-top: 16px; }
+.inspector .top { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.inspector .top .glyph { width: 40px; height: 40px; font-size: 14px; border-radius: 11px; }
+.inspector .top h3 { margin: 0; font: 700 17px var(--font-display); letter-spacing: -.01em; }
+.label { font-size: 11.5px; font-weight: 600; color: var(--ink-3); letter-spacing: .02em; margin: 14px 0 7px; text-transform: uppercase; }
+.seg { display: inline-flex; padding: 2px; border-radius: 9px; background: var(--raised); border: 1px solid var(--hair); flex-wrap: wrap; }
+.seg button { border: 0; background: none; padding: 5px 12px; border-radius: 7px; font-size: 12.5px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 6px; }
+.seg button[aria-pressed="true"] { background: var(--pane); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.opt { border: 1px solid var(--hair-strong); background: none; border-radius: 9px; padding: 5px 10px; font-size: 12.5px; min-width: 38px; }
+.opt:hover { border-color: var(--accent); }
+.opt[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: transparent; }
+.rangeline { display: grid; grid-template-columns: minmax(0,1fr) 64px; gap: 12px; align-items: center; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.val { font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 12.5px; text-align: right; }
+
+/* sticks, triggers, gyro, layers */
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.stickviz { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.stickviz svg { width: 170px; height: 170px; flex: none; max-width: 100%; }
+.legend { display: grid; gap: 6px; font-size: 12px; color: var(--ink-2); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+.ctrlrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; padding: 6px 0; }
+.sw { width: 38px; height: 22px; border-radius: 999px; background: var(--raised); border: 1px solid var(--hair-strong); position: relative; flex: none; padding: 0; }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .2s; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+.sw[aria-checked="true"] { background: var(--ok); border-color: transparent; }
+.sw[aria-checked="true"]::after { transform: translateX(16px); }
+.trig { height: 30px; border-radius: 8px; background: var(--raised); position: relative; overflow: hidden; margin: 10px 0 4px; }
+.trig i { position: absolute; inset: 0 auto 0 0; background: var(--seat); border-radius: 8px; transition: width .05s linear; }
+.trig b { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); }
+.trig span { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.gyroart { display: grid; place-items: center; height: 170px; }
+.gyroart svg { width: 190px; animation: tilt 3.6s ease-in-out infinite; transform-origin: 50% 60%; }
+@keyframes tilt { 0%,100% { transform: rotate(-9deg) } 50% { transform: rotate(9deg) } }
+.calib { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.ring { width: 34px; height: 34px; }
+.layer { display: grid; gap: 8px; }
+.layer .lh { display: flex; align-items: center; gap: 10px; }
+.layer .lh b { font-size: 14px; }
+.pill { font-size: 11.5px; padding: 2px 8px; border-radius: 999px; background: var(--raised); color: var(--ink-2); }
+.over { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-2); }
+
+.status { display: flex; gap: 10px; padding: 12px 26px; border-top: 1px solid var(--hair); background: var(--glass); flex-wrap: wrap; align-items: center; }
+.st { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ink-2); padding: 4px 10px; border-radius: 999px; background: var(--raised); }
+.st .i { color: var(--ok); } .st.info .i { color: var(--accent); }
+.status .spacer { flex: 1; }
+
+/* Map all wizard */
+.overlay { position: fixed; inset: 0; background: rgba(5,6,10,.55); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); display: grid; place-items: center; z-index: 50; padding: 16px; }
+.overlay[hidden] { display: none; }
+.wiz { width: min(520px, 100%); background: var(--window); border: 1px solid var(--hair-strong); border-radius: 22px; padding: 26px; box-shadow: var(--shadow); display: grid; gap: 16px; }
+.wiz h2 { margin: 0; font: 700 21px var(--font-display); letter-spacing: -.02em; }
+.wiz .big { display: flex; align-items: center; gap: 16px; padding: 18px; border-radius: 16px; background: var(--pane); border: 1px solid var(--hair); }
+.wiz .big .glyph { width: 56px; height: 56px; font-size: 18px; border-radius: 14px; background: var(--seat); color: #fff; border: 0; }
+.wiz .big b { font-size: 16px; display: block; }
+.prog { height: 4px; border-radius: 999px; background: var(--raised); overflow: hidden; }
+.prog i { display: block; height: 100%; background: var(--seat); transition: width .3s; }
+.wiz .foot { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center; color: var(--ink-3); font-size: 12px; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 16px); background: var(--ink); color: var(--window); padding: 8px 16px; border-radius: 999px; font-size: 13px; opacity: 0; transition: all .25s; pointer-events: none; z-index: 60; max-width: calc(100% - 32px); }
+.toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+@media (max-width: 900px) { .split, .grid2 { grid-template-columns: 1fr; } .list { max-height: none; } }
+@media (max-width: 560px) { .head, .tabs, .body, .status { padding-left: 16px; padding-right: 16px; } .win { min-height: 0; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+
+<p class="caption">Mockup of per-player controller rebinding in Couchlink. Click a button on the drawing or in the list to change it. Plug in a controller to see live input, or use the keyboard: Space is A, arrow keys are the left stick.</p>
+
+<div class="win">
+  <div class="titlebar">
+    <svg class="mark" viewBox="0 2.5 100 100" aria-hidden="true">
+      <defs>
+        <linearGradient id="oc" gradientUnits="userSpaceOnUse" x1="20" y1="10" x2="80" y2="90"><stop offset="0" stop-color="#5ac8fa"/><stop offset="1" stop-color="#0a5cff"/></linearGradient>
+        <clipPath id="cl"><circle cx="24.269" cy="42.1" r="15"/></clipPath><clipPath id="cr"><circle cx="75.731" cy="42.1" r="15"/></clipPath>
+        <mask id="mb" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="110"><rect width="100" height="110" fill="#fff"/><rect x="11" y="42" width="78" height="30" rx="15" fill="none" stroke="#000" stroke-width="15" clip-path="url(#cl)"/></mask>
+        <mask id="ms" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="110"><rect width="100" height="110" fill="#fff"/><rect x="24" y="21" width="52" height="36" rx="18" fill="none" stroke="#000" stroke-width="15" clip-path="url(#cr)"/></mask>
+      </defs>
+      <rect x="23.5" y="74" width="9" height="15" rx="4.5" fill="url(#oc)"/><rect x="67.5" y="74" width="9" height="15" rx="4.5" fill="url(#oc)"/>
+      <rect x="24" y="21" width="52" height="36" rx="18" fill="none" stroke="url(#oc)" stroke-width="10" mask="url(#mb)"/>
+      <rect x="11" y="42" width="78" height="30" rx="15" fill="none" stroke="url(#oc)" stroke-width="10" mask="url(#ms)"/>
+    </svg>
+    <b>Couchlink</b>
+  </div>
+
+  <div class="head">
+    <button class="back" aria-label="Back to Players"><svg class="i" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>Players</button>
+    <div class="badge">1</div>
+    <div class="who">
+      <h1>Maya's controls</h1>
+      <div class="dev">
+        <svg class="i" viewBox="0 0 24 24"><path d="M6 11h4M8 9v4M15 12h.01M18 10h.01"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+        Xbox Wireless Controller
+        <span class="batt"><svg class="i" viewBox="0 0 24 24"><rect x="2" y="7" width="16" height="10" rx="2"/><path d="M22 11v2"/><path d="M6 11v2M10 11v2" /></svg>80%</span>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn" id="mapall"><svg class="i" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg>Map all buttons</button>
+    <div class="profile">
+      <button class="btn" id="profbtn" aria-haspopup="true" aria-expanded="false"><svg class="i" viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 13 10 5 10-5"/></svg><span id="profname">Fallout: New Vegas</span><svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+      <div class="menu" id="profmenu" hidden>
+        <h6>This game</h6>
+        <button data-p="Fallout: New Vegas">Fallout: New Vegas<small>3 changes</small></button>
+        <h6>Starters</h6>
+        <button data-p="Default">Default<small>no changes</small></button>
+        <button data-p="Shooter">Shooter<small>aim curve, gyro</small></button>
+        <button data-p="Driving">Driving<small>trigger tuning</small></button>
+        <button data-p="Southpaw">Southpaw<small>sticks swapped</small></button>
+        <h6>More</h6>
+        <button data-p="__import">Import a profile file</button>
+        <button data-p="__export">Export this profile</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" data-t="buttons" aria-selected="true"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>Buttons <span class="n" id="nchanged">3</span></button>
+    <button class="tab" role="tab" data-t="sticks" aria-selected="false"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="14" cy="10" r="3"/></svg>Sticks</button>
+    <button class="tab" role="tab" data-t="triggers" aria-selected="false"><svg class="i" viewBox="0 0 24 24"><path d="M7 20V9a5 5 0 0 1 10 0v11"/><path d="M7 14h10"/></svg>Triggers</button>
+    <button class="tab" role="tab" data-t="gyro" aria-selected="false"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.2-8.6"/><path d="M21 4v5h-5"/></svg>Gyro</button>
+    <button class="tab" role="tab" data-t="layers" aria-selected="false"><svg class="i" viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 13 10 5 10-5"/></svg>Layers</button>
+  </div>
+
+  <div class="body">
+    <!-- BUTTONS -->
+    <section class="pane on" id="p-buttons">
+      <div class="split">
+        <div class="card pad-wrap">
+          <h3>Press or click a button to change it</h3>
+          <p class="sub">Buttons light up in Maya's colour as you press them. Changed buttons get a dashed outline and a label saying what they send now.</p>
+          <svg class="pad" id="pad" viewBox="0 0 520 330" role="img" aria-label="Controller layout"></svg>
+          <div class="hint" id="hint"><svg class="i" viewBox="0 0 24 24"><path d="M12 8v4M12 16h.01"/><circle cx="12" cy="12" r="9"/></svg><span>No controller detected in this page, so the drawing shows keyboard input.</span></div>
+        </div>
+        <div>
+          <div class="card">
+            <h3>All buttons</h3>
+            <p class="sub">What each button sends to the game.</p>
+            <div class="list" id="list"></div>
+          </div>
+          <div class="card inspector" id="insp"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STICKS -->
+    <section class="pane" id="p-sticks"><div class="grid2" id="sticks"></div></section>
+
+    <!-- TRIGGERS -->
+    <section class="pane" id="p-triggers"><div class="grid2" id="triggers"></div></section>
+
+    <!-- GYRO -->
+    <section class="pane" id="p-gyro">
+      <div class="grid2">
+        <div class="card">
+          <h3>Aim by tilting the controller</h3>
+          <p class="sub">Works on DualSense, DualShock 4, Switch Pro and Steam controllers. This Xbox controller has no gyro, so these settings apply when Maya uses one that does.</p>
+          <div class="gyroart"><svg viewBox="0 0 200 120" aria-hidden="true"><path d="M50 30h100a40 40 0 0 1 38 50l-6 22a16 16 0 0 1-28 6L140 90H60l-14 18a16 16 0 0 1-28-6l-6-22A40 40 0 0 1 50 30Z" fill="var(--body)" stroke="var(--body-edge)" stroke-width="2"/><circle cx="70" cy="58" r="11" fill="var(--btn)"/><circle cx="130" cy="58" r="11" fill="var(--btn)"/><path d="M100 4v14M86 10l14-8 14 8" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/></svg></div>
+          <div class="calib"><svg class="ring" viewBox="0 0 36 36" id="calring"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--raised)" stroke-width="4"/><circle id="calarc" cx="18" cy="18" r="15" fill="none" stroke="var(--accent)" stroke-width="4" stroke-linecap="round" stroke-dasharray="94.2" stroke-dashoffset="94.2" transform="rotate(-90 18 18)"/></svg>
+            <div style="flex:1"><b style="font-size:13px" id="caltitle">Calibrate</b><div style="font-size:12px;color:var(--ink-2)" id="caltext">Put the controller flat on a table and keep it still for 3 seconds.</div></div>
+            <button class="btn small" id="calbtn">Start</button></div>
+        </div>
+        <div class="card">
+          <div class="ctrlrow">Use gyro<button class="sw" role="switch" aria-checked="true" aria-label="Use gyro" id="gy-on"></button></div>
+          <div class="label">Tilting moves</div>
+          <div class="seg" data-seg="gy-out"><button aria-pressed="true">Mouse</button><button aria-pressed="false">Right stick</button></div>
+          <div class="label">When</div>
+          <div class="seg" data-seg="gy-when"><button aria-pressed="false">Always</button><button aria-pressed="true">While aiming (LT held)</button><button aria-pressed="false">Toggle with View</button></div>
+          <div class="label">Sensitivity</div>
+          <div class="rangeline"><input type="range" min="1" max="30" value="12" id="gy-sens" aria-label="Gyro sensitivity"><span class="val" id="gy-sens-v">1.2x</span></div>
+          <div class="label">Smoothing</div>
+          <div class="rangeline"><input type="range" min="0" max="100" value="20" id="gy-smooth" aria-label="Gyro smoothing"><span class="val" id="gy-smooth-v">20%</span></div>
+          <div class="ctrlrow">Invert up and down<button class="sw" role="switch" aria-checked="false" aria-label="Invert gyro up and down"></button></div>
+          <div class="ctrlrow">Tilt sideways turns too<button class="sw" role="switch" aria-checked="true" aria-label="Tilt sideways turns"></button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- LAYERS -->
+    <section class="pane" id="p-layers">
+      <div class="grid2">
+        <div class="card layer">
+          <div class="lh"><b>Normal</b><span class="pill">always on</span></div>
+          <p class="sub" style="margin:0">What the buttons do when no layer is held.</p>
+          <div class="over"><span class="glyph">View</span>sends <span class="chip changed">Tab key</span></div>
+          <div class="over"><span class="glyph">RS</span>sends <span class="chip changed">Middle click</span></div>
+          <div class="over"><span class="glyph">LB</span>hold for <span class="chip changed">Quick layer</span></div>
+        </div>
+        <div class="card layer">
+          <div class="lh"><b>Quick layer</b><span class="pill">while holding LB</span></div>
+          <p class="sub" style="margin:0">Hold LB and the face buttons become hotkeys. Let go and everything is back to normal.</p>
+          <div class="over"><span class="glyph">A</span>sends <span class="chip changed">1 key</span></div>
+          <div class="over"><span class="glyph">B</span>sends <span class="chip changed">2 key</span></div>
+          <div class="over"><span class="glyph">X</span>sends <span class="chip changed">3 key</span></div>
+          <div class="over"><span class="glyph">Y</span>sends <span class="chip changed">4 key</span></div>
+          <div><button class="btn small" id="addlayer"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add a layer</button></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="status">
+    <span class="st"><svg class="i" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg>No double input: the real controller is hidden from games</span>
+    <span class="st"><svg class="i" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg>Steam Input is off for this game</span>
+    <span class="st info"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>Fallout: New Vegas sees an Xbox controller</span>
+    <span class="spacer"></span>
+    <button class="btn small" id="reset">Reset to default</button>
+  </div>
+</div>
+
+<div class="overlay" id="wiz" hidden>
+  <div class="wiz" role="dialog" aria-modal="true" aria-labelledby="wiztitle">
+    <h2 id="wiztitle">Map all buttons</h2>
+    <div class="prog"><i id="wizbar" style="width:0%"></i></div>
+    <div class="big"><div class="glyph" id="wizglyph">A</div><div><b id="wizname">A button</b><span style="color:var(--ink-2);font-size:13px" id="wizhelp">Press the button you want to use for A.</span></div></div>
+    <div class="foot"><span>Press a controller button, or Space to keep it as it is.</span><span style="display:flex;gap:8px"><button class="btn small" id="wizskip">Keep</button><button class="btn small primary" id="wizdone">Done</button></span></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._h); el._h = setTimeout(() => el.classList.remove('on'), 2200); }
+
+// ---------- controls: id, label, glyph, standard Gamepad API index ----------
+const CTL = [
+  ['a', 'A button', 'A', 0], ['b', 'B button', 'B', 1], ['x', 'X button', 'X', 2], ['y', 'Y button', 'Y', 3],
+  ['lb', 'Left bumper', 'LB', 4], ['rb', 'Right bumper', 'RB', 5], ['lt', 'Left trigger', 'LT', 6], ['rt', 'Right trigger', 'RT', 7],
+  ['view', 'View', 'View', 8], ['menu', 'Menu', 'Menu', 9], ['ls', 'Left stick click', 'LS', 10], ['rs', 'Right stick click', 'RS', 11],
+  ['up', 'D-pad up', 'Up', 12], ['down', 'D-pad down', 'Dn', 13], ['left', 'D-pad left', 'Lt', 14], ['right', 'D-pad right', 'Rt', 15], ['guide', 'Xbox button', 'Home', 16],
+];
+const byId = Object.fromEntries(CTL.map(c => [c[0], c]));
+const KEYS = ['Space', 'Enter', 'Esc', 'Tab', 'Shift', 'Ctrl', 'Alt', 'E', 'F', 'Q', 'R', 'V', '1', '2', '3', '4', 'W', 'A', 'S', 'D'];
+const MOUSE = ['Left click', 'Right click', 'Middle click', 'Wheel up', 'Wheel down', 'Back', 'Forward'];
+const DEFAULT = () => Object.fromEntries(CTL.map(([id]) => [id, { type: 'pad', value: id, how: 'press', holdMs: 300, turbo: 10 }]));
+const PROFILES = {
+  'Fallout: New Vegas': m => { m.view = { ...m.view, type: 'key', value: 'Tab' }; m.rs = { ...m.rs, type: 'mouse', value: 'Middle click' }; m.lb = { ...m.lb, type: 'layer', value: 'Quick layer', how: 'hold' }; },
+  'Default': () => {},
+  'Shooter': m => { m.rs = { ...m.rs, type: 'key', value: 'V' }; m.lb = { ...m.lb, type: 'key', value: 'Q' }; },
+  'Driving': m => { m.a = { ...m.a, how: 'turbo' }; },
+  'Southpaw': m => { m.ls = { ...m.ls, value: 'rs' }; m.rs = { ...m.rs, value: 'ls' }; },
+};
+let profile = 'Fallout: New Vegas', map = DEFAULT(), sel = 'a', listening = false;
+function loadProfile(p) { profile = p; map = DEFAULT(); PROFILES[p](map); $('#profname').textContent = p; renderAll(); }
+
+const isChanged = id => { const m = map[id]; return !(m.type === 'pad' && m.value === id && m.how === 'press'); };
+function describe(id) {
+  const m = map[id];
+  const what = m.type === 'pad' ? (byId[m.value] || [0, m.value])[1] : m.type === 'key' ? `${m.value} key` : m.type === 'mouse' ? m.value : m.type === 'layer' ? m.value : 'Nothing';
+  const how = { press: '', hold: m.type === 'layer' ? '' : ' (hold)', double: ' (double press)', turbo: ' (turbo)', toggle: ' (toggle)' }[m.how];
+  return what + how;
+}
+
+// ---------- the controller drawing ----------
+// The controller sits in a 560 x 360 box, offset into a wider canvas so changed buttons can have labels at the sides.
+const OX = 110, OY = 14;
+const POS = { // centres in the 560 x 360 box, used for labels
+  lt: [176, 40], rt: [384, 40], lb: [176, 74], rb: [384, 74], guide: [280, 112], view: [246, 150], menu: [314, 150],
+  ls: [190, 150], rs: [346, 222], up: [232, 196], down: [232, 248], left: [206, 222], right: [258, 222],
+  y: [390, 122], a: [390, 178], x: [362, 150], b: [418, 150],
+};
+const FACE = { a: '#4cd964', b: '#ff6159', x: '#3d9bff', y: '#ffc21a' };
+function drawPad() {
+  const c = (id, body, label = '') => `<g class="ctl" data-id="${id}" tabindex="0" role="button" aria-label="${byId[id][1]}">${body}${label}</g>`;
+  const t = (x, y, txt, style = '') => `<text class="lbl" x="${x}" y="${y}" ${style}>${txt}</text>`;
+  const pill = (x, y, w, h) => `<rect class="k" x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="${h / 2}"/><rect class="ring" x="${x - w / 2 - 3}" y="${y - h / 2 - 3}" width="${w + 6}" height="${h + 6}" rx="${h / 2 + 3}"/>`;
+  const dot = (x, y, r) => `<circle class="k" cx="${x}" cy="${y}" r="${r}"/><circle class="ring" cx="${x}" cy="${y}" r="${r + 3}"/>`;
+  const stick = (id, x, y) => `<circle cx="${x}" cy="${y}" r="36" fill="url(#gWell)"/>` + c(id,
+    `<circle class="k" cx="${x}" cy="${y}" r="26" style="filter:url(#fKey)"/><circle cx="${x}" cy="${y}" r="18" fill="none" stroke="var(--shell-edge)" stroke-width="1.5"/><circle cx="${x}" cy="${y - 2}" r="16" fill="url(#gDish)"/><circle class="ring" cx="${x}" cy="${y}" r="29"/>`,
+    t(x, y, byId[id][2]));
+  const arm = (id, x, y, w, h, tri) => c(id, `<rect class="k" x="${x}" y="${y}" width="${w}" height="${h}" rx="4"/><rect class="ring" x="${x - 3}" y="${y - 3}" width="${w + 6}" height="${h + 6}" rx="6"/>`,
+    `<path class="lbl" d="${tri}" style="fill:var(--ink-3)"/>`);
+  const shell = 'M280 78C330 78 360 72 392 74C440 77 470 100 488 150C504 196 520 258 522 290C524 330 494 346 470 340C448 335 436 318 420 296C404 274 392 258 360 256L200 256C168 258 156 274 140 296C124 318 112 335 90 340C66 346 36 330 38 290C40 258 56 196 72 150C90 100 120 77 168 74C200 72 230 78 280 78Z';
+  const lb = 'M108 112C118 86 142 70 176 64C200 60 224 62 238 64Q246 66 244 74L242 80Q240 86 232 85C206 82 172 84 146 96C132 102 124 110 118 118Q110 124 108 112Z';
+  const lt = 'M128 72C136 46 160 30 190 28C210 27 220 36 218 50L216 60C196 58 166 60 140 74Q130 80 128 72Z';
+  // Mirror every x of an absolute path across the centre line (x = 280).
+  const mirror = d => d.replace(/(-?[0-9.]+) (-?[0-9.]+)/g, (m, x, y) => `${560 - +x} ${y}`);
+  $('#pad').setAttribute('viewBox', '0 0 780 390');
+  $('#pad').innerHTML = `
+    <defs>
+      <linearGradient id="gShell" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--shell-top)"/><stop offset="1" stop-color="var(--shell-bot)"/></linearGradient>
+      <linearGradient id="gKey" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--key-top)"/><stop offset="1" stop-color="var(--key-bot)"/></linearGradient>
+      <radialGradient id="gWell" cx=".5" cy=".42" r=".6"><stop offset=".55" stop-color="var(--well)"/><stop offset="1" stop-color="var(--shell-bot)"/></radialGradient>
+      <radialGradient id="gDish" cx=".5" cy=".3" r=".7"><stop offset="0" stop-color="var(--key-bot)"/><stop offset="1" stop-color="var(--key-top)" stop-opacity="0"/></radialGradient>
+      <linearGradient id="gHl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--hl)"/><stop offset=".35" stop-color="var(--hl)" stop-opacity="0"/></linearGradient>
+      <filter id="fShadow" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="var(--pad-shadow)"/></filter>
+      <filter id="fKey" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="2" stdDeviation="1.6" flood-color="var(--pad-shadow)"/></filter>
+    </defs>
+    <g id="calls"></g>
+    <g transform="translate(${OX} ${OY})">
+      ${c('lt', `<path class="k" d="${lt}"/><path class="ring" d="${lt}"/>`, t(176, 46, 'LT', 'style="font-size:11px"'))}
+      ${c('rt', `<path class="k" d="${mirror(lt)}"/><path class="ring" d="${mirror(lt)}"/>`, t(384, 46, 'RT', 'style="font-size:11px"'))}
+      <path d="${shell}" fill="url(#gShell)" stroke="var(--shell-edge)" stroke-width="1.5" filter="url(#fShadow)"/>
+      <path d="${shell}" fill="url(#gHl)"/>
+      ${c('lb', `<path class="k" d="${lb}" style="filter:url(#fKey)"/><path class="ring" d="${lb}"/>`, t(176, 76, 'LB', 'style="font-size:11px"'))}
+      ${c('rb', `<path class="k" d="${mirror(lb)}" style="filter:url(#fKey)"/><path class="ring" d="${mirror(lb)}"/>`, t(384, 76, 'RB', 'style="font-size:11px"'))}
+      ${c('guide', dot(280, 112, 16), `<circle cx="280" cy="112" r="8" fill="none" stroke="var(--ink-3)" stroke-width="2" pointer-events="none"/>`)}
+      ${c('view', pill(246, 150, 26, 14), `<g pointer-events="none" stroke="var(--ink-3)" stroke-width="1.4" fill="none"><rect x="239" y="145" width="8" height="7" rx="1.5"/><rect x="244" y="148" width="8" height="7" rx="1.5"/></g>`)}
+      ${c('menu', pill(314, 150, 26, 14), `<path d="M308 146.5h12M308 150h12M308 153.5h12" stroke="var(--ink-3)" stroke-width="1.4" pointer-events="none"/>`)}
+      <text class="lbl small" x="246" y="170">View</text><text class="lbl small" x="314" y="170">Menu</text>
+      ${stick('ls', 190, 150)}
+      ${stick('rs', 346, 222)}
+      <circle cx="232" cy="222" r="38" fill="url(#gWell)" opacity=".55"/>
+      <rect x="221" y="211" width="22" height="22" fill="url(#gKey)"/>
+      ${arm('up', 221, 185, 22, 28, 'M232 192l5 7h-10z')}
+      ${arm('down', 221, 231, 22, 28, 'M232 252l5-7h-10z')}
+      ${arm('left', 195, 211, 28, 22, 'M202 222l7-5v10z')}
+      ${arm('right', 241, 211, 28, 22, 'M262 222l-7-5v10z')}
+      ${['y', 'x', 'b', 'a'].map(id => c(id, dot(POS[id][0], POS[id][1], 14).replace('class="k"', 'class="k" style="filter:url(#fKey)"'), t(POS[id][0], POS[id][1], id.toUpperCase(), `style="fill:${FACE[id]}"`))).join('')}
+    </g>`;
+  $$('#pad .ctl').forEach(g => {
+    g.onclick = () => select(g.dataset.id);
+    g.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(g.dataset.id); } };
+  });
+}
+// Changed buttons get a label at the side of the controller with a thin leader line.
+function drawCallouts() {
+  const items = CTL.map(([id]) => id).filter(id => isChanged(id) && POS[id]).map(id => {
+    const [x, y] = POS[id]; return { id, x: x + OX, y: y + OY, left: x < 280 };
+  });
+  let out = '';
+  for (const left of [true, false]) {
+    const side = items.filter(i => i.left === left).sort((p, q) => p.y - q.y);
+    let last = -1e9;
+    for (const it of side) {
+      const ly = Math.max(it.y, last + 34); last = ly;
+      const txt = describe(it.id), from = byId[it.id][2];
+      const w = Math.round((txt.length + from.length) * 6.6 + 30);
+      const cx = left ? 8 : 772 - w, ex = left ? 8 + w : 772 - w, elbow = left ? 8 + w + 18 : 772 - w - 18;
+      out += `<g class="call"><path d="M${it.x} ${it.y} L${elbow} ${ly} L${ex} ${ly}"/><circle cx="${it.x}" cy="${it.y}" r="2.5"/>
+        <rect x="${cx}" y="${ly - 12}" width="${w}" height="24" rx="12"/>
+        <text x="${cx + 12}" y="${ly}"><tspan class="from">${from}</tspan>  ${txt}</text></g>`;
+    }
+  }
+  $('#calls').innerHTML = out;
+}
+function paintPad() {
+  $$('#pad .ctl').forEach(g => {
+    const id = g.dataset.id;
+    g.classList.toggle('sel', id === sel);
+    g.classList.toggle('changed', isChanged(id));
+  });
+  drawCallouts();
+}
+
+// ---------- list + inspector ----------
+function renderList() {
+  $('#list').innerHTML = CTL.map(([id, name, glyph]) => {
+    const ch = isChanged(id), m = map[id];
+    return `<button class="row ${id === sel ? 'sel' : ''}" data-id="${id}"><span class="glyph">${glyph}</span><span><b>${name}</b><small>${ch ? 'Changed' : 'Normal'}</small></span><span class="chip ${ch ? 'changed' : ''} ${m.type === 'none' ? 'off' : ''}">${describe(id)}</span></button>`;
+  }).join('');
+  $$('#list .row').forEach(r => r.onclick = () => select(r.dataset.id));
+  $('#nchanged').textContent = CTL.filter(([id]) => isChanged(id)).length;
+  $('#nchanged').hidden = $('#nchanged').textContent === '0';
+}
+function renderInspector() {
+  const [id, name, glyph] = byId[sel], m = map[sel];
+  const types = [['pad', 'Controller button'], ['key', 'Keyboard key'], ['mouse', 'Mouse'], ['layer', 'Layer'], ['none', 'Nothing']];
+  let opts = '';
+  if (m.type === 'pad') opts = CTL.map(([cid, , g]) => `<button class="opt" data-v="${cid}" aria-pressed="${m.value === cid}">${g}</button>`).join('');
+  if (m.type === 'key') opts = KEYS.map(k => `<button class="opt" data-v="${k}" aria-pressed="${m.value === k}">${k}</button>`).join('') + `<button class="opt" data-v="__capture">Press a key...</button>`;
+  if (m.type === 'mouse') opts = MOUSE.map(k => `<button class="opt" data-v="${k}" aria-pressed="${m.value === k}">${k}</button>`).join('');
+  if (m.type === 'layer') opts = `<button class="opt" data-v="Quick layer" aria-pressed="true">Quick layer</button><button class="opt" data-v="__new">New layer</button>`;
+  const hows = [['press', 'Press'], ['hold', 'Hold'], ['double', 'Double press'], ['turbo', 'Turbo'], ['toggle', 'Toggle']];
+  $('#insp').innerHTML = `
+    <div class="top"><span class="glyph">${glyph}</span><div style="flex:1;min-width:0"><h3>${name}</h3><span style="color:var(--ink-2);font-size:12.5px">Sends: <b style="color:var(--ink)">${describe(id)}</b></span></div>
+      <button class="btn small" id="listen">${listening ? '<span class="listening">Press a button now</span>' : '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>Pick by pressing'}</button>
+      ${isChanged(id) ? '<button class="btn small" id="revert">Back to normal</button>' : ''}</div>
+    <div class="label">When pressed, send</div>
+    <div class="seg" id="types">${types.map(([k, l]) => `<button data-k="${k}" aria-pressed="${m.type === k}">${l}</button>`).join('')}</div>
+    ${opts ? `<div class="label">${{ pad: 'Which button', key: 'Which key', mouse: 'Which mouse action', layer: 'Which layer' }[m.type]}</div><div class="opts" id="opts">${opts}</div>` : ''}
+    ${m.type !== 'none' ? `<div class="label">How</div><div class="seg" id="hows">${hows.map(([k, l]) => `<button data-k="${k}" aria-pressed="${m.how === k}">${l}</button>`).join('')}</div>` : ''}
+    ${m.how === 'hold' && m.type !== 'none' ? `<div class="label">Hold for</div><div class="rangeline"><input type="range" id="holdms" min="100" max="1000" step="50" value="${m.holdMs}" aria-label="Hold time"><span class="val">${m.holdMs} ms</span></div>` : ''}
+    ${m.how === 'turbo' && m.type !== 'none' ? `<div class="label">Turbo speed</div><div class="rangeline"><input type="range" id="turbo" min="2" max="30" value="${m.turbo}" aria-label="Turbo presses per second"><span class="val">${m.turbo} per second</span></div>` : ''}`;
+  $$('#types button').forEach(b => b.onclick = () => { const k = b.dataset.k; map[sel] = { ...map[sel], type: k, value: k === 'pad' ? sel : k === 'key' ? 'Space' : k === 'mouse' ? 'Left click' : k === 'layer' ? 'Quick layer' : null, how: k === 'layer' ? 'hold' : map[sel].how }; renderAll(); });
+  $$('#opts .opt').forEach(b => b.onclick = () => {
+    const v = b.dataset.v;
+    if (v === '__capture') { toast('Press any key on the keyboard'); const h = e => { e.preventDefault(); map[sel] = { ...map[sel], value: e.key.length === 1 ? e.key.toUpperCase() : e.key }; window.removeEventListener('keydown', h, true); renderAll(); toast(`${byId[sel][1]} now sends ${describe(sel)}`); }; window.addEventListener('keydown', h, true); return; }
+    if (v === '__new') { toast('Layer 3 added. Hold this button to use it.'); return; }
+    map[sel] = { ...map[sel], value: v }; renderAll();
+  });
+  $$('#hows button').forEach(b => b.onclick = () => { map[sel] = { ...map[sel], how: b.dataset.k }; renderAll(); });
+  const hm = $('#holdms'); if (hm) hm.oninput = () => { map[sel].holdMs = +hm.value; hm.nextElementSibling.textContent = `${hm.value} ms`; };
+  const tb = $('#turbo'); if (tb) tb.oninput = () => { map[sel].turbo = +tb.value; tb.nextElementSibling.textContent = `${tb.value} per second`; };
+  $('#listen').onclick = () => { listening = !listening; renderInspector(); };
+  const rv = $('#revert'); if (rv) rv.onclick = () => { map[sel] = DEFAULT()[sel]; renderAll(); toast(`${name} is back to normal`); };
+}
+function select(id) { sel = id; listening = false; renderAll(); }
+function renderAll() { paintPad(); renderList(); renderInspector(); }
+
+// ---------- sticks ----------
+const CURVES = { Linear: x => x, Smooth: x => Math.pow(x, 1.5), Precise: x => Math.pow(x, 2.2), Fast: x => Math.pow(x, .6), 'Wide middle': x => x < .5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2 };
+const sticks = { left: { inner: 8, outer: 95, curve: 'Linear', sens: 100, as: 'Stick', invX: false, invY: false }, right: { inner: 10, outer: 92, curve: 'Smooth', sens: 120, as: 'Stick', invX: false, invY: false } };
+function shape(s, x, y) {
+  let r = Math.hypot(x, y); if (r === 0) return [0, 0];
+  const a = Math.atan2(y, x), lo = s.inner / 100, hi = s.outer / 100;
+  let t = r <= lo ? 0 : r >= hi ? 1 : (r - lo) / (hi - lo);
+  t = Math.min(1, CURVES[s.curve](t) * s.sens / 100);
+  return [Math.cos(a) * t * (s.invX ? -1 : 1), Math.sin(a) * t * (s.invY ? -1 : 1)];
+}
+function renderSticks() {
+  $('#sticks').innerHTML = ['left', 'right'].map(k => {
+    const s = sticks[k];
+    const pts = Array.from({ length: 41 }, (_, i) => { const x = i / 40; const lo = s.inner / 100, hi = s.outer / 100; let t = x <= lo ? 0 : x >= hi ? 1 : (x - lo) / (hi - lo); t = Math.min(1, CURVES[s.curve](t) * s.sens / 100); return `${10 + x * 140},${150 - t * 140}`; }).join(' ');
+    return `<div class="card">
+      <h3>${k === 'left' ? 'Left stick' : 'Right stick'}</h3><p class="sub">${k === 'left' ? 'Usually moving.' : 'Usually looking and aiming.'} Move the stick to see the grey dot (what you do) and the coloured dot (what the game gets).</p>
+      <div class="stickviz">
+        <svg viewBox="0 0 170 170" aria-label="${k} stick preview"><circle cx="85" cy="85" r="78" fill="var(--raised)"/><circle cx="85" cy="85" r="${78 * s.outer / 100}" fill="none" stroke="var(--hair-strong)" stroke-dasharray="4 4"/><circle cx="85" cy="85" r="${78 * s.inner / 100}" fill="color-mix(in srgb, var(--warn) 22%, transparent)" stroke="var(--warn)" stroke-width="1"/><path d="M85 7v156M7 85h156" stroke="var(--hair)"/><circle id="raw-${k}" cx="85" cy="85" r="6" fill="var(--ink-3)"/><circle id="out-${k}" cx="85" cy="85" r="7" fill="var(--seat)"/></svg>
+        <svg viewBox="0 0 160 160" aria-label="Response curve" style="width:150px;height:150px"><rect x="10" y="10" width="140" height="140" rx="8" fill="var(--raised)"/><path d="M10 150 150 10" stroke="var(--hair-strong)" stroke-dasharray="3 4"/><polyline points="${pts}" fill="none" stroke="var(--seat)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/><text x="80" y="146" style="fill:var(--ink-3);font:10px var(--font);text-anchor:middle">how far you push</text></svg>
+      </div>
+      <div class="legend"><span><i style="background:var(--warn)"></i>Dead zone: small wobbles here are ignored</span></div>
+      <div class="label">Acts as</div>
+      <div class="seg" data-stick="${k}" data-f="as">${['Stick', 'Mouse', 'D-pad', 'W A S D'].map(v => `<button aria-pressed="${s.as === v}">${v}</button>`).join('')}</div>
+      <div class="label">Curve</div>
+      <div class="opts" data-stick="${k}" data-f="curve">${Object.keys(CURVES).map(v => `<button class="opt" aria-pressed="${s.curve === v}">${v}</button>`).join('')}</div>
+      <div class="label">Dead zone</div><div class="rangeline"><input type="range" min="0" max="30" value="${s.inner}" data-stick="${k}" data-f="inner" aria-label="Dead zone"><span class="val">${s.inner}%</span></div>
+      <div class="label">Full speed at</div><div class="rangeline"><input type="range" min="70" max="100" value="${s.outer}" data-stick="${k}" data-f="outer" aria-label="Full speed at"><span class="val">${s.outer}%</span></div>
+      <div class="label">Sensitivity</div><div class="rangeline"><input type="range" min="50" max="200" value="${s.sens}" data-stick="${k}" data-f="sens" aria-label="Sensitivity"><span class="val">${(s.sens / 100).toFixed(1)}x</span></div>
+      <div class="ctrlrow">Invert left and right<button class="sw" role="switch" aria-checked="${s.invX}" data-stick="${k}" data-f="invX" aria-label="Invert left and right"></button></div>
+      <div class="ctrlrow">Invert up and down<button class="sw" role="switch" aria-checked="${s.invY}" data-stick="${k}" data-f="invY" aria-label="Invert up and down"></button></div>
+    </div>`;
+  }).join('');
+  $$('#sticks [data-f]').forEach(el => {
+    const k = el.dataset.stick, f = el.dataset.f;
+    if (el.matches('input')) el.oninput = () => { sticks[k][f] = +el.value; renderSticks(); };
+    else if (el.matches('.sw')) el.onclick = () => { sticks[k][f] = !sticks[k][f]; renderSticks(); };
+    else el.querySelectorAll('button').forEach(b => b.onclick = () => { sticks[k][f] = b.textContent; renderSticks(); });
+  });
+}
+
+// ---------- triggers ----------
+const trig = { lt: { mode: 'Analog', at: 40, dz: 5 }, rt: { mode: 'Hair trigger', at: 10, dz: 2 } };
+function renderTriggers() {
+  $('#triggers').innerHTML = ['lt', 'rt'].map(k => { const t = trig[k]; return `<div class="card">
+    <h3>${k === 'lt' ? 'Left trigger' : 'Right trigger'}</h3><p class="sub">${k === 'lt' ? 'Often aim.' : 'Often shoot or accelerate.'} Squeeze it to see where it counts as pressed.</p>
+    <div class="trig"><i id="tbar-${k}" style="width:0%"></i><b style="left:${t.at}%"></b><span id="tval-${k}">0%</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-3)"><span>released</span><span>fully pressed</span></div>
+    <div class="label">Works as</div>
+    <div class="seg" data-trig="${k}">${['Analog', 'On or off', 'Hair trigger'].map(v => `<button aria-pressed="${t.mode === v}">${v}</button>`).join('')}</div>
+    <p class="sub" style="margin-top:8px">${{ Analog: 'The game gets how far you squeeze. Best for driving.', 'On or off': 'Counts as pressed past the line. Best for menus and simple shooting.', 'Hair trigger': 'Fires the moment you start squeezing and resets as soon as you ease off. Fastest shooting.' }[t.mode]}</p>
+    <div class="label">Counts as pressed at</div><div class="rangeline"><input type="range" min="2" max="90" value="${t.at}" data-trig-at="${k}" aria-label="Counts as pressed at"><span class="val">${t.at}%</span></div>
+    <div class="label">Dead zone</div><div class="rangeline"><input type="range" min="0" max="30" value="${t.dz}" data-trig-dz="${k}" aria-label="Trigger dead zone"><span class="val">${t.dz}%</span></div>
+  </div>`; }).join('');
+  $$('[data-trig]').forEach(s => s.querySelectorAll('button').forEach(b => b.onclick = () => { trig[s.dataset.trig].mode = b.textContent; renderTriggers(); }));
+  $$('[data-trig-at]').forEach(i => i.oninput = () => { trig[i.dataset.trigAt].at = +i.value; renderTriggers(); });
+  $$('[data-trig-dz]').forEach(i => i.oninput = () => { trig[i.dataset.trigDz].dz = +i.value; renderTriggers(); });
+}
+
+// ---------- tabs, profile, misc ----------
+$$('.tab').forEach(t => t.onclick = () => { $$('.tab').forEach(x => x.setAttribute('aria-selected', x === t)); $$('.pane').forEach(p => p.classList.toggle('on', p.id === 'p-' + t.dataset.t)); });
+$('#profbtn').onclick = e => { e.stopPropagation(); const m = $('#profmenu'); m.hidden = !m.hidden; $('#profbtn').setAttribute('aria-expanded', !m.hidden); };
+document.addEventListener('click', () => { $('#profmenu').hidden = true; });
+$$('#profmenu button').forEach(b => b.onclick = () => {
+  const p = b.dataset.p;
+  if (p === '__import') toast('Choose a .couchlink-profile file');
+  else if (p === '__export') toast('Saved Maya - Fallout New Vegas.couchlink-profile');
+  else { loadProfile(p); toast(`Loaded ${p}`); }
+});
+$('#reset').onclick = () => { map = DEFAULT(); renderAll(); toast('Every button is back to normal'); };
+$('#addlayer').onclick = () => toast('New layer: pick the button to hold for it');
+$$('[data-seg]').forEach(s => s.querySelectorAll('button').forEach(b => b.onclick = () => s.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b))));
+$$('#p-gyro .sw').forEach(sw => sw.onclick = () => sw.setAttribute('aria-checked', sw.getAttribute('aria-checked') !== 'true'));
+$('#gy-sens').oninput = e => $('#gy-sens-v').textContent = (e.target.value / 10).toFixed(1) + 'x';
+$('#gy-smooth').oninput = e => $('#gy-smooth-v').textContent = e.target.value + '%';
+$('#calbtn').onclick = () => {
+  const arc = $('#calarc'); let t = 0; $('#calbtn').disabled = true; $('#caltitle').textContent = 'Keep it still...';
+  const iv = setInterval(() => { t += 0.05; arc.style.strokeDashoffset = 94.2 * (1 - Math.min(t / 3, 1)); if (t >= 3) { clearInterval(iv); $('#caltitle').textContent = 'Calibrated'; $('#caltext').textContent = 'Drift removed. Recalibrate if aiming starts to creep.'; $('#calbtn').disabled = false; $('#calbtn').textContent = 'Again'; } }, 50);
+};
+
+// ---------- Map all wizard ----------
+const ORDER = ['a', 'b', 'x', 'y', 'lb', 'rb', 'lt', 'rt', 'ls', 'rs', 'view', 'menu'];
+let wi = 0;
+function wizShow() { const id = ORDER[wi], c = byId[id]; $('#wizglyph').textContent = c[2]; $('#wizname').textContent = c[1]; $('#wizhelp').textContent = `Press the button you want to use as ${c[2]}.`; $('#wizbar').style.width = (wi / ORDER.length * 100) + '%'; }
+function wizStep(pickedId) { const id = ORDER[wi]; if (pickedId && pickedId !== id) map[id] = { ...map[id], type: 'pad', value: pickedId }; wi++; if (wi >= ORDER.length) wizClose(true); else wizShow(); }
+function wizClose(done) { $('#wiz').hidden = true; renderAll(); if (done) toast('All buttons mapped'); }
+$('#mapall').onclick = () => { wi = 0; $('#wiz').hidden = false; wizShow(); };
+$('#wizskip').onclick = () => wizStep(null);
+$('#wizdone').onclick = () => wizClose(false);
+
+// ---------- live input: Gamepad API, or the keyboard ----------
+const keyState = new Set();
+window.addEventListener('keydown', e => { if (e.target.matches('input')) return; keyState.add(e.key); if (!$('#wiz').hidden && e.key === ' ') { e.preventDefault(); wizStep(null); } if (e.key === 'Escape') { $('#wiz').hidden = true; $('#profmenu').hidden = true; } });
+window.addEventListener('keyup', e => keyState.delete(e.key));
+let prevDown = new Set(), padSeen = false;
+function frame() {
+  let gp = null; try { gp = [...(navigator.getGamepads ? navigator.getGamepads() : [])].find(Boolean) || null; } catch (e) {}
+  if (gp && !padSeen) { padSeen = true; $('#hint').innerHTML = `<svg class="i" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg><span>Live: ${gp.id.replace(/\(.*\)/, '').trim().slice(0, 40)}</span>`; }
+  const down = new Set();
+  let lx = 0, ly = 0, rx = 0, ry = 0, lt = 0, rt = 0;
+  if (gp) {
+    CTL.forEach(([id, , , i]) => { if (gp.buttons[i] && gp.buttons[i].pressed) down.add(id); });
+    [lx, ly, rx, ry] = [gp.axes[0] || 0, gp.axes[1] || 0, gp.axes[2] || 0, gp.axes[3] || 0];
+    lt = gp.buttons[6] ? gp.buttons[6].value : 0; rt = gp.buttons[7] ? gp.buttons[7].value : 0;
+  } else {
+    if (keyState.has(' ')) down.add('a');
+    lx = (keyState.has('ArrowRight') ? 1 : 0) - (keyState.has('ArrowLeft') ? 1 : 0);
+    ly = (keyState.has('ArrowDown') ? 1 : 0) - (keyState.has('ArrowUp') ? 1 : 0);
+    const t = performance.now() / 1000; rx = Math.cos(t * .9) * .55; ry = Math.sin(t * 1.3) * .55;
+    lt = (Math.sin(t * .8) + 1) / 2; rt = Math.max(0, Math.sin(t * 1.7));
+  }
+  $$('#pad .ctl').forEach(g => g.classList.toggle('down', down.has(g.dataset.id)));
+  // pick by pressing, and the Map all wizard, react to new presses
+  for (const id of down) if (!prevDown.has(id)) {
+    if (!$('#wiz').hidden) wizStep(id);
+    else if (listening) { listening = false; select(id); toast(`Picked ${byId[id][1]}`); }
+  }
+  prevDown = down;
+  for (const [k, x, y] of [['left', lx, ly], ['right', rx, ry]]) {
+    const raw = $('#raw-' + k), out = $('#out-' + k); if (!raw) continue;
+    const [ox, oy] = shape(sticks[k], x, y);
+    raw.setAttribute('cx', 85 + x * 78); raw.setAttribute('cy', 85 + y * 78);
+    out.setAttribute('cx', 85 + ox * 78); out.setAttribute('cy', 85 + oy * 78);
+  }
+  for (const [k, v] of [['lt', lt], ['rt', rt]]) {
+    const bar = $('#tbar-' + k); if (!bar) continue;
+    const t = trig[k], pct = Math.round(v * 100), pressed = pct >= t.at && pct > t.dz;
+    bar.style.width = pct + '%'; bar.style.opacity = pressed ? 1 : .45;
+    $('#tval-' + k).textContent = t.mode === 'Analog' ? `${pct}%` : pressed ? 'Pressed' : `${pct}%`;
+  }
+  requestAnimationFrame(frame);
+}
+
+drawPad(); loadProfile('Fallout: New Vegas'); renderSticks(); renderTriggers(); requestAnimationFrame(frame);
+</script>

@@ -1,0 +1,680 @@
+<title>Couchlink Screens</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: the Couchlink window on its Screens view. The room (screens drawn as they stand, players dragged onto them),
+   a player tray underneath, and a split editor sheet that opens over the room for one shared screen. */
+:root {
+  --ground: #0b0c10; --window: #15161b; --pane: #1c1d23; --raised: #24252d; --well: #101115;
+  --hair: rgba(255,255,255,.08); --hair-strong: rgba(255,255,255,.14);
+  --ink: #f4f4f6; --ink-2: #a6a7b0; --ink-3: #6d6e78;
+  --accent: #0a84ff; --glass: rgba(28,29,35,.82);
+  --p1: #0a84ff; --p2: #ff6b5b; --p3: #30d158; --p4: #ffd60a;
+  --ok: #30d158; --warn: #ffb340; --bad: #ff6b6b;
+  --bezel: #050506; --screen-off: #1a1b20; --scrim: rgba(5,6,10,.6);
+  --shadow: 0 30px 80px rgba(0,0,0,.55), 0 2px 6px rgba(0,0,0,.4);
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --ground: #e9e9ee; --window: #f6f6f8; --pane: #ffffff; --raised: #f0f0f4; --well: #e8e8ee;
+    --hair: rgba(0,0,0,.08); --hair-strong: rgba(0,0,0,.14);
+    --ink: #1d1d1f; --ink-2: #5f6068; --ink-3: #8e8f97; --accent: #007aff; --glass: rgba(255,255,255,.85);
+    --p1: #007aff; --p2: #f2503f; --p3: #23a94a; --p4: #e0a800; --ok: #23a94a; --warn: #c97a00; --bad: #d93a3a;
+    --bezel: #1d1d1f; --screen-off: #d9d9e0; --scrim: rgba(30,30,40,.35);
+    --shadow: 0 30px 70px rgba(30,30,50,.18), 0 2px 6px rgba(30,30,50,.08);
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --ground: #e9e9ee; --window: #f6f6f8; --pane: #ffffff; --raised: #f0f0f4; --well: #e8e8ee;
+  --hair: rgba(0,0,0,.08); --hair-strong: rgba(0,0,0,.14);
+  --ink: #1d1d1f; --ink-2: #5f6068; --ink-3: #8e8f97; --accent: #007aff; --glass: rgba(255,255,255,.85);
+  --p1: #007aff; --p2: #f2503f; --p3: #23a94a; --p4: #e0a800; --ok: #23a94a; --warn: #c97a00; --bad: #d93a3a;
+  --bezel: #1d1d1f; --screen-off: #d9d9e0; --scrim: rgba(30,30,40,.35);
+  --shadow: 0 30px 70px rgba(30,30,50,.18), 0 2px 6px rgba(30,30,50,.08);
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 14px/1.45 var(--font); -webkit-font-smoothing: antialiased;
+  padding-block: 24px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.caption { text-align: center; color: var(--ink-3); font-size: 12px; margin: 0 auto 14px; max-width: 78ch; }
+
+.win { max-width: 1240px; margin: 0 auto; background: var(--window); border: 1px solid var(--hair-strong); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); position: relative; }
+.titlebar { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px; border-bottom: 1px solid var(--hair); font-size: 12px; font-weight: 600; }
+.titlebar svg { width: 18px; height: 18px; }
+.top { padding: 22px 28px 6px; display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; }
+.top h1 { margin: 0; font: 700 28px/1.1 var(--font-display); letter-spacing: -.025em; }
+.top p { margin: 4px 0 0; color: var(--ink-2); max-width: 64ch; }
+.top .spacer { flex: 1; }
+.btn { border: 1px solid var(--hair); background: var(--raised); border-radius: 999px; padding: 7px 14px; font-weight: 600; font-size: 13px; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.btn:hover { border-color: var(--hair-strong); }
+.btn.primary { background: var(--accent); color: #fff; border-color: transparent; }
+.btn.small { padding: 5px 11px; font-size: 12px; }
+.btn.ghost { background: transparent; }
+.body { padding: 10px 28px 26px; }
+
+/* ---------- the room ---------- */
+.room { position: relative; margin: 8px auto 0; }
+.disp { position: absolute; }
+.disp .frame { position: absolute; inset: 0; background: var(--bezel); border-radius: 12px; padding: 7px; box-shadow: 0 14px 34px rgba(0,0,0,.35); transition: opacity .2s, filter .2s, box-shadow .15s; }
+.disp.off .frame { opacity: .4; filter: grayscale(1); }
+.disp.drop .frame { box-shadow: 0 0 0 3px var(--accent), 0 14px 34px rgba(0,0,0,.35); }
+.disp .glass { position: relative; width: 100%; height: 100%; border-radius: 6px; overflow: hidden; background: var(--screen-off); }
+.disp .stand { position: absolute; left: 50%; bottom: -14px; width: 24%; height: 14px; transform: translateX(-50%); background: var(--bezel); border-radius: 0 0 6px 6px; opacity: .85; }
+.disp .under { position: absolute; left: 50%; top: calc(100% + 20px); transform: translateX(-50%); display: grid; justify-items: center; gap: 8px; white-space: nowrap; }
+.disp .label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); }
+.disp .label b { color: var(--ink); font-weight: 600; }
+.power { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--hair-strong); background: var(--raised); display: grid; place-items: center; padding: 0; }
+.power.on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+.power svg { width: 13px; height: 13px; }
+.empty-msg { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--ink-3); font-size: 12.5px; border: 1.5px dashed var(--hair-strong); border-radius: 6px; margin: 2px; }
+.off-msg { position: absolute; inset: 0; display: grid; place-items: center; color: var(--ink-3); font-size: 12px; }
+
+.tile { position: absolute; transition: left .28s cubic-bezier(.2,.8,.2,1), top .28s cubic-bezier(.2,.8,.2,1), width .28s cubic-bezier(.2,.8,.2,1), height .28s cubic-bezier(.2,.8,.2,1); }
+.tile.nodelay { transition: none; }
+.tile .face { position: absolute; inset: 2px; border-radius: 5px; color: #fff; display: grid; place-items: center; align-content: center; gap: 2px; text-align: center; cursor: grab; overflow: hidden; }
+.tile .face b { font: 800 22px/1 var(--font-display); }
+.tile .face .nm { font: 600 11.5px var(--font); }
+.tile .face .rs { font: 500 10.5px var(--font); opacity: .85; font-variant-numeric: tabular-nums; }
+.tile.small .face b { font-size: 16px; } .tile.small .nm, .tile.small .rs { display: none; }
+.tile .x { position: absolute; top: 7px; right: 7px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: rgba(0,0,0,.42); color: #fff; display: grid; place-items: center; opacity: 0; transition: opacity .15s, background .15s; padding: 0; z-index: 2; }
+.tile:hover .x, .tile:focus-within .x, .tile.sel .x { opacity: 1; }
+.tile .x:hover { background: rgba(0,0,0,.7); }
+.tile .x svg { width: 12px; height: 12px; }
+.tile.sel .face { box-shadow: inset 0 0 0 3px #fff; }
+.tile.dropswap .face { box-shadow: inset 0 0 0 3px #fff; filter: brightness(1.15); }
+.tile .warn { position: absolute; left: 7px; top: 7px; height: 20px; padding: 0 7px; border-radius: 999px; background: rgba(0,0,0,.42); color: #fff; display: flex; align-items: center; gap: 4px; font: 600 10.5px var(--font); }
+.tile .warn svg { width: 11px; height: 11px; }
+
+.tray { margin-top: 18px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 12px 14px; border-radius: 16px; background: var(--well); border: 1.5px dashed var(--hair-strong); min-height: 60px; transition: border-color .15s, background .15s; }
+.tray.drop { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 8%, var(--well)); }
+.tray .lbl { color: var(--ink-3); font-size: 12px; margin-right: 4px; }
+.tray .hint { margin-left: auto; color: var(--ink-3); font-size: 12px; }
+.chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 999px; background: var(--pane); border: 1px solid var(--hair); font-weight: 600; font-size: 13px; cursor: grab; user-select: none; }
+.chip i { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; color: #fff; font: 800 12px var(--font-display); font-style: normal; }
+.chip small { color: var(--ink-3); font-weight: 500; }
+
+/* ---------- split editor sheet ---------- */
+.scrim { position: absolute; inset: 0; background: var(--scrim); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: grid; place-items: center; padding: 20px; z-index: 20; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.scrim.on { opacity: 1; pointer-events: auto; }
+.sheet { width: min(860px, 100%); background: var(--window); border: 1px solid var(--hair-strong); border-radius: 22px; box-shadow: var(--shadow); padding: 22px; display: grid; gap: 16px; transform: scale(.97); transition: transform .25s cubic-bezier(.2,.8,.2,1); max-height: 100%; overflow-y: auto; }
+.scrim.on .sheet { transform: none; }
+.sheet .hd { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sheet h2 { margin: 0; font: 700 21px var(--font-display); letter-spacing: -.02em; }
+.sheet .hd .sub { color: var(--ink-3); font-size: 12.5px; }
+.sheet .hd .spacer { flex: 1; }
+.shapes { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.shapes .lbl { color: var(--ink-3); font-size: 12px; margin-right: 4px; }
+.shape { width: 62px; height: 42px; border-radius: 9px; border: 1.5px solid var(--hair-strong); background: var(--raised); padding: 4px; position: relative; }
+.shape svg { width: 100%; height: 100%; display: block; }
+.shape[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+.big { position: relative; background: var(--bezel); border-radius: 16px; padding: 10px; margin: 0 auto; box-shadow: 0 16px 40px rgba(0,0,0,.35); max-width: 100%; }
+.big .glass { position: relative; width: 100%; height: 100%; border-radius: 8px; overflow: hidden; background: var(--screen-off); }
+.big .tile .face b { font-size: 34px; }
+.big .tile .face .nm { font-size: 14px; }
+.big .tile .face .rs { font-size: 12px; }
+.grip { position: absolute; z-index: 5; display: grid; place-items: center; touch-action: none; }
+.grip.v { width: 22px; margin-left: -11px; cursor: col-resize; }
+.grip.h { height: 22px; margin-top: -11px; cursor: row-resize; }
+.grip .knob { width: 26px; height: 26px; border-radius: 50%; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.45); display: grid; place-items: center; color: #3a3b42; transition: transform .15s; }
+.grip .knob svg { width: 14px; height: 14px; }
+.grip:hover .knob, .grip.active .knob { transform: scale(1.12); }
+.grip .bubble { position: absolute; padding: 3px 8px; border-radius: 999px; background: rgba(0,0,0,.75); color: #fff; font: 600 11.5px var(--font); white-space: nowrap; opacity: 0; transition: opacity .15s; pointer-events: none; font-variant-numeric: tabular-nums; }
+.grip.v .bubble { top: calc(50% + 22px); } .grip.h .bubble { left: calc(50% + 22px); }
+.grip.active .bubble, .grip:hover .bubble { opacity: 1; }
+.grip.snap .knob { background: var(--accent); color: #fff; }
+.sheet .ft { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.sheet .ft .note { color: var(--ink-3); font-size: 12px; flex: 1; min-width: 200px; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 16px); background: var(--ink); color: var(--window); padding: 8px 16px; border-radius: 999px; font-size: 13px; opacity: 0; transition: all .25s; pointer-events: none; z-index: 60; max-width: calc(100% - 32px); display: flex; align-items: center; gap: 12px; }
+.toast.on { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.toast button { border: 0; background: none; color: var(--accent); font-weight: 700; padding: 0; }
+.flash { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 4px; font: 800 30px var(--font-display); color: #fff; background: rgba(0,0,0,.6); animation: flash 1.8s ease forwards; pointer-events: none; z-index: 6; text-align: center; }
+.flash small { font: 600 13px var(--font); opacity: .8; }
+@keyframes flash { 0% { opacity: 0 } 10% { opacity: 1 } 82% { opacity: 1 } 100% { opacity: 0 } }
+
+/* ---------- options switcher ---------- */
+.options { display: flex; gap: 8px; padding: 14px 28px 0; overflow-x: auto; }
+.opt { border: 1px solid var(--hair); background: var(--pane); border-radius: 14px; padding: 10px 14px; text-align: left; min-width: 180px; flex: 1; }
+.opt b { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.opt span { display: block; color: var(--ink-3); font-size: 12px; margin-top: 2px; }
+.opt .k { font: 800 11px var(--font-display); width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; background: var(--raised); color: var(--ink-2); margin: 0; }
+.opt[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.opt[aria-pressed="true"] .k { background: var(--accent); color: #fff; }
+
+/* ---------- stage layouts ---------- */
+.stage { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
+.stage.withpanel { grid-template-columns: minmax(0, 1fr) 320px; }
+.roomwrap { position: relative; overflow: visible; border-radius: 16px; }
+.stage.zoom .roomwrap { overflow: hidden; }
+.room { transform-origin: 0 0; transition: transform .55s cubic-bezier(.2,.8,.2,1); }
+body.dragging .room { transition: none; }
+.disp.focused .frame { box-shadow: 0 0 0 3px var(--accent), 0 14px 34px rgba(0,0,0,.35); }
+.disp.faded { opacity: .12; pointer-events: none; transition: opacity .4s; }
+.room.zoomed .under { opacity: 0; pointer-events: none; }
+.room.zoomed .grip .knob { transform: scale(var(--inv)); }
+.room.zoomed .grip .bubble { transform: scale(var(--inv)); }
+.room.zoomed .tile .x { transform: scale(var(--inv)); transform-origin: top right; }
+.room.zoomed .tile .warn { transform: scale(var(--inv)); transform-origin: top left; }
+.room .grip .knob { width: 20px; height: 20px; }
+.room .grip .knob svg { width: 11px; height: 11px; }
+.zoombar { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 8; }
+.zoombar-in { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 16px; background: var(--glass); backdrop-filter: blur(20px) saturate(1.5); -webkit-backdrop-filter: blur(20px) saturate(1.5); border: 1px solid var(--hair-strong); box-shadow: var(--shadow); white-space: nowrap; }
+.zb-title { font-weight: 700; font-size: 13px; margin: 0 6px; }
+.shapes.mini { gap: 5px; }
+.shape.sm { width: 44px; height: 30px; padding: 3px; border-radius: 7px; }
+.stage:not(.withpanel) .panel { display: none; }
+.panel { background: var(--pane); border: 1px solid var(--hair); border-radius: 18px; padding: 16px; display: grid; gap: 12px; position: sticky; top: 12px; }
+.panel .big { padding: 8px; border-radius: 12px; }
+.phd b { display: block; font: 700 16px var(--font-display); }
+.phd span, .note { color: var(--ink-3); font-size: 12px; }
+.pempty { display: grid; justify-items: center; text-align: center; gap: 6px; color: var(--ink-3); padding: 30px 10px; font-size: 12.5px; }
+.pempty svg { width: 28px; height: 28px; color: var(--ink-3); }
+.pempty b { color: var(--ink); font-size: 14px; }
+.plist { display: grid; gap: 6px; }
+.prow { display: grid; grid-template-columns: 26px minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 10px; background: var(--raised); }
+.prow i { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; color: #fff; font: 800 12px var(--font-display); font-style: normal; }
+.prow b { display: block; font-size: 13px; } .prow small { color: var(--ink-3); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.x2 { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--hair-strong); background: var(--pane); display: grid; place-items: center; padding: 0; color: var(--ink-2); }
+.x2:hover { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
+.x2 svg { width: 12px; height: 12px; }
+.sheetgrid { display: grid; grid-template-columns: auto minmax(220px, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .stage.withpanel { grid-template-columns: 1fr; } .sheetgrid { grid-template-columns: 1fr; } }
+
+/* ---------- pop-up editor page ---------- */
+.tray { margin: 6px 0 4px; display: grid; gap: 10px; padding: 14px; border-radius: 16px; background: var(--well); border: 1px solid var(--hair); }
+.trayhd { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.trayhd b { font-size: 14px; } .trayhd span { color: var(--ink-2); font-size: 12.5px; }
+.linkbtn { border: 0; background: none; color: var(--accent); font-weight: 600; padding: 0 0 0 6px; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; align-items: stretch; }
+.chip { padding: 6px 14px 6px 6px; gap: 8px; cursor: grab; transition: transform .12s, box-shadow .12s, border-color .12s; }
+.chip:hover { border-color: var(--hair-strong); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0,0,0,.18); }
+.chip:active { cursor: grabbing; }
+.chip .grab { color: var(--ink-3); display: grid; place-items: center; margin-left: 2px; }
+.chip .grab svg { width: 14px; height: 14px; }
+.chip .cn { display: grid; line-height: 1.15; } .chip .cn b { font-size: 13px; } .chip .cn small { color: var(--ink-3); font-size: 11px; font-weight: 500; }
+.chip.placed { background: var(--raised); }
+.chip.picked { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
+.offzone { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; border-radius: 999px; border: 1.5px dashed var(--hair-strong); color: var(--ink-3); font-size: 12px; opacity: 0; transition: opacity .15s, border-color .15s, color .15s; }
+body.dragp .offzone { opacity: 1; }
+.offzone.drop { border-color: var(--bad); color: var(--bad); }
+.offzone svg { width: 13px; height: 13px; }
+.dropzone { position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; border-radius: 6px; background: rgba(10,12,18,.62); border: 2px dashed var(--accent); color: #fff; font: 700 13px var(--font); text-align: center; padding: 8px; pointer-events: none; animation: dz 1.4s ease-in-out infinite; }
+.dropzone span { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: rgba(0,0,0,.45); }
+.dropzone.no { background: rgba(0,0,0,.45); border-color: rgba(255,255,255,.3); animation: none; }
+@keyframes dz { 50% { border-color: color-mix(in srgb, var(--accent) 35%, transparent); } }
+.disp.drop .dropzone, .bigdrop.drop .dropzone { background: rgba(10,12,18,.45); border-style: solid; animation: none; }
+.dropzone span { background: var(--accent) !important; }
+.dropzone.no span { background: rgba(0,0,0,.55) !important; }
+body.placing .disp:not(.off) { cursor: copy; }
+.empty-msg { display: grid; place-items: center; align-content: center; gap: 6px; }
+.empty-msg svg { width: 20px; height: 20px; }
+.off-msg { display: grid; place-items: center; align-content: center; gap: 6px; }
+.disp .acts { display: flex; gap: 6px; align-items: center; }
+.btn:disabled { opacity: .45; cursor: default; }
+.addwrap { position: relative; }
+.menu { position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); min-width: 220px; z-index: 15; background: var(--pane); backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5); border: 1px solid var(--hair-strong); border-radius: 12px; padding: 6px; box-shadow: var(--shadow); display: grid; gap: 2px; }
+.menu button { display: grid; grid-template-columns: 24px minmax(0,1fr); gap: 10px; align-items: center; border: 0; background: none; padding: 6px 8px; border-radius: 8px; text-align: left; }
+.menu button:hover { background: var(--hair); }
+.menu i { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; color: #fff; font: 800 12px var(--font-display); font-style: normal; }
+.menu b { display: block; font-size: 13px; } .menu small { color: var(--ink-3); font-size: 11.5px; }
+.sheetgrid { display: grid; grid-template-columns: auto minmax(240px, 1fr); gap: 22px; align-items: start; }
+.sheetgrid .shapes { margin-bottom: 12px; }
+.sheetgrid .note { color: var(--ink-3); font-size: 12px; margin: 10px 2px 0; }
+.side { display: grid; gap: 8px; align-content: start; }
+.side h4 { margin: 4px 0 0; font-size: 12px; color: var(--ink-3); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+.prow.add { border: 1px dashed var(--hair-strong); background: transparent; width: 100%; text-align: left; cursor: pointer; grid-template-columns: 26px minmax(0,1fr) auto; }
+.prow.add:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.prow.add:disabled { opacity: .45; cursor: default; }
+.prow .plus { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; color: var(--accent); }
+.prow .plus svg { width: 14px; height: 14px; }
+.big-empty { border-radius: 8px; font-size: 13px; }
+.roomwrap { margin-top: 10px; }
+
+/* ---------- custom layouts ---------- */
+.shape.custom { width: auto; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; color: var(--ink-2); font-size: 12px; font-weight: 600; }
+.shape.custom svg { width: 18px; height: 18px; }
+.shape.custom[aria-pressed="true"] { color: var(--accent); }
+.freebg { position: absolute; inset: 0; display: grid; place-items: end center; padding-bottom: 10px; background: repeating-linear-gradient(45deg, rgba(255,255,255,.035) 0 8px, transparent 8px 16px); color: var(--ink-3); font-size: 11.5px; }
+.gaplabel { position: absolute; display: grid; place-items: center; align-content: center; gap: 2px; color: var(--ink-3); text-align: center; pointer-events: none; font-size: 12px; }
+.gaplabel span { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--ink-2); }
+.gaplabel svg { width: 15px; height: 15px; }
+.gaplabel small { font-size: 11px; font-variant-numeric: tabular-nums; }
+.tile.free .face { cursor: move; touch-action: none; }
+.tile.free .corner { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.5); z-index: 3; touch-action: none; }
+.tile.free .corner.nw { left: -3px; top: -3px; cursor: nwse-resize; } .tile.free .corner.se { right: -3px; bottom: -3px; cursor: nwse-resize; }
+.tile.free .corner.ne { right: -3px; top: -3px; cursor: nesw-resize; } .tile.free .corner.sw { left: -3px; bottom: -3px; cursor: nesw-resize; }
+.tile.free .x { top: 12px; right: 12px; }
+.tile.clash .face { box-shadow: inset 0 0 0 3px var(--bad); }
+@media (max-width: 700px) { .top, .body, .options { padding-left: 16px; padding-right: 16px; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+
+<p class="caption">Couchlink's Screens view. Put players on screens by dragging, by clicking a player and then a screen, or with Add player. Every screen that is on can be customised.</p>
+
+<div class="win" id="win">
+  <div class="titlebar">
+    <svg viewBox="0 2.5 100 100" aria-hidden="true"><defs><linearGradient id="oc" gradientUnits="userSpaceOnUse" x1="20" y1="10" x2="80" y2="90"><stop offset="0" stop-color="#5ac8fa"/><stop offset="1" stop-color="#0a5cff"/></linearGradient><clipPath id="cl"><circle cx="24.269" cy="42.1" r="15"/></clipPath><clipPath id="cr"><circle cx="75.731" cy="42.1" r="15"/></clipPath><mask id="mb" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="110"><rect width="100" height="110" fill="#fff"/><rect x="11" y="42" width="78" height="30" rx="15" fill="none" stroke="#000" stroke-width="15" clip-path="url(#cl)"/></mask><mask id="ms" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="110"><rect width="100" height="110" fill="#fff"/><rect x="24" y="21" width="52" height="36" rx="18" fill="none" stroke="#000" stroke-width="15" clip-path="url(#cr)"/></mask></defs><rect x="23.5" y="74" width="9" height="15" rx="4.5" fill="url(#oc)"/><rect x="67.5" y="74" width="9" height="15" rx="4.5" fill="url(#oc)"/><rect x="24" y="21" width="52" height="36" rx="18" fill="none" stroke="url(#oc)" stroke-width="10" mask="url(#mb)"/><rect x="11" y="42" width="78" height="30" rx="15" fill="none" stroke="url(#oc)" stroke-width="10" mask="url(#ms)"/></svg>
+    Couchlink
+  </div>
+  <div class="top">
+    <div><h1>Screens</h1><p>Choose who plays on which screen. A screen splits itself as people join it; Customise changes the shape and sizes.</p></div>
+    <div class="spacer"></div>
+    <button class="btn" id="identify"><svg class="i" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Identify screens</button>
+  </div>
+  <div class="body">
+    <div class="tray" id="tray"></div>
+    <div class="roomwrap" id="roomwrap"><div class="room" id="room"></div></div>
+  </div>
+  <div class="scrim" id="scrim"><div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"></div></div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const PCOL = ['var(--p1)', 'var(--p2)', 'var(--p3)', 'var(--p4)'];
+const PLAYERS = ['Maya', 'Theo', 'Jun', 'Rosa'];
+const MIN = [960, 540], BAD = [640, 360];
+const ICON = {
+  power: '<svg class="i" viewBox="0 0 24 24"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg>',
+  x: '<svg class="i" viewBox="0 0 24 24" style="stroke-width:2.4"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+  edit: '<svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16M12 12h9"/></svg>',
+  gripV: '<svg class="i" viewBox="0 0 24 24" style="stroke-width:2.2"><path d="m9 8-4 4 4 4M15 8l4 4-4 4"/></svg>',
+  gripH: '<svg class="i" viewBox="0 0 24 24" style="stroke-width:2.2"><path d="m8 9 4-4 4 4M8 15l4 4 4-4"/></svg>',
+  zoom: '<svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M11 8v6M8 11h6"/></svg>',
+  plus: '<svg class="i" viewBox="0 0 24 24" style="stroke-width:2.2"><path d="M12 5v14M5 12h14"/></svg>',
+  grab: '<svg class="i" viewBox="0 0 24 24" style="stroke-width:2.4"><path d="M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01"/></svg>',
+  monitor: '<svg class="i" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
+  custom: '<svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" stroke-dasharray="3 3"/><rect x="6" y="7" width="7" height="6" rx="1"/><path d="M15 15h3v3"/></svg>',
+  back: '<svg class="i" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>',
+  warn: '<svg class="i" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>',
+};
+let toastTimer;
+function toast(text, undo) {
+  const el = $('#toast'); el.innerHTML = `<span>${text}</span>${undo ? '<button id="undoBtn">Undo</button>' : ''}`; el.classList.add('on');
+  if (undo) $('#undoBtn').onclick = () => { undo(); el.classList.remove('on'); };
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('on'), undo ? 4000 : 2200);
+}
+
+// Screens: desktop pixels, where they stand (cm: x, y, width) for drawing.
+const DISPLAYS = [
+  { id: 'mon', name: 'Desk monitor', px: [2560, 1440], hz: 144, at: [0, 22, 60] },
+  { id: 'tv', name: 'Living room TV', px: [3840, 2160], hz: 60, at: [74, 0, 122] },
+  { id: 'side', name: 'Side monitor', px: [1080, 1920], hz: 60, at: [208, 4, 30] },
+];
+const D = id => DISPLAYS.find(d => d.id === id);
+const portrait = d => d.px[1] > d.px[0];
+
+// ---------- split trees ----------
+// Leaf {slot}, split {dir: 'v' (side by side) | 'h' (stacked), sizes, kids}. Slots index into the screen's player list.
+const L = k => ({ slot: k });
+const S = (dir, kids) => ({ dir, sizes: kids.map(() => 1 / kids.length), kids });
+const SHAPES = {
+  1: { full: () => L(0) },
+  2: { lr: () => S('v', [L(0), L(1)]), tb: () => S('h', [L(0), L(1)]) },
+  3: { top: () => S('h', [L(0), S('v', [L(1), L(2)])]), left: () => S('v', [L(0), S('h', [L(1), L(2)])]),
+       cols: () => S('v', [L(0), L(1), L(2)]), rows: () => S('h', [L(0), L(1), L(2)]) },
+  4: { grid: () => S('h', [S('v', [L(0), L(1)]), S('v', [L(2), L(3)])]), big: () => S('v', [L(0), S('h', [L(1), L(2), L(3)])]),
+       cols: () => S('v', [L(0), L(1), L(2), L(3)]), rows: () => S('h', [L(0), L(1), L(2), L(3)]) },
+};
+const SHAPE_NAMES = { full: 'Full screen', lr: 'Side by side', tb: 'Stacked', top: 'One on top', left: 'One on the left', cols: 'Columns', rows: 'Rows', grid: 'Four corners', big: 'One big, three small' };
+function defaultShape(n, d) { return { 1: 'full', 2: portrait(d) ? 'tb' : 'lr', 3: portrait(d) ? 'rows' : 'top', 4: portrait(d) ? 'rows' : 'grid' }[n]; }
+// Walk a tree: leaf boxes and divider handles (fractions of the screen).
+function walk(node, box = [0, 0, 1, 1], path = [], out = { leaves: [], grips: [] }) {
+  if (node.slot !== undefined) { out.leaves.push({ slot: node.slot, box }); return out; }
+  const [x, y, w, h] = box; let off = 0;
+  node.kids.forEach((k, i) => {
+    const sz = node.sizes[i], kb = node.dir === 'v' ? [x + w * off, y, w * sz, h] : [x, y + h * off, w, h * sz];
+    walk(k, kb, path.concat(i), out);
+    off += sz;
+    if (i < node.kids.length - 1) out.grips.push({ path, i, dir: node.dir, box, at: off });
+  });
+  return out;
+}
+const nodeAt = (tree, path) => path.reduce((n, i) => n.kids[i], tree);
+
+// ---------- state ----------
+const state = { tv: { on: true, players: [0, 1], shape: 'lr' }, mon: { on: true, players: [2], shape: 'full' }, side: { on: false, players: [], shape: null } };
+for (const d of DISPLAYS) state[d.id].tree = state[d.id].players.length ? SHAPES[state[d.id].players.length][state[d.id].shape]() : null;
+let selected = null; // {did, p}
+const placedOn = p => DISPLAYS.find(d => state[d.id].players.includes(p));
+function snapshot() { return JSON.parse(JSON.stringify(state)); }
+function restore(s) { for (const k in s) state[k] = s[k]; render(); }
+function relayout(did, keepShape) {
+  const st = state[did], n = st.players.length, d = D(did);
+  if (!n) { st.shape = null; st.tree = null; st.custom = null; return; }
+  if (st.custom) {
+    for (const q of Object.keys(st.custom)) if (!st.players.includes(+q)) delete st.custom[q];
+    for (const q of st.players) if (!st.custom[q]) st.custom[q] = freeSpot(did);
+  }
+  if (!keepShape || !SHAPES[n][st.shape]) st.shape = defaultShape(n, d);
+  st.tree = SHAPES[n][st.shape]();
+}
+function addTo(did, p) {
+  const st = state[did];
+  if (st.players.includes(p)) return;
+  if (st.players.length >= 4) { toast(`${D(did).name} already has four players`); return; }
+  const from = placedOn(p);
+  if (from) { state[from.id].players = state[from.id].players.filter(x => x !== p); relayout(from.id); }
+  if (!st.on) { st.on = true; toast(`Turned on the ${D(did).name}`); }
+  st.players.push(p); relayout(did);
+}
+function removeP(p, quiet) {
+  const d = placedOn(p); if (!d) return;
+  const before = snapshot();
+  state[d.id].players = state[d.id].players.filter(x => x !== p); relayout(d.id);
+  if (selected && selected.p === p) selected = null;
+  render(); if (!quiet) toast(`${PLAYERS[p]} is off the ${d.name}`, () => restore(before));
+}
+function swapP(a, b) {
+  const da = placedOn(a), db = placedOn(b); if (!da || !db) return;
+  const ca = state[da.id].custom, cb = state[db.id].custom, ra = ca && ca[a], rb = cb && cb[b];
+  if (ca) { delete ca[a]; } if (cb) { delete cb[b]; }
+  if (ca) ca[b] = ra; if (cb) cb[a] = rb;
+  const la = state[da.id].players, lb = state[db.id].players, ia = la.indexOf(a), ib = lb.indexOf(b);
+  la[ia] = b; lb[ib] = a;
+}
+
+// ---------- tiles ----------
+function resOf(d, box) { return [Math.round(d.px[0] * box[2]), Math.round(d.px[1] * box[3])]; }
+function quality([w, h]) { return w < BAD[0] || h < BAD[1] ? 'bad' : w < MIN[0] || h < MIN[1] ? 'warn' : 'ok'; }
+// Where each player sits on a screen: the split tree, or free rectangles (custom) keyed by player.
+function boxesOf(did) {
+  const st = state[did];
+  if (!st.players.length) return [];
+  if (st.custom) return st.players.map((p, i) => ({ slot: i, box: st.custom[p] }));
+  return st.tree ? walk(st.tree).leaves : [];
+}
+const overlaps = (a, b) => a[0] < b[0] + b[2] - 1e-6 && b[0] < a[0] + a[2] - 1e-6 && a[1] < b[1] + b[3] - 1e-6 && b[1] < a[1] + a[3] - 1e-6;
+function clashing(did) {
+  const st = state[did]; if (!st.custom) return new Set();
+  const out = new Set(), ps = st.players;
+  for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) if (overlaps(st.custom[ps[i]], st.custom[ps[j]])) { out.add(ps[i]); out.add(ps[j]); }
+  return out;
+}
+// The biggest empty rectangle on a custom screen (built from the players' edges), for the desktop label.
+function biggestGap(did) {
+  const st = state[did], rs = st.players.map(q => st.custom[q]);
+  const xs = [...new Set([0, 1, ...rs.flatMap(r => [r[0], r[0] + r[2]])])].sort((a, b) => a - b);
+  const ys = [...new Set([0, 1, ...rs.flatMap(r => [r[1], r[1] + r[3]])])].sort((a, b) => a - b);
+  let best = null, area = .02;
+  for (let a = 0; a < xs.length; a++) for (let b = a + 1; b < xs.length; b++) for (let c = 0; c < ys.length; c++) for (let d = c + 1; d < ys.length; d++) {
+    const g = [xs[a], ys[c], xs[b] - xs[a], ys[d] - ys[c]];
+    if (g[2] * g[3] > area && !rs.some(r => overlaps(r, g))) { best = g; area = g[2] * g[3]; }
+  }
+  return best;
+}
+// A free spot for a newcomer in custom mode: the first quarter that touches nobody, else a small box in the middle.
+function freeSpot(did) {
+  const st = state[did], taken = st.players.filter(q => st.custom[q]).map(q => st.custom[q]);
+  for (const c of [[0, 0, .5, .5], [.5, 0, .5, .5], [0, .5, .5, .5], [.5, .5, .5, .5]]) if (!taken.some(t => overlaps(t, c))) return c;
+  return [.35, .35, .3, .3];
+}
+function tilesHTML(d, opts = {}) {
+  const st = state[d.id]; if (!st.players.length) return '';
+  const clash = clashing(d.id);
+  return boxesOf(d.id).map(({ slot, box }) => {
+    const p = st.players[slot], res = resOf(d, box), q = quality(res);
+    const pxw = (opts.width || 300) * box[2], small = pxw < 90;
+    const free = opts.free;
+    return `<div class="tile ${small ? 'small' : ''} ${selected && selected.p === p ? 'sel' : ''} ${opts.nodelay ? 'nodelay' : ''} ${free ? 'free' : ''} ${clash.has(p) ? 'clash' : ''}" data-p="${p}" data-d="${d.id}" style="left:${box[0] * 100}%;top:${box[1] * 100}%;width:${box[2] * 100}%;height:${box[3] * 100}%">
+      <div class="face" ${free ? `data-move="${p}"` : 'draggable="true"'} tabindex="0" aria-label="${PLAYERS[p]} on ${d.name}" style="background:${PCOL[p]}"><b>${p + 1}</b><span class="nm">${PLAYERS[p]}</span><span class="rs">${res[0]} x ${res[1]}</span></div>
+      ${free ? ['nw', 'ne', 'sw', 'se'].map(c => `<span class="corner ${c}" data-corner="${p}:${c}" aria-hidden="true"></span>`).join('') : ''}
+      ${q === 'ok' || small ? '' : `<span class="warn" title="${q === 'bad' ? 'Too small for most games' : 'Small: text may be hard to read'}" style="color:${q === 'bad' ? '#ffb4b4' : '#ffe08a'}">${ICON.warn}${q === 'bad' ? 'Too small' : 'Small'}</span>`}
+      <button class="x" data-remove="${p}" aria-label="Take ${PLAYERS[p]} off this screen" title="Take ${PLAYERS[p]} off">${ICON.x}</button>
+    </div>`;
+  }).join('');
+}
+
+// ---------- picking and dragging ----------
+let picked = null;     // a player clicked in the tray, waiting for a screen click
+let dragging = null;   // the player being dragged
+let editing = null;    // the screen open in the editor
+let addMenu = null;    // the screen whose Add player menu is open
+const whereIs = p => { const d = placedOn(p); return d ? `on the ${d.name}` : 'not on a screen'; };
+
+// ---------- shared editing pieces ----------
+function shapeIcon(tree) {
+  return `<svg viewBox="0 0 54 34">${walk(tree).leaves.map(({ slot, box }) => `<rect x="${box[0] * 54 + 1}" y="${box[1] * 34 + 1}" width="${box[2] * 54 - 2}" height="${box[3] * 34 - 2}" rx="2.5" fill="${PCOL[slot]}" opacity=".85"/>`).join('')}</svg>`;
+}
+function gripsHTML(did) {
+  const st = state[did]; if (!st.tree) return '';
+  return walk(st.tree).grips.map((gr, j) => {
+    const [x, y, w, h] = gr.box, node = nodeAt(st.tree, gr.path), a = node.sizes[gr.i], b = node.sizes[gr.i + 1];
+    const pct = `${Math.round(a / (a + b) * 100)}% · ${Math.round(b / (a + b) * 100)}%`;
+    return gr.dir === 'v'
+      ? `<div class="grip v" data-d="${did}" data-grip="${j}" style="left:${(x + w * gr.at) * 100}%;top:${y * 100}%;height:${h * 100}%"><span class="knob">${ICON.gripV}</span><span class="bubble">${pct}</span></div>`
+      : `<div class="grip h" data-d="${did}" data-grip="${j}" style="top:${(y + h * gr.at) * 100}%;left:${x * 100}%;width:${w * 100}%"><span class="knob">${ICON.gripH}</span><span class="bubble">${pct}</span></div>`;
+  }).join('');
+}
+function bindGrips(did, rerender) {
+  $$(`.grip[data-d="${did}"]`).forEach(el => el.onpointerdown = e => {
+    e.preventDefault(); e.stopPropagation(); el.setPointerCapture(e.pointerId);
+    const j = +el.dataset.grip, st = state[did], gr = walk(st.tree).grips[j], node = nodeAt(st.tree, gr.path);
+    const rect = $(`[data-glass="${did}"]`).getBoundingClientRect();
+    const [x, y, w, h] = gr.box, start = node.sizes.slice(0, gr.i).reduce((s, v) => s + v, 0), pair = node.sizes[gr.i] + node.sizes[gr.i + 1];
+    const move = ev => {
+      const f = gr.dir === 'v' ? ((ev.clientX - rect.left) / rect.width - x) / w : ((ev.clientY - rect.top) / rect.height - y) / h;
+      let a = Math.min(pair * .85, Math.max(pair * .15, f - start)), snapped = false;
+      for (const s of [1 / 3, 1 / 2, 2 / 3]) if (Math.abs(a / pair - s) < .025) { a = pair * s; snapped = true; }
+      node.sizes[gr.i] = a; node.sizes[gr.i + 1] = pair - a;
+      rerender();
+      const again = $(`.grip[data-d="${did}"][data-grip="${j}"]`); if (again) { again.classList.add('active'); again.classList.toggle('snap', snapped); }
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); renderAll(); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  });
+}
+function dropHint(did) {
+  const p = dragging ?? picked; if (p == null || !state[did]) return '';
+  const st = state[did], full = st.players.length >= 4 && !st.players.includes(p), here = st.players.includes(p);
+  const txt = full ? 'This screen is full' : here ? `${PLAYERS[p]} is already here` : dragging != null ? `Drop to add ${PLAYERS[p]}` : `Put ${PLAYERS[p]} here`;
+  return `<div class="dropzone ${full || here ? 'no' : ''}"><span>${full || here ? '' : ICON.plus}${txt}</span></div>`;
+}
+
+// ---------- the room ----------
+function renderAll() { render(); if (editing) renderEditor(); }
+function render() {
+  const room = $('#room'), wrap = $('#roomwrap');
+  const avail = Math.min(wrap.clientWidth || 1180, 1180) * .92;
+  const maxX = Math.max(...DISPLAYS.map(d => d.at[0] + d.at[2])), maxY = Math.max(...DISPLAYS.map(d => d.at[1] + d.at[2] * d.px[1] / d.px[0]));
+  const k = avail / maxX, roomW = maxX * k, roomH = maxY * k + 118;
+  room.style.width = roomW + 'px'; room.style.height = roomH + 'px';
+  document.body.classList.toggle('placing', dragging != null || picked != null);
+  document.body.classList.toggle('dragp', dragging != null);
+  room.innerHTML = DISPLAYS.map(d => {
+    const st = state[d.id], w = d.at[2] * k, h = w * d.px[1] / d.px[0], n = st.players.length;
+    const inner = !st.on ? `<div class="off-msg">${ICON.power}<span>Off</span></div>`
+      : n ? (st.custom ? '<div class="freebg small"></div>' : '') + tilesHTML(d, { width: w }) : `<div class="empty-msg">${ICON.plus}<span>Drag a player here</span></div>`;
+    const others = PLAYERS.map((_, p) => p).filter(p => !st.players.includes(p));
+    return `<div class="disp ${st.on ? '' : 'off'}" data-d="${d.id}" style="left:${d.at[0] * k}px;top:${d.at[1] * k}px;width:${w}px;height:${h}px">
+      <div class="frame"><div class="glass" data-flash="${d.id}">${inner}${dropHint(d.id)}</div></div><div class="stand"></div>
+      <div class="under">
+        <div class="label"><button class="power ${st.on ? 'on' : ''}" data-power="${d.id}" aria-label="${st.on ? 'Turn off' : 'Turn on'} ${d.name}" title="${st.on ? 'Turn off' : 'Turn on'}">${ICON.power}</button><b>${d.name}</b>${d.px[0]} x ${d.px[1]}</div>
+        ${st.on ? `<div class="acts">
+          <div class="addwrap"><button class="btn small" data-add="${d.id}" aria-haspopup="true" aria-expanded="${addMenu === d.id}" ${others.length && n < 4 ? '' : 'disabled'}>${ICON.plus}Add player</button>
+            ${addMenu === d.id ? `<div class="menu">${others.map(p => `<button data-addp="${d.id}:${p}"><i style="background:${PCOL[p]}">${p + 1}</i><span><b>${PLAYERS[p]}</b><small>${whereIs(p)}</small></span></button>`).join('')}</div>` : ''}</div>
+          <button class="btn small" data-edit="${d.id}">${ICON.edit}Customise</button></div>`
+        : `<button class="btn small" data-power="${d.id}">Turn on</button>`}
+      </div>
+    </div>`;
+  }).join('');
+  const all = PLAYERS.map((_, p) => p);
+  $('#tray').innerHTML = `<div class="trayhd"><b>Players</b><span>${picked != null ? `Now click the screen for ${PLAYERS[picked]}. <button class="linkbtn" id="cancelPick">Cancel</button>` : 'Drag a player onto a screen, or click a player and then a screen.'}</span></div>
+    <div class="chips">${all.map(p => `<span class="chip ${placedOn(p) ? 'placed' : ''} ${picked === p ? 'picked' : ''}" draggable="true" data-p="${p}" tabindex="0" role="button" aria-label="${PLAYERS[p]}, ${whereIs(p)}">
+      <span class="grab">${ICON.grab}</span><i style="background:${PCOL[p]}">${p + 1}</i><span class="cn"><b>${PLAYERS[p]}</b><small>${placedOn(p) ? placedOn(p).name : 'Not on a screen'}</small></span></span>`).join('')}
+      <span class="offzone" id="offzone">${ICON.x}Drop here to take someone off</span></div>`;
+  wire($('#win'));
+}
+
+// Drag and drop and clicks, shared by the room, the tray and the editor. Player ids travel as text/p.
+function wire(root) {
+  root.querySelectorAll('[draggable="true"]').forEach(el => {
+    el.ondragstart = e => {
+      const p = +el.closest('[data-p]').dataset.p; e.dataTransfer.setData('text/p', p); e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => { dragging = p; picked = null; addMenu = null; renderAll(); }, 0);
+    };
+    el.ondragend = () => { dragging = null; renderAll(); };
+  });
+  root.querySelectorAll('.chip[data-p]').forEach(c => {
+    const pick = () => { const p = +c.dataset.p; picked = picked === p ? null : p; addMenu = null; render(); };
+    c.onclick = pick; c.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } };
+  });
+  root.querySelectorAll('.tile').forEach(t => {
+    t.ondragover = e => { e.preventDefault(); e.stopPropagation(); t.classList.add('dropswap'); };
+    t.ondragleave = () => t.classList.remove('dropswap');
+    t.ondrop = e => {
+      e.preventDefault(); e.stopPropagation(); t.classList.remove('dropswap');
+      const a = +e.dataTransfer.getData('text/p'), b = +t.dataset.p; dragging = null; if (a === b) return renderAll();
+      if (placedOn(a)) { swapP(a, b); toast(`${PLAYERS[a]} and ${PLAYERS[b]} swapped places`); }
+      else { const did = t.dataset.d, i = state[did].players.indexOf(b); state[did].players[i] = a; toast(`${PLAYERS[a]} took ${PLAYERS[b]}'s place`); }
+      renderAll();
+    };
+    const face = t.querySelector('.face');
+    face.onclick = e => { e.stopPropagation(); if (picked != null) { const did = t.dataset.d; addTo(did, picked); picked = null; return renderAll(); } selected = { did: t.dataset.d, p: +t.dataset.p }; renderAll(); };
+    face.onkeydown = e => { if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeP(+t.dataset.p); } };
+  });
+  root.querySelectorAll('[data-remove]').forEach(b => b.onclick = e => { e.stopPropagation(); removeP(+b.dataset.remove); });
+  root.querySelectorAll('.disp, .bigdrop').forEach(dv => {
+    dv.ondragover = e => { e.preventDefault(); dv.classList.add('drop'); };
+    dv.ondragleave = e => { if (!dv.contains(e.relatedTarget)) dv.classList.remove('drop'); };
+    dv.ondrop = e => { e.preventDefault(); dv.classList.remove('drop'); dragging = null; place(dv.dataset.d, +e.dataTransfer.getData('text/p')); };
+    dv.onclick = e => { if (picked != null && !e.target.closest('button')) { place(dv.dataset.d, picked); } };
+  });
+  root.querySelectorAll('[data-power]').forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    const id = b.dataset.power, st = state[id], before = snapshot();
+    st.on = !st.on; addMenu = null;
+    if (!st.on && editing === id) closeEditor();
+    if (!st.on && st.players.length) { const n = st.players.length; st.players = []; relayout(id); render(); toast(`${D(id).name} is off; ${n} ${n === 1 ? 'player' : 'players'} back in the tray`, () => restore(before)); }
+    else { render(); toast(`${D(id).name} ${st.on ? 'on' : 'off'}`); }
+  });
+  root.querySelectorAll('[data-add]').forEach(b => b.onclick = e => { e.stopPropagation(); addMenu = addMenu === b.dataset.add ? null : b.dataset.add; picked = null; render(); });
+  root.querySelectorAll('[data-addp]').forEach(b => b.onclick = e => { e.stopPropagation(); const [did, p] = b.dataset.addp.split(':'); addMenu = null; place(did, +p); });
+  root.querySelectorAll('[data-edit]').forEach(b => b.onclick = e => { e.stopPropagation(); openEditor(b.dataset.edit); });
+  root.querySelectorAll('[data-shape]').forEach(b => b.onclick = e => {
+    e.stopPropagation(); const [did, k] = b.dataset.shape.split(':'), st = state[did];
+    if (k === 'custom') { if (!st.custom) { st.custom = {}; boxesOf(did); walk(st.tree).leaves.forEach(({ slot, box }) => { st.custom[st.players[slot]] = box.slice(); }); } }
+    else { st.custom = null; st.shape = k; st.tree = SHAPES[st.players.length][k](); }
+    renderAll();
+  });
+  root.querySelectorAll('[data-even]').forEach(b => b.onclick = () => { const st = state[b.dataset.even]; st.custom = null; st.tree = SHAPES[st.players.length][st.shape](); renderAll(); });
+  const off = $('#offzone');
+  if (off) {
+    off.ondragover = e => { e.preventDefault(); off.classList.add('drop'); };
+    off.ondragleave = () => off.classList.remove('drop');
+    off.ondrop = e => { e.preventDefault(); off.classList.remove('drop'); dragging = null; removeP(+e.dataTransfer.getData('text/p')); renderAll(); };
+  }
+  const cp = $('#cancelPick'); if (cp) cp.onclick = e => { e.stopPropagation(); picked = null; render(); };
+}
+function place(did, p) {
+  const st = state[did];
+  if (st.players.includes(p)) { picked = null; return renderAll(); }
+  if (st.players.length >= 4) { toast(`${D(did).name} already has four players`); return renderAll(); }
+  const from = placedOn(p);
+  addTo(did, p); picked = null;
+  toast(from ? `${PLAYERS[p]} moved from the ${from.name} to the ${D(did).name}` : `${PLAYERS[p]} is on the ${D(did).name}`);
+  renderAll();
+}
+
+// ---------- the pop-up editor ----------
+function openEditor(did) { editing = did; selected = null; picked = null; addMenu = null; renderEditor(); $('#scrim').classList.add('on'); render(); }
+function closeEditor() { editing = null; $('#scrim').classList.remove('on'); render(); }
+function renderEditor() {
+  const did = editing, d = D(did), st = state[did], n = st.players.length;
+  const maxW = Math.min(540, ($('#win').clientWidth || 900) - 380), W = portrait(d) ? Math.min(230, maxW) : maxW, H = W * d.px[1] / d.px[0];
+  const others = PLAYERS.map((_, p) => p).filter(p => !st.players.includes(p));
+  const leaves = boxesOf(did), custom = !!st.custom, clash = clashing(did);
+  $('#sheet').innerHTML = `
+    <div class="hd"><div><h2 id="sheetTitle">${d.name}</h2><div class="sub">${d.px[0]} x ${d.px[1]} · ${d.hz} Hz · ${n ? `${n} ${n === 1 ? 'player' : 'players'}` : 'nobody yet'}</div></div>
+      <div class="spacer"></div><button class="btn primary" id="done">Done</button></div>
+    <div class="sheetgrid">
+      <div>
+        <div class="shapes"><span class="lbl">Shape</span>${n ? Object.entries(SHAPES[n]).map(([k, f]) => `<button class="shape" data-shape="${did}:${k}" aria-pressed="${!custom && st.shape === k}" title="${SHAPE_NAMES[k]}">${shapeIcon(f())}</button>`).join('')
+            + `<button class="shape custom" data-shape="${did}:custom" aria-pressed="${custom}" title="Custom: place each player anywhere">${ICON.custom}<span>Custom</span></button>`
+            + (n >= 2 && !custom ? `<button class="btn small ghost" data-even="${did}" title="Give everyone on this screen the same size again">Equal sizes</button>` : '')
+          : `<span class="note">Add players to choose how the screen is split.</span>`}</div>
+        <div class="big bigdrop" data-d="${did}" style="width:${W + 20}px;height:${H + 20}px"><div class="glass" data-glass="${did}">
+          ${custom ? `<div class="freebg"></div>${(g => g ? `<div class="gaplabel" style="left:${g[0] * 100}%;top:${g[1] * 100}%;width:${g[2] * 100}%;height:${g[3] * 100}%"><span>${ICON.monitor}Your desktop shows here</span><small>${Math.round(d.px[0] * g[2])} x ${Math.round(d.px[1] * g[3])} free</small></div>` : '')(biggestGap(did))}` : ''}
+          ${n ? tilesHTML(d, { width: W, nodelay: true, free: custom }) + (custom ? '' : gripsHTML(did)) : `<div class="empty-msg big-empty">${ICON.plus}<span>Drag a player here, or add one from the list</span></div>`}
+          ${dropHint(did)}</div></div>
+        ${custom ? `<p class="note">Drag a player to move them, drag a corner to resize. Edges snap to the screen, to each other and to a grid. Leave gaps for Discord, a map or a stream.${clash.size ? ' <b style="color:var(--bad)">Some players overlap; move them apart.</b>' : ''}</p>`
+          : n >= 2 ? '<p class="note">Drag the round handles to resize; they snap to halves and thirds. Drag one player onto another to swap.</p>' : ''}
+      </div>
+      <div class="side">
+        <h4>On this screen</h4>
+        ${n ? `<div class="plist">${st.players.map((p, i) => { const leaf = leaves.find(l => l.slot === i), res = resOf(d, leaf.box), q = quality(res);
+          return `<div class="prow"><i style="background:${PCOL[p]}">${p + 1}</i><span><b>${PLAYERS[p]}</b><small style="${q === 'ok' ? '' : `color:var(--${q === 'bad' ? 'bad' : 'warn'})`}">${res[0]} x ${res[1]}${q === 'ok' ? '' : q === 'bad' ? ', too small' : ', small'}</small></span><button class="x2" data-remove="${p}" aria-label="Take ${PLAYERS[p]} off" title="Take ${PLAYERS[p]} off">${ICON.x}</button></div>`; }).join('')}</div>`
+          : '<p class="note" style="margin:0">Nobody yet.</p>'}
+        <h4>Add to this screen</h4>
+        ${others.length ? `<div class="plist">${others.map(p => `<button class="prow add" data-addp="${did}:${p}" ${n >= 4 ? 'disabled' : ''}><i style="background:${PCOL[p]}">${p + 1}</i><span><b>${PLAYERS[p]}</b><small>${whereIs(p)}</small></span><span class="plus">${ICON.plus}</span></button>`).join('')}</div>`
+          : '<p class="note" style="margin:0">Everyone is on this screen.</p>'}
+      </div>
+    </div>`;
+  $('#done').onclick = closeEditor;
+  wire($('#sheet')); bindGrips(did, renderEditor); if (custom) bindFree(did);
+}
+
+// Custom mode: move a player by dragging them, resize from a corner. Snaps to edges, other players and a 2.5% grid.
+function bindFree(did) {
+  const st = state[did], glass = $(`[data-glass="${did}"]`); if (!glass) return;
+  const SNAP = .02, GRID = .025, MINW = .12, MINH = .12;
+  const snapEdges = (val, p) => {
+    const lines = [0, 1];
+    for (const q of st.players) if (q !== p) { const r = st.custom[q]; lines.push(r[0], r[0] + r[2], r[1], r[1] + r[3]); }
+    for (const l of lines) if (Math.abs(val - l) < SNAP) return l;
+    return Math.round(val / GRID) * GRID;
+  };
+  const start = (e, p, corner) => {
+    e.preventDefault(); e.stopPropagation();
+    const rect = glass.getBoundingClientRect(), r0 = st.custom[p].slice(), x0 = e.clientX, y0 = e.clientY;
+    selected = { did, p };
+    const move = ev => {
+      const dx = (ev.clientX - x0) / rect.width, dy = (ev.clientY - y0) / rect.height;
+      let [x, y, w, h] = r0;
+      if (!corner) {
+        x = Math.min(1 - w, Math.max(0, x + dx)); y = Math.min(1 - h, Math.max(0, y + dy));
+        const sx = snapEdges(x, p), sxr = snapEdges(x + w, p); x = Math.abs(sx - x) <= Math.abs(sxr - (x + w)) ? sx : sxr - w;
+        const sy = snapEdges(y, p), syb = snapEdges(y + h, p); y = Math.abs(sy - y) <= Math.abs(syb - (y + h)) ? sy : syb - h;
+        x = Math.min(1 - w, Math.max(0, x)); y = Math.min(1 - h, Math.max(0, y));
+      } else {
+        let L = x, T = y, R = x + w, B = y + h;
+        if (corner.includes('w')) L = Math.min(R - MINW, Math.max(0, snapEdges(L + dx, p)));
+        if (corner.includes('e')) R = Math.max(L + MINW, Math.min(1, snapEdges(R + dx, p)));
+        if (corner.includes('n')) T = Math.min(B - MINH, Math.max(0, snapEdges(T + dy, p)));
+        if (corner.includes('s')) B = Math.max(T + MINH, Math.min(1, snapEdges(B + dy, p)));
+        x = L; y = T; w = R - L; h = B - T;
+      }
+      st.custom[p] = [x, y, w, h];
+      renderEditor();
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); renderAll(); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+  $$('#sheet [data-move]').forEach(f => f.onpointerdown = e => { if (e.target.closest('button')) return; start(e, +f.dataset.move, null); });
+  $$('#sheet [data-corner]').forEach(c => c.onpointerdown = e => { const [p, k] = c.dataset.corner.split(':'); start(e, +p, k); });
+}
+
+// ---------- identify ----------
+$('#identify').onclick = () => {
+  DISPLAYS.forEach(d => {
+    const g = document.querySelector(`.room [data-flash="${d.id}"]`); if (!g) return;
+    const f = document.createElement('div'); f.className = 'flash'; f.innerHTML = `${d.name}<small>${d.px[0]} x ${d.px[1]} · ${d.hz} Hz</small>`; g.appendChild(f); setTimeout(() => f.remove(), 1900);
+  });
+  toast('Each real screen shows its name for a moment');
+};
+$('#scrim').onclick = e => { if (e.target.id === 'scrim') closeEditor(); };
+document.addEventListener('click', e => { if (addMenu && !e.target.closest('.addwrap')) { addMenu = null; render(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (editing) closeEditor(); else if (picked != null || addMenu) { picked = null; addMenu = null; render(); } } });
+window.addEventListener('resize', renderAll);
+render();
+if (location.search.includes('demo=edit')) openEditor('tv');
+if (location.search.includes('demo=custom')) { const st = state.tv; st.custom = { 0: [0, 0, .62, 1], 1: [.62, 0, .38, .55] }; openEditor('tv'); }
+if (location.search.includes('demo=pick')) { picked = 3; render(); }
+if (location.search.includes('demo=add')) { addMenu = 'mon'; render(); }
+
+</script>

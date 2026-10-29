@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "testgame",
+  "game": "Couchlink test game",
+  "match": { "exe": "testgame.exe" },
+  "players": [1, 4],
+  "mode": "instances",
+  "steam": "none",
+  "present": "window",
+  "launch": {
+    "exe": "testgame.exe",
+    "args": "--seat $SEAT --player \"$PLAYER\" --size $WIDTHx$HEIGHT --at $X,$Y --out \"$GAMEDIR/status.json\"",
+    "env": { "COUCHLINK_SEAT": "$SEAT", "COUCHLINK_PLAYER": "$PLAYER", "TESTGAME_MARK": "seat-$SEAT" }
+  },
+  "files": { "copy": ["config/testgame.ini"], "link": "all", "saves": [] },
+  "registry": [],
+  "locks": [],
+  "input": { "xinput": true, "dinput": false, "rawinput": false },
+  "window": { "borderless": true, "settle_ms": 300, "wait_ms": 20000 },
+  "source": "builtin"
+}

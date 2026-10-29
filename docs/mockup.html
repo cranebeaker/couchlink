@@ -1,0 +1,822 @@
+<title>Couchlink</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one app window. Sidebar = where you are, main pane = the step, a "party bar" pinned at the bottom
+   carries the session (game, seats, layout, Play) across every step, like a Now Playing bar. */
+:root {
+  --ground: #0b0c10;
+  --window: #15161b;
+  --pane: #1c1d23;
+  --raised: #24252d;
+  --hair: rgba(255,255,255,.08);
+  --hair-strong: rgba(255,255,255,.14);
+  --ink: #f4f4f6;
+  --ink-2: #a6a7b0;
+  --ink-3: #6d6e78;
+  --accent: #0a84ff;
+  --accent-ink: #ffffff;
+  --glass: rgba(28,29,35,.72);
+  --p1: #0a84ff; --p2: #ff6b5b; --p3: #30d158; --p4: #ffd60a;
+  --ok: #30d158; --warn: #ffb340;
+  --shadow: 0 30px 80px rgba(0,0,0,.55), 0 2px 6px rgba(0,0,0,.4);
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --ground: #e9e9ee; --window: #f6f6f8; --pane: #ffffff; --raised: #f0f0f4;
+    --hair: rgba(0,0,0,.08); --hair-strong: rgba(0,0,0,.14);
+    --ink: #1d1d1f; --ink-2: #5f6068; --ink-3: #8e8f97;
+    --accent: #007aff; --glass: rgba(255,255,255,.75);
+    --p1: #007aff; --p2: #f2503f; --p3: #23a94a; --p4: #d9a400;
+    --ok: #23a94a; --warn: #c97a00;
+    --shadow: 0 30px 70px rgba(30,30,50,.18), 0 2px 6px rgba(30,30,50,.08);
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --ground: #e9e9ee; --window: #f6f6f8; --pane: #ffffff; --raised: #f0f0f4;
+  --hair: rgba(0,0,0,.08); --hair-strong: rgba(0,0,0,.14);
+  --ink: #1d1d1f; --ink-2: #5f6068; --ink-3: #8e8f97;
+  --accent: #007aff; --glass: rgba(255,255,255,.75);
+  --p1: #007aff; --p2: #f2503f; --p3: #23a94a; --p4: #d9a400;
+  --ok: #23a94a; --warn: #c97a00;
+  --shadow: 0 30px 70px rgba(30,30,50,.18), 0 2px 6px rgba(30,30,50,.08);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: var(--ground); color: var(--ink); font-family: var(--font); font-size: 14px; line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  padding-block: 28px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, [tabindex]:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.caption { text-align: center; color: var(--ink-3); font-size: 12px; margin: 0 auto 14px; max-width: 70ch; }
+
+/* ---------- window ---------- */
+.win {
+  max-width: 1180px; margin: 0 auto; background: var(--window); border-radius: 14px; overflow: hidden;
+  box-shadow: var(--shadow); border: 1px solid var(--hair-strong);
+  display: grid; grid-template-rows: 38px 1fr auto; height: min(820px, calc(100vh - 90px)); min-height: 640px;
+}
+.titlebar { display: flex; align-items: center; justify-content: space-between; padding: 0 0 0 16px; border-bottom: 1px solid var(--hair); font-size: 12px; color: var(--ink-2); user-select: none; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--ink); letter-spacing: -.01em; }
+.brand svg { width: 18px; height: 18px; }
+.brand small { font-weight: 500; color: var(--ink-3); }
+.wctl { display: flex; height: 100%; }
+.wctl span { width: 46px; display: grid; place-items: center; color: var(--ink-2); }
+.wctl svg { width: 10px; height: 10px; }
+.body { display: grid; grid-template-columns: 216px 1fr; min-height: 0; }
+
+/* ---------- sidebar ---------- */
+.side { border-right: 1px solid var(--hair); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+.side h6 { margin: 14px 10px 6px; font-size: 11px; font-weight: 600; color: var(--ink-3); letter-spacing: .02em; }
+.nav { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; border: 0; background: none; text-align: left; color: var(--ink); font-size: 13.5px; }
+.nav:hover { background: var(--hair); }
+.nav[aria-current="page"] { background: var(--accent); color: var(--accent-ink); }
+.nav svg { width: 17px; height: 17px; flex: none; opacity: .9; }
+.nav .step { margin-left: auto; font-size: 11px; font-variant-numeric: tabular-nums; opacity: .6; }
+.side .spacer { flex: 1; }
+.couchmode { margin: 10px; padding: 12px; border-radius: 12px; background: var(--raised); font-size: 12px; color: var(--ink-2); }
+.couchmode b { display: block; color: var(--ink); font-size: 13px; margin-bottom: 2px; }
+.kbd { font-family: var(--mono); font-size: 11px; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--hair-strong); color: var(--ink-2); }
+
+/* ---------- main pane ---------- */
+.main { overflow-y: auto; overflow-x: hidden; min-width: 0; position: relative; }
+.view { padding: 28px 32px 40px; display: none; }
+.view.on { display: block; animation: rise .32s cubic-bezier(.2,.8,.2,1); }
+@keyframes rise { from { transform: translateY(6px); opacity: .4; } to { transform: none; opacity: 1; } }
+.head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
+.head h1 { font-family: var(--font-display); font-size: 30px; font-weight: 700; letter-spacing: -.025em; margin: 0; text-wrap: balance; }
+.head p { margin: 4px 0 0; color: var(--ink-2); max-width: 60ch; }
+.seg { display: inline-flex; padding: 2px; border-radius: 9px; background: var(--raised); border: 1px solid var(--hair); flex-wrap: wrap; }
+.seg button { border: 0; background: none; padding: 5px 12px; border-radius: 7px; font-size: 12.5px; color: var(--ink-2); }
+.seg button[aria-pressed="true"] { background: var(--pane); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.btn { border: 0; border-radius: 999px; padding: 8px 18px; font-weight: 600; font-size: 13px; background: var(--raised); border: 1px solid var(--hair); }
+.btn:hover { border-color: var(--hair-strong); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.small { padding: 5px 12px; font-size: 12px; }
+.section-label { font-size: 13px; font-weight: 600; margin: 26px 0 12px; display: flex; align-items: baseline; gap: 10px; }
+.section-label span { font-weight: 400; color: var(--ink-3); font-size: 12px; }
+
+/* ---------- library ---------- */
+.resume { display: grid; grid-template-columns: 280px 1fr; border-radius: 16px; overflow: hidden; background: var(--pane); border: 1px solid var(--hair); }
+.resume .art { min-height: 168px; }
+.resume .info { padding: 20px 22px; display: flex; flex-direction: column; gap: 10px; justify-content: center; min-width: 0; }
+.resume .eyebrow { font-size: 11px; font-weight: 600; color: var(--ink-3); letter-spacing: .04em; text-transform: uppercase; }
+.resume h2 { margin: 0; font-family: var(--font-display); font-size: 22px; letter-spacing: -.02em; }
+.resume .meta { color: var(--ink-2); font-size: 13px; }
+.resume .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.dots { display: inline-flex; gap: 4px; }
+.dots i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 18px; }
+.card { border: 0; background: none; padding: 0; text-align: left; display: flex; flex-direction: column; gap: 8px; }
+.card .art { aspect-ratio: 3/4; border-radius: 12px; transition: transform .25s cubic-bezier(.2,.8,.2,1), box-shadow .25s; box-shadow: 0 6px 18px rgba(0,0,0,.25); max-width: 100%; }
+.card:hover .art, .card:focus-visible .art { transform: translateY(-3px) scale(1.015); box-shadow: 0 14px 30px rgba(0,0,0,.35); }
+.card.sel .art { outline: 3px solid var(--accent); outline-offset: 3px; }
+.card .name { font-weight: 600; font-size: 13.5px; line-height: 1.25; }
+.card .sub { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--ink-2); flex-wrap: wrap; }
+.art { position: relative; overflow: hidden; display: flex; align-items: flex-end; padding: 14px; color: #fff; }
+.art .mark { font-family: var(--font-display); font-weight: 800; letter-spacing: -.03em; line-height: .95; font-size: 21px; text-shadow: 0 2px 12px rgba(0,0,0,.35); text-wrap: balance; position: relative; }
+.art::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 45%, rgba(0,0,0,.45)); }
+.art .mark { z-index: 1; }
+.tag { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--hair-strong); color: var(--ink-2); white-space: nowrap; }
+.tag.native { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+.tag.sdk { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.tag.recipe { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { border: 1px solid var(--hair-strong); background: none; border-radius: 999px; padding: 5px 12px; font-size: 12.5px; color: var(--ink-2); }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--window); border-color: var(--ink); }
+
+/* game sheet */
+.sheet { position: absolute; top: 0; right: 0; bottom: 0; width: min(380px, 100%); background: var(--glass); backdrop-filter: blur(30px) saturate(1.6); -webkit-backdrop-filter: blur(30px) saturate(1.6); border-left: 1px solid var(--hair-strong); transform: translateX(105%); transition: transform .35s cubic-bezier(.2,.8,.2,1); display: flex; flex-direction: column; z-index: 5; }
+.sheet.open { transform: none; }
+.sheet .art { height: 200px; flex: none; }
+.sheet .art .mark { font-size: 30px; }
+.sheet .in { padding: 18px 22px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+.sheet h3 { margin: 0; font-size: 20px; font-family: var(--font-display); letter-spacing: -.02em; }
+.facts { display: grid; gap: 0; border-radius: 12px; background: var(--pane); border: 1px solid var(--hair); }
+.facts div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; font-size: 13px; border-top: 1px solid var(--hair); }
+.facts div:first-child { border-top: 0; }
+.facts dt { color: var(--ink-2); }
+.facts dd { margin: 0; text-align: right; font-weight: 500; }
+.close { position: absolute; top: 12px; right: 12px; width: 28px; height: 28px; border-radius: 50%; border: 0; background: rgba(0,0,0,.45); color: #fff; z-index: 2; display: grid; place-items: center; }
+
+/* ---------- players ---------- */
+.devices { display: flex; gap: 10px; flex-wrap: wrap; }
+.dev { display: flex; align-items: center; gap: 10px; padding: 9px 14px 9px 10px; border-radius: 12px; background: var(--pane); border: 1px solid var(--hair); cursor: grab; user-select: none; min-width: 0; }
+.dev svg { width: 30px; height: 30px; flex: none; color: var(--ink-2); }
+.dev b { display: block; font-size: 13px; font-weight: 600; }
+.dev small { color: var(--ink-3); font-size: 11.5px; }
+.dev.waiting small { color: var(--accent); animation: breathe 1.8s ease-in-out infinite; }
+.dev.seated { opacity: .45; cursor: default; }
+@keyframes breathe { 50% { opacity: .35; } }
+.seats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; }
+.seat { border-radius: 18px; background: var(--pane); border: 1px solid var(--hair); padding: 18px; display: flex; flex-direction: column; gap: 14px; min-height: 250px; position: relative; transition: border-color .2s, transform .2s; }
+.seat.drop { border-color: var(--accent); transform: scale(1.01); }
+.seat.empty { border-style: dashed; background: transparent; align-items: center; justify-content: center; text-align: center; color: var(--ink-3); }
+.seat .num { width: 44px; height: 44px; border-radius: 13px; display: grid; place-items: center; font-family: var(--font-display); font-weight: 800; font-size: 22px; color: #fff; }
+.seat .who { font-family: var(--font-display); font-size: 18px; font-weight: 700; letter-spacing: -.02em; background: none; border: 0; padding: 0; color: var(--ink); width: 100%; }
+.seat .who:focus { outline: none; border-bottom: 1px solid var(--accent); }
+.seat .devline { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--ink-2); }
+.seat .devline svg { width: 20px; height: 20px; }
+.stick { width: 54px; height: 54px; border-radius: 50%; border: 1px solid var(--hair-strong); position: relative; flex: none; }
+.stick i { position: absolute; width: 16px; height: 16px; border-radius: 50%; left: 19px; top: 19px; transition: transform .08s linear; }
+.seat .live { display: flex; align-items: center; gap: 12px; margin-top: auto; }
+.btns { display: grid; grid-template-columns: repeat(2, 12px); gap: 5px; }
+.btns i { width: 12px; height: 12px; border-radius: 50%; border: 1px solid var(--hair-strong); display: block; transition: background .08s; }
+.seat .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.x { position: absolute; top: 12px; right: 12px; width: 24px; height: 24px; border-radius: 50%; border: 0; background: var(--raised); color: var(--ink-2); display: grid; place-items: center; }
+.empty .ring { width: 56px; height: 56px; border-radius: 50%; border: 2px dashed var(--hair-strong); display: grid; place-items: center; font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+.empty b { color: var(--ink-2); font-size: 13px; }
+.hint { color: var(--ink-3); font-size: 12px; margin-top: 12px; }
+
+/* ---------- screens ---------- */
+.stage { background: var(--pane); border: 1px solid var(--hair); border-radius: 18px; padding: 26px; overflow-x: auto; }
+.mons { position: relative; margin: 0 auto; }
+.mon { position: absolute; border-radius: 9px; background: #000; padding: 5px; box-shadow: 0 0 0 1px var(--hair-strong); }
+.mon.off { opacity: .45; }
+.mon.remote { box-shadow: 0 0 0 1px var(--hair-strong), 0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent); }
+.link { position: absolute; height: 0; border-top: 2px dashed color-mix(in srgb, var(--accent) 70%, transparent); }
+.link span { position: absolute; left: 50%; top: -24px; transform: translateX(-50%); font-size: 11px; color: var(--accent); white-space: nowrap; font-weight: 600; }
+.mon .lbl { position: absolute; left: 0; right: 0; bottom: -22px; text-align: center; font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+.mon .lbl b { color: var(--ink-2); font-weight: 600; }
+.tiles { position: absolute; inset: 5px; display: grid; gap: 3px; border-radius: 5px; overflow: hidden; }
+.tile { border-radius: 3px; display: grid; place-items: center; color: #fff; font-weight: 700; font-family: var(--font-display); font-size: 15px; cursor: grab; position: relative; transition: filter .15s; text-align: center; line-height: 1.1; padding: 4px; }
+.tile.fit { background: #000; container-type: size; padding: 0; }
+.tile.fit .pic { width: min(100cqw, calc(100cqh * 16 / 9)); aspect-ratio: 16 / 9; border-radius: 3px; display: grid; place-items: center; }
+.tile small { display: block; font-weight: 500; font-size: 10.5px; opacity: .85; font-family: var(--font); }
+.tile.drop { filter: brightness(1.25); outline: 2px solid #fff; outline-offset: -2px; }
+.tile.idle { background: repeating-linear-gradient(45deg, #1d1e24 0 6px, #24252c 6px 12px); color: #6d6e78; cursor: default; }
+.opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 18px; }
+.opt { background: var(--pane); border: 1px solid var(--hair); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.opt h4 { margin: 0; font-size: 13px; }
+.opt p { margin: 0; color: var(--ink-2); font-size: 12.5px; }
+.toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
+.sw { width: 38px; height: 22px; border-radius: 999px; background: var(--raised); border: 1px solid var(--hair-strong); position: relative; flex: none; padding: 0; }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .2s; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+.sw[aria-checked="true"] { background: var(--ok); border-color: transparent; }
+.sw[aria-checked="true"]::after { transform: translateX(16px); }
+.audio-row { display: grid; grid-template-columns: 20px 1fr; gap: 10px; align-items: center; font-size: 12.5px; }
+.audio-row i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+select { background: var(--raised); color: var(--ink); border: 1px solid var(--hair-strong); border-radius: 7px; padding: 4px 8px; font: inherit; font-size: 12.5px; width: 100%; min-width: 0; }
+
+/* ---------- discover ---------- */
+.search { display: flex; align-items: center; gap: 8px; background: var(--raised); border: 1px solid var(--hair); border-radius: 10px; padding: 7px 12px; min-width: 240px; }
+.search input { border: 0; background: none; color: var(--ink); font: inherit; outline: none; width: 100%; }
+.search svg { width: 15px; height: 15px; color: var(--ink-3); flex: none; }
+.list { border-radius: 14px; background: var(--pane); border: 1px solid var(--hair); overflow: hidden; }
+.item { display: grid; grid-template-columns: 52px minmax(0,1.4fr) minmax(0,1fr) 110px auto; gap: 16px; align-items: center; padding: 12px 16px; border-top: 1px solid var(--hair); }
+.item:first-child { border-top: 0; }
+.item .art { width: 52px; height: 52px; border-radius: 10px; padding: 0; }
+.item .art::after { display: none; }
+.item b { display: block; font-size: 13.5px; }
+.item small { color: var(--ink-3); font-size: 12px; }
+.meter { height: 6px; border-radius: 999px; background: var(--raised); overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--ok); border-radius: inherit; }
+.pct { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; margin-top: 4px; }
+
+/* ---------- developers ---------- */
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; }
+.stepc { background: var(--pane); border: 1px solid var(--hair); border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.stepc .n { font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: .04em; text-transform: uppercase; }
+.stepc h4 { margin: 0; font-size: 15px; letter-spacing: -.01em; }
+.stepc p { margin: 0; color: var(--ink-2); font-size: 12.5px; }
+pre { margin: 0; background: var(--ground); border: 1px solid var(--hair); border-radius: 10px; padding: 12px 14px; font-family: var(--mono); font-size: 11.5px; line-height: 1.55; overflow-x: auto; color: var(--ink-2); }
+pre .k { color: var(--accent); } pre .s { color: var(--p3); } pre .c { color: var(--ink-3); }
+.tiers { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; }
+.tier { padding: 14px; border-radius: 14px; border: 1px solid var(--hair); background: var(--pane); display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.tier p { margin: 0; color: var(--ink-2); font-size: 12px; }
+
+/* ---------- party bar ---------- */
+.party { border-top: 1px solid var(--hair); background: var(--glass); backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5); display: grid; grid-template-columns: minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr) auto; gap: 20px; align-items: center; padding: 12px 18px; }
+.pslot { display: flex; align-items: center; gap: 12px; min-width: 0; border: 0; background: none; text-align: left; padding: 4px; border-radius: 10px; }
+.pslot:hover { background: var(--hair); }
+.pslot .art { width: 42px; height: 42px; border-radius: 9px; flex: none; padding: 0; }
+.pslot .art::after { display: none; }
+.pslot small { display: block; font-size: 11px; color: var(--ink-3); }
+.pslot b { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini { width: 42px; height: 28px; border-radius: 5px; background: #000; padding: 2px; display: grid; gap: 1.5px; flex: none; }
+.mini i { border-radius: 1.5px; display: block; }
+.play { display: flex; align-items: center; gap: 8px; padding: 11px 26px; font-size: 14px; }
+.play svg { width: 13px; height: 13px; }
+.play:disabled { opacity: .45; cursor: not-allowed; filter: none; }
+
+/* ---------- launch overlay ---------- */
+.launch { position: fixed; inset: 0; background: rgba(5,6,10,.55); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); display: grid; place-items: center; z-index: 50; padding: 16px; opacity: 0; pointer-events: none; transition: opacity .25s; }
+.launch.on { opacity: 1; pointer-events: auto; }
+.lcard { width: min(560px, 100%); background: var(--window); border-radius: 22px; border: 1px solid var(--hair-strong); box-shadow: var(--shadow); padding: 26px; display: flex; flex-direction: column; gap: 18px; max-height: calc(100vh - 32px); overflow-y: auto; }
+.lcard h2 { margin: 0; font-family: var(--font-display); font-size: 22px; letter-spacing: -.02em; }
+.lcard > p { margin: -10px 0 0; color: var(--ink-2); }
+.lrow { display: grid; grid-template-columns: 34px 1fr auto; gap: 12px; align-items: center; }
+.lrow .num { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; font-weight: 800; font-family: var(--font-display); }
+.lrow b { font-size: 13px; display: block; }
+.lrow small { font-size: 12px; color: var(--ink-3); }
+.bar { height: 4px; border-radius: 999px; background: var(--raised); overflow: hidden; margin-top: 6px; }
+.bar i { display: block; height: 100%; width: 0; border-radius: inherit; transition: width .5s cubic-bezier(.2,.8,.2,1); }
+.check { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; border: 1.5px solid var(--hair-strong); color: transparent; transition: all .25s; }
+.check.done { background: var(--ok); border-color: var(--ok); color: #fff; }
+.check svg { width: 12px; height: 12px; }
+.ingame { border-radius: 14px; background: #000; aspect-ratio: 16/9; display: grid; gap: 3px; padding: 3px; max-width: 100%; }
+.ingame div { border-radius: 9px; display: grid; place-items: center; color: #fff; font-weight: 700; font-family: var(--font-display); position: relative; overflow: hidden; }
+.ingame div::before { content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse at 30% 20%, rgba(255,255,255,.25), transparent 60%); }
+.lfoot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.lfoot span { font-size: 12px; color: var(--ink-3); }
+
+.toast { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 20px); background: var(--ink); color: var(--window); padding: 9px 16px; border-radius: 999px; font-size: 13px; font-weight: 500; opacity: 0; transition: all .25s; z-index: 60; pointer-events: none; max-width: calc(100% - 32px); }
+.toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+/* ---------- small screens ---------- */
+@media (max-width: 900px) {
+  .seats { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .steps, .tiers { grid-template-columns: 1fr; }
+  .party { grid-template-columns: 1fr 1fr; }
+  .party .pslot.layout { display: none; }
+  .item { grid-template-columns: 44px minmax(0,1fr) auto; }
+  .item .col-status, .item .col-pct { display: none; }
+}
+@media (max-width: 760px) {
+  body { padding-block: 12px; }
+  .win { height: auto; min-height: 0; grid-template-rows: 38px auto auto; }
+  .body { grid-template-columns: 1fr; }
+  .side { flex-direction: row; border-right: 0; border-bottom: 1px solid var(--hair); overflow-x: auto; padding: 8px; }
+  .side h6, .side .spacer, .couchmode, .nav .step { display: none; }
+  .nav { flex: none; }
+  .view { padding: 20px 16px 28px; }
+  .resume { grid-template-columns: 1fr; }
+  .party { grid-template-columns: 1fr auto; }
+  .party .pslot.seatsum { display: none; }
+  .head h1 { font-size: 25px; }
+  .wctl { display: none; }
+}
+@media (max-width: 460px) {
+  .seats { grid-template-columns: 1fr; }
+  .grid { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+
+<p class="caption">Mockup of Couchlink, a couch co-op app for Co-op Anything. Everything works with the mouse; plug in real controllers and press a button to join. Keys 1 to 4 fake a controller press.</p>
+
+<div class="win" id="win">
+  <div class="titlebar">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none"><rect x="2" y="9" width="20" height="9" rx="4" fill="var(--accent)"/><rect x="5" y="5" width="14" height="8" rx="3.5" fill="var(--accent)" opacity=".55"/><rect x="4" y="18" width="2.4" height="3" rx="1" fill="var(--ink-2)"/><rect x="17.6" y="18" width="2.4" height="3" rx="1" fill="var(--ink-2)"/></svg>
+      Couchlink
+    </div>
+    <div class="wctl" aria-hidden="true">
+      <span><svg viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor"/></svg></span>
+      <span><svg viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9" fill="none" stroke="currentColor"/></svg></span>
+      <span><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor"/></svg></span>
+    </div>
+  </div>
+
+  <div class="body">
+    <nav class="side" aria-label="Sections">
+      <h6>Play</h6>
+      <button class="nav" data-view="library" aria-current="page"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></svg>Library<span class="step">1</span></button>
+      <button class="nav" data-view="players"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 7h8a4 4 0 0 1 3.9 4.9l-.6 2.6a2 2 0 0 1-3.5.8L12.5 14h-5l-1.3 1.3a2 2 0 0 1-3.5-.8l-.6-2.6A4 4 0 0 1 6 7z"/><path d="M6.5 9.5v2M5.5 10.5h2"/><circle cx="13.5" cy="10" r=".6" fill="currentColor"/><circle cx="14.8" cy="11.4" r=".6" fill="currentColor"/></svg>Players<span class="step">2</span></button>
+      <button class="nav" data-view="screens"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="3.5" width="15" height="10" rx="1.5"/><path d="M10 3.5v10M7 17h6"/></svg>Screens<span class="step">3</span></button>
+      <h6>Find more</h6>
+      <button class="nav" data-view="discover"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7.5"/><path d="M12.8 7.2l-1.6 4-4 1.6 1.6-4z"/></svg>Co-op Anything</button>
+      <button class="nav" data-view="dev"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 6l-4 4 4 4M13 6l4 4-4 4"/></svg>Add your game</button>
+      <div class="spacer"></div>
+      <div class="couchmode"><b>Couch mode</b>Hold <span class="kbd">Guide</span> on any controller to open Couchlink full screen, driven by the pad.</div>
+    </nav>
+
+    <main class="main" id="main">
+      <!-- LIBRARY -->
+      <section class="view on" id="v-library">
+        <div class="head">
+          <div><h1>Library</h1><p>Games on this PC that Couchlink can split. Pick one, then bring in your players.</p></div>
+          <div class="chips" id="filters"></div>
+        </div>
+        <div class="resume" id="resume"></div>
+        <div class="section-label">Ready for the couch <span id="libcount"></span></div>
+        <div class="grid" id="grid"></div>
+      </section>
+
+      <!-- PLAYERS -->
+      <section class="view" id="v-players">
+        <div class="head">
+          <div><h1>Who's playing?</h1><p>Press any button on a controller to take a seat. Drag a device onto a seat to move it. Each seat keeps its own saves.</p></div>
+          <button class="btn small" id="identify">Identify all</button>
+        </div>
+        <div class="section-label">Devices <span>found on this PC</span></div>
+        <div class="devices" id="devices"></div>
+        <div class="section-label">Seats <span id="seatcount"></span></div>
+        <div class="seats" id="seats"></div>
+        <p class="hint">Keyboard and mouse can take a seat too. Couchlink gives each copy of the game only its own devices, so nobody steers someone else.</p>
+      </section>
+
+      <!-- SCREENS -->
+      <section class="view" id="v-screens">
+        <div class="head">
+          <div><h1>Screens</h1><p>Choose how the picture is split. Drag a player onto another to swap places.</p></div>
+          <div class="seg" id="layouts" role="group" aria-label="Layout"></div>
+        </div>
+        <div class="stage"><div class="mons" id="mons"></div></div>
+        <div class="opts">
+          <div class="opt">
+            <h4>Displays</h4>
+            <div class="toggle">Use the TV as well<button class="sw" id="sw-tv" role="switch" aria-checked="false" aria-label="Use the TV as well"></button></div>
+            <div class="toggle">Add Den PC (second PC)<button class="sw" id="sw-pc2" role="switch" aria-checked="false" aria-label="Add Den PC"></button></div>
+            <p>A second PC runs some players' copies on its own screen and sends their sound back to these speakers.</p>
+          </div>
+          <div class="opt">
+            <h4>Picture</h4>
+            <div class="toggle">Keep 16:9 inside each part<button class="sw" id="sw-fit" role="switch" aria-checked="true" aria-label="Keep 16:9"></button></div>
+            <div class="toggle">Hide the taskbar while playing<button class="sw" id="sw-task" role="switch" aria-checked="true" aria-label="Hide the taskbar"></button></div>
+          </div>
+          <div class="opt">
+            <h4>Sound</h4>
+            <div id="audio" style="display:grid;gap:8px"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- DISCOVER -->
+      <section class="view" id="v-discover">
+        <div class="head">
+          <div><h1>Co-op Anything</h1><p>Every co-op mod the community tracks, live from coopanything.app. Games that work with Couchlink can be set up in one click.</p></div>
+          <label class="search"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="5"/><path d="M11 11l3.5 3.5"/></svg><input id="q" placeholder="Search 342 projects" aria-label="Search projects"></label>
+        </div>
+        <div class="chips" id="dfilters" style="margin-bottom:16px"></div>
+        <div class="list" id="dlist"></div>
+      </section>
+
+      <!-- DEVELOPERS -->
+      <section class="view" id="v-dev">
+        <div class="head">
+          <div><h1>Add your game</h1><p>Made a co-op mod? Three steps and Couchlink can launch it split-screen for everyone on the Co-op Anything list.</p></div>
+          <button class="btn small" id="validate">Check my couchlink.json</button>
+        </div>
+        <div class="tiers">
+          <div class="tier"><span class="tag native">Native</span><p>The game already has split-screen. Couchlink only hands out controllers and opens it full screen.</p></div>
+          <div class="tier"><span class="tag sdk">Couchlink SDK</span><p>Your mod asks Couchlink which seat it is, which pad to read and where to draw. Cleanest result.</p></div>
+          <div class="tier"><span class="tag recipe">Recipe</span><p>No code in the game. A couchlink.json tells Couchlink how to run several copies side by side.</p></div>
+          <div class="tier"><span class="tag">Try it</span><p>No recipe yet. Couchlink guesses with safe defaults and you report how it went.</p></div>
+        </div>
+        <div class="section-label">Three steps</div>
+        <div class="steps">
+          <div class="stepc"><span class="n">Step 1</span><h4>Describe the game</h4><p>Drop a couchlink.json next to your mod. Couchlink reads it when the game is found.</p>
+<pre>{
+  <span class="k">"game"</span>: <span class="s">"Fallout: New Vegas"</span>,
+  <span class="k">"steamAppId"</span>: 22380,
+  <span class="k">"players"</span>: [2, 4],
+  <span class="k">"mode"</span>: <span class="s">"instances"</span>,
+  <span class="k">"exe"</span>: <span class="s">"FalloutNV.exe"</span>,
+  <span class="k">"join"</span>: { <span class="k">"loopback"</span>: 27960 },
+  <span class="k">"sdk"</span>: <span class="s">"couchlink_seat.dll"</span>
+}</pre></div>
+          <div class="stepc"><span class="n">Step 2</span><h4>Ask for your seat</h4><p>Optional. Link the tiny SDK and your mod knows its player, pad and screen rectangle.</p>
+<pre><span class="c">// C, C++, C#, Lua bindings</span>
+<span class="k">CouchlinkSeat</span> s;
+<span class="k">if</span> (couchlink_get_seat(&amp;s)) {
+  join(<span class="s">"127.0.0.1"</span>, s.port);
+  use_pad(s.pad);
+  name_player(s.name);
+}</pre></div>
+          <div class="stepc"><span class="n">Step 3</span><h4>List it</h4><p>Run <span class="kbd">/listing</span> in the Co-op Anything Discord or edit your page on the site. Tick "Works with Couchlink" and it shows up here for everyone.</p>
+<pre><span class="c"># or from your agent</span>
+coop_mcp validate couchlink.json
+<span class="c"># ALL OK: ready for the catalog</span></pre></div>
+        </div>
+      </section>
+
+      <aside class="sheet" id="sheet" aria-label="Game details"></aside>
+    </main>
+  </div>
+
+  <footer class="party" aria-label="Your session">
+    <button class="pslot" data-go="library" id="p-game"></button>
+    <button class="pslot seatsum" data-go="players" id="p-seats"></button>
+    <button class="pslot layout" data-go="screens" id="p-layout"></button>
+    <button class="btn primary play" id="play"><svg viewBox="0 0 12 12"><path d="M2 1l9 5-9 5z" fill="currentColor"/></svg><span>Play</span></button>
+  </footer>
+</div>
+
+<div class="launch" id="launch" role="dialog" aria-modal="true" aria-labelledby="ltitle">
+  <div class="lcard" id="lcard"></div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const COLORS = ['var(--p1)','var(--p2)','var(--p3)','var(--p4)'];
+const NAMES = ['Maya','Theo','Jun','Rosa'];
+
+const GAMES = [
+  { id:'fnv', name:'Fallout: New Vegas', tier:'sdk', players:[2,4], art:['#d98f2b','#5a2d0c'], mode:'4 copies, joined over 127.0.0.1', saves:'Kept per player', net:'Fallout co-op mod (Co-op Anything)', last:'Last night, 2 players, 3 h 10 min' },
+  { id:'stardew', name:'Stardew Valley', tier:'native', players:[2,4], art:['#7cc36b','#2f6b3a'], mode:'One copy, built-in split-screen', saves:'The game’s own', net:'Not needed' },
+  { id:'rl', name:'Rocket League', tier:'native', players:[2,4], art:['#3a7bd5','#0f1d47'], mode:'One copy, built-in split-screen', saves:'The game’s own', net:'Not needed' },
+  { id:'b2', name:'Borderlands 2', tier:'recipe', players:[2,4], art:['#f2c14e','#7a4a12'], mode:'4 copies, LAN between them', saves:'Kept per player', net:'Steam emulated on this PC' },
+  { id:'dx', name:'Deus Ex', tier:'sdk', players:[2,4], art:['#4f5b66','#0d1216'], mode:'Copies joined to a local co-op server', saves:'Kept per player', net:'Deus Ex co-op (Co-op Anything)' },
+  { id:'div2', name:'Divinity II', tier:'sdk', players:[2,2], art:['#b0473b','#2a0f12'], mode:'Two copies, split-screen mod', saves:'Kept per player', net:'Divinity II split-screen (Co-op Anything)' },
+  { id:'l4d2', name:'Left 4 Dead 2', tier:'recipe', players:[2,4], art:['#9a1f1f','#1c0505'], mode:'4 copies, LAN between them', saves:'Not needed', net:'Built-in LAN' },
+  { id:'pw64', name:'Pilotwings 64', tier:'native', players:[2,2], art:['#5ec8f2','#1d4f8f'], mode:'One copy, Birdman64 PC port', saves:'The game’s own', net:'Not needed' },
+  { id:'hades', name:'Hades', tier:'sdk', players:[2,2], art:['#c0392b','#3b0a1e'], mode:'One copy, local co-op mod', saves:'The game’s own', net:'Not needed' },
+  { id:'ug', name:'Unknown Game', tier:'try', players:[2,4], art:['#555a66','#202228'], mode:'Safe defaults, no recipe yet', saves:'Kept per player', net:'Guessing' },
+];
+const TIERS = { native:['native','Native'], sdk:['sdk','Couchlink SDK'], recipe:['recipe','Recipe'], try:['','Try it'] };
+
+const DEVICES = [
+  { id:'kbm', kind:'kbm', name:'Keyboard and mouse', sub:'Logitech MX Keys, G305' },
+  { id:'xb1', kind:'pad', name:'Xbox Wireless Controller', sub:'Battery 80%' },
+  { id:'ds5', kind:'pad', name:'DualSense', sub:'USB' },
+  { id:'pro', kind:'pad', name:'Switch Pro Controller', sub:'Bluetooth, battery 40%' },
+];
+const SENT = 'Living room speakers, sent from Den PC';
+const AUDIO = ['Speakers (TV, HDMI)','Headphones (front jack)','Xbox controller headset','DualSense speaker',SENT,'Muted'];
+
+const state = {
+  game:'fnv', filter:'all', layout:'auto', tv:false, fit:true, pc2:false, remote:[],
+  seats:[ {dev:'xb1', name:'Maya', audio:0}, {dev:'ds5', name:'Theo', audio:1}, null, null ],
+  live:{}, // device id -> {x,y,b:[..]}
+};
+
+const svgPad = '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 10h12a6 6 0 0 1 5.8 7.4l-.9 3.6a2.8 2.8 0 0 1-4.9 1.1L20 20h-8l-2 2.1a2.8 2.8 0 0 1-4.9-1.1l-.9-3.6A6 6 0 0 1 10 10z"/><path d="M10.5 14v4M8.5 16h4"/><circle cx="21" cy="15" r="1" fill="currentColor"/><circle cx="23.5" cy="17.5" r="1" fill="currentColor"/></svg>';
+const svgKbm = '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="11" width="19" height="11" rx="2"/><path d="M6 15h1M9.5 15h1M13 15h1M16.5 15h1M7 18.5h10"/><rect x="24" y="10" width="6" height="11" rx="3"/><path d="M27 10v3.5"/></svg>';
+const devSvg = d => d && d.kind === 'kbm' ? svgKbm : svgPad;
+const devById = id => DEVICES.find(d => d.id === id);
+const game = () => GAMES.find(g => g.id === state.game);
+const seated = () => state.seats.filter(Boolean);
+const art = (g, mark = true) => `<div class="art" style="background:linear-gradient(150deg,${g.art[0]},${g.art[1]})">${mark ? `<span class="mark">${g.name}</span>` : ''}</div>`;
+const tag = t => `<span class="tag ${TIERS[t][0]}">${TIERS[t][1]}</span>`;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 2200); }
+
+/* ---------- navigation ---------- */
+function go(view) {
+  $$('.nav').forEach(n => n.toggleAttribute('aria-current', n.dataset.view === view) || n.removeAttribute('aria-current'));
+  $$('.nav').forEach(n => n.dataset.view === view ? n.setAttribute('aria-current','page') : n.removeAttribute('aria-current'));
+  $$('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + view));
+  $('#sheet').classList.remove('open');
+  $('#main').scrollTop = 0;
+  if (view === 'screens') renderScreens();
+}
+window.addEventListener('resize', () => { if ($('#v-screens').classList.contains('on')) renderScreens(); });
+$$('.nav').forEach(n => n.onclick = () => go(n.dataset.view));
+$$('[data-go]').forEach(n => n.onclick = () => go(n.dataset.go));
+
+/* ---------- library ---------- */
+const FILTERS = [['all','All'],['native','Native'],['sdk','Couchlink SDK'],['recipe','Recipes']];
+function renderLibrary() {
+  $('#filters').innerHTML = FILTERS.map(([k,l]) => `<button class="chip" data-f="${k}" aria-pressed="${state.filter===k}">${l}</button>`).join('');
+  $$('#filters .chip').forEach(c => c.onclick = () => { state.filter = c.dataset.f; renderLibrary(); });
+  const r = GAMES[0];
+  $('#resume').innerHTML = `${art(r)}<div class="info"><span class="eyebrow">Jump back in</span><h2>${r.name}</h2>
+    <span class="meta">${r.last}. Maya and Theo, side by side on the living room TV.</span>
+    <div class="row"><button class="btn primary small" id="resume-go">Play again with the same seats</button>${tag(r.tier)}</div></div>`;
+  $('#resume-go').onclick = () => { state.game = 'fnv'; renderParty(); launch(); };
+  const list = GAMES.filter(g => state.filter === 'all' || g.tier === state.filter);
+  $('#libcount').textContent = list.length + (list.length === 1 ? ' game' : ' games');
+  $('#grid').innerHTML = list.map(g => `<button class="card ${g.id===state.game?'sel':''}" data-g="${g.id}">${art(g)}
+    <span class="name">${g.name}</span><span class="sub">${tag(g.tier)} ${g.players[0]===g.players[1]?g.players[0]:g.players.join(' to ')} players</span></button>`).join('');
+  $$('#grid .card').forEach(c => c.onclick = () => openSheet(c.dataset.g));
+}
+function openSheet(id) {
+  state.game = id; renderLibrary(); renderParty();
+  const g = game();
+  const how = { native:'Couchlink starts the game once, gives it the controllers in seat order and keeps other devices away from it.',
+    sdk:'The mod talks to Couchlink: each copy learns its seat, its controller and its part of the screen, then joins the host by itself.',
+    recipe:'A community recipe tells Couchlink how to run separate copies, keep their saves apart and connect them over a pretend LAN.',
+    try:'No recipe yet. Couchlink tries safe defaults. If it works, one tap shares the result with Co-op Anything.' }[g.tier];
+  $('#sheet').innerHTML = `<button class="close" id="sclose" aria-label="Close">✕</button>${art(g)}
+    <div class="in"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${tag(g.tier)}<span style="color:var(--ink-3);font-size:12px">${g.players.join(' to ')} players</span></div>
+    <h3>${g.name}</h3><p style="margin:0;color:var(--ink-2);font-size:13px">${how}</p>
+    <dl class="facts"><div><dt>How it runs</dt><dd>${g.mode}</dd></div><div><dt>Saves</dt><dd>${g.saves}</dd></div><div><dt>Connection</dt><dd>${g.net}</dd></div></dl>
+    <button class="btn primary" id="sgo">Choose players</button></div>`;
+  $('#sheet').classList.add('open');
+  $('#sclose').onclick = () => $('#sheet').classList.remove('open');
+  $('#sgo').onclick = () => go('players');
+}
+
+/* ---------- players ---------- */
+function seatOf(devId) { return state.seats.findIndex(s => s && s.dev === devId); }
+function join(devId) {
+  if (seatOf(devId) >= 0) return;
+  const i = state.seats.findIndex(s => !s);
+  if (i < 0) { toast('All four seats are taken'); return; }
+  state.seats[i] = { dev: devId, name: NAMES[i], audio: Math.min(i, AUDIO.length - 2) };
+  toast(`${NAMES[i]} joined as Player ${i + 1}`);
+  renderAll();
+}
+function renderPlayers() {
+  $('#devices').innerHTML = DEVICES.map(d => {
+    const s = seatOf(d.id);
+    return `<div class="dev ${s>=0?'seated':'waiting'}" draggable="${s<0}" data-dev="${d.id}" tabindex="0">${devSvg(d)}
+      <div><b>${esc(d.name)}</b><small>${s>=0 ? 'Player ' + (s+1) : (d.kind==='kbm' ? 'Click to join' : 'Press A to join')}</small></div></div>`;
+  }).join('');
+  $$('#devices .dev').forEach(el => {
+    el.onclick = () => join(el.dataset.dev);
+    el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); join(el.dataset.dev); } };
+    el.ondragstart = e => e.dataTransfer.setData('text/dev', el.dataset.dev);
+  });
+  $('#seatcount').textContent = `${seated().length} of 4 taken`;
+  $('#seats').innerHTML = state.seats.map((s, i) => {
+    if (!s) return `<div class="seat empty" data-seat="${i}"><div class="ring" style="color:${COLORS[i]}">${i+1}</div><b>Seat ${i+1} is free</b><span style="font-size:12px">Press a button to sit here</span></div>`;
+    const d = devById(s.dev);
+    return `<div class="seat" data-seat="${i}" draggable="true">
+      <button class="x" data-leave="${i}" aria-label="Remove Player ${i+1}">✕</button>
+      <div class="num" style="background:${COLORS[i]}">${i+1}</div>
+      <input class="who" value="${esc(s.name)}" data-name="${i}" aria-label="Player ${i+1} name" id="name-${i}">
+      <div class="devline">${devSvg(d)}${esc(d ? d.name : 'Unknown')}</div>
+      <div class="acts"><button class="btn small" data-rumble="${i}">${d && d.kind==='kbm' ? 'Flash' : 'Rumble'}</button><button class="btn small" data-prof="${i}">Saves</button></div>
+      <div class="live"><div class="stick"><i id="stick-${s.dev}" style="background:${COLORS[i]}"></i></div>
+      <div class="btns" id="btns-${s.dev}">${[0,1,2,3].map(() => '<i></i>').join('')}</div>
+      <span style="font-size:11.5px;color:var(--ink-3)">Live input</span></div></div>`;
+  }).join('');
+  $$('[data-leave]').forEach(b => b.onclick = e => { e.stopPropagation(); state.seats[+b.dataset.leave] = null; renderAll(); });
+  $$('[data-name]').forEach(inp => inp.oninput = () => { state.seats[+inp.dataset.name].name = inp.value || 'Player'; renderParty(); renderAudio(); });
+  $$('[data-rumble]').forEach(b => b.onclick = () => { const i = +b.dataset.rumble; pulseSeat(i); rumbleReal(state.seats[i].dev); toast(`${state.seats[i].name}’s controller is buzzing`); });
+  $$('[data-prof]').forEach(b => b.onclick = () => toast(`${state.seats[+b.dataset.prof].name} keeps their own saves for every game`));
+  $$('.seat').forEach(el => {
+    el.ondragstart = e => { if (el.dataset.seat && !el.classList.contains('empty')) e.dataTransfer.setData('text/seat', el.dataset.seat); };
+    el.ondragover = e => { e.preventDefault(); el.classList.add('drop'); };
+    el.ondragleave = () => el.classList.remove('drop');
+    el.ondrop = e => {
+      e.preventDefault(); el.classList.remove('drop');
+      const to = +el.dataset.seat, dev = e.dataTransfer.getData('text/dev'), from = e.dataTransfer.getData('text/seat');
+      if (dev) { const cur = seatOf(dev); if (cur >= 0) state.seats[cur] = null; state.seats[to] = state.seats[to] ? { ...state.seats[to], dev } : { dev, name: NAMES[to], audio: 0 }; }
+      else if (from !== '') { const f = +from; [state.seats[f], state.seats[to]] = [state.seats[to], state.seats[f]]; }
+      renderAll();
+    };
+  });
+}
+function pulseSeat(i) { const el = $(`.seat[data-seat="${i}"]`); if (!el) return; el.animate([{ transform:'translateX(0)' },{ transform:'translateX(-4px)' },{ transform:'translateX(4px)' },{ transform:'translateX(0)' }], { duration: 260, iterations: 2 }); }
+$('#identify').onclick = () => { state.seats.forEach((s, i) => s && setTimeout(() => pulseSeat(i), i * 220)); toast('Each controller lights up in its player’s colour'); };
+
+/* ---------- screens ---------- */
+const LAYOUTS = [['auto','Auto'],['lr','Side by side'],['tb','Stacked'],['grid','Grid'],['per','One per screen']];
+function effectiveLayout(n) {
+  let l = state.layout;
+  if (l === 'per' && !state.tv) l = 'auto';
+  if (l === 'auto') l = n <= 1 ? 'one' : n === 2 ? 'lr' : 'grid';
+  if ((l === 'lr' || l === 'tb') && n > 2) l = n === 3 ? l : 'grid';
+  return l;
+}
+function tilesFor(l, n) {
+  if (l === 'one') return { cols:'1fr', rows:'1fr', cells:[0] };
+  if (l === 'lr') return { cols:`repeat(${Math.max(n,1)},1fr)`, rows:'1fr', cells:[...Array(Math.max(n,2)).keys()] };
+  if (l === 'tb') return { cols:'1fr', rows:`repeat(${Math.max(n,1)},1fr)`, cells:[...Array(Math.max(n,2)).keys()] };
+  return { cols:'1fr 1fr', rows:'1fr 1fr', cells:[0,1,2,3] };
+}
+function renderScreens() {
+  $('#layouts').innerHTML = LAYOUTS.map(([k,l]) => `<button data-l="${k}" aria-pressed="${state.layout===k}" ${k==='per'&&!state.tv?'title="Turn on the TV first"':''}>${l}</button>`).join('');
+  $$('#layouts button').forEach(b => b.onclick = () => {
+    if (b.dataset.l === 'per' && !state.tv) { state.tv = true; toast('Turned on the TV as a second screen'); }
+    state.layout = b.dataset.l; renderAll();
+  });
+  const all = state.seats.map((s, i) => s ? i : -1).filter(i => i >= 0);
+  const order = state.pc2 ? all.filter(i => !state.remote.includes(i)) : all;
+  const ro = state.pc2 ? all.filter(i => state.remote.includes(i)) : [];
+  const n = order.length, l = effectiveLayout(n);
+  const mons = [{ name:'Monitor', size:'27″ 2560×1440', w:300, h:169, x:0, y:28, on:true }];
+  if (state.tv) mons.push({ name:'Living room TV', size:'55″ 3840×2160', w:380, h:214, x:324, y:0, on:true });
+  if (state.pc2) mons.push({ name:'Den PC', size:'24″ 1920×1080', w:250, h:141, x: Math.max(...mons.map(m => m.x + m.w)) + 96, y:36, remote:true });
+  const avail = ($('.stage').clientWidth || 760) - 54, rawW = Math.max(...mons.map(m => m.x + m.w));
+  const k = Math.min(1.25, avail / rawW);
+  mons.forEach(m => { m.w = Math.round(m.w * k); m.h = Math.round(m.h * k); m.x = Math.round(m.x * k); m.y = Math.round(m.y * k); });
+  const W = Math.max(...mons.map(m => m.x + m.w)), H = Math.max(...mons.map(m => m.y + m.h)) + 30;
+  const box = $('#mons'); box.style.width = W + 'px'; box.style.height = H + 'px';
+  let html = '';
+  const tileHtml = (seatIdx, k) => {
+    if (seatIdx === undefined || seatIdx < 0) return `<div class="tile idle">${k === undefined ? '' : 'Free'}</div>`;
+    const s = state.seats[seatIdx];
+    if (state.fit) return `<div class="tile fit" draggable="true" data-tile="${seatIdx}"><div class="pic" style="background:${COLORS[seatIdx]}"><span>${seatIdx+1}<small>${esc(s.name)}</small></span></div></div>`;
+    return `<div class="tile" draggable="true" data-tile="${seatIdx}" style="background:${COLORS[seatIdx]}">${seatIdx+1}<small>${esc(s.name)}</small></div>`;
+  };
+  const local = mons.filter(m => !m.remote);
+  if (l === 'per' && state.tv) {
+    // seats 1..n spread over monitors; extra seats share the TV in a grid
+    local.forEach((m, mi) => {
+      const mine = mi === 0 ? order.slice(0,1) : order.slice(1);
+      const t = mine.length <= 1 ? { cols:'1fr', rows:'1fr' } : mine.length === 2 ? { cols:'1fr 1fr', rows:'1fr' } : { cols:'1fr 1fr', rows:'1fr 1fr' };
+      const cells = mine.length > 2 ? [...mine, ...Array(4 - mine.length).fill(-1)] : mine.length ? mine : [-1];
+      html += `<div class="mon" style="left:${m.x}px;top:${m.y}px;width:${m.w}px;height:${m.h}px"><div class="tiles" style="grid-template-columns:${t.cols};grid-template-rows:${t.rows}">${cells.map(c => tileHtml(c, 0)).join('')}</div><div class="lbl"><b>${m.name}</b> · ${m.size}</div></div>`;
+    });
+  } else {
+    const target = state.tv ? 1 : 0;
+    local.forEach((m, mi) => {
+      let inner = '';
+      if (mi === target) {
+        const t = tilesFor(l, n);
+        const cells = t.cells.map(c => order[c] === undefined ? -1 : order[c]);
+        inner = `<div class="tiles" style="grid-template-columns:${t.cols};grid-template-rows:${t.rows}">${(n ? cells : [-1]).map(c => tileHtml(c, 0)).join('')}</div>`;
+      } else inner = `<div class="tiles" style="place-items:center;color:#55565f;font-size:11px">Desktop stays here</div>`;
+      html += `<div class="mon ${mi===target?'':'off'}" style="left:${m.x}px;top:${m.y}px;width:${m.w}px;height:${m.h}px">${inner}<div class="lbl"><b>${m.name}</b> · ${m.size}</div></div>`;
+    });
+  }
+  const rm = mons.find(m => m.remote);
+  if (rm) {
+    const last = local[local.length - 1], y = rm.y + rm.h / 2;
+    const t = ro.length <= 1 ? { cols:'1fr', rows:'1fr' } : ro.length === 2 ? { cols:'1fr 1fr', rows:'1fr' } : { cols:'1fr 1fr', rows:'1fr 1fr' };
+    const cells = ro.length > 2 ? [...ro, ...Array(4 - ro.length).fill(-1)] : ro.length ? ro : [-1];
+    html += `<div class="link" style="left:${last.x + last.w + 8}px;top:${y}px;width:${rm.x - last.x - last.w - 16}px"><span>Cable · 2 ms</span></div>`;
+    html += `<div class="mon remote" style="left:${rm.x}px;top:${rm.y}px;width:${rm.w}px;height:${rm.h}px"><div class="tiles" style="grid-template-columns:${t.cols};grid-template-rows:${t.rows}">${cells.map(c => tileHtml(c, 0)).join('')}</div><div class="lbl"><b>Den PC</b> · sound comes here</div></div>`;
+  }
+  box.innerHTML = html;
+  $$('.tile[data-tile]').forEach(t => {
+    t.ondragstart = e => e.dataTransfer.setData('text/seat', t.dataset.tile);
+    t.ondragover = e => { e.preventDefault(); t.classList.add('drop'); };
+    t.ondragleave = () => t.classList.remove('drop');
+    t.ondrop = e => { e.preventDefault(); const f = +e.dataTransfer.getData('text/seat'), to = +t.dataset.tile; if (f === to || isNaN(f)) return renderScreens();
+      [state.seats[f], state.seats[to]] = [state.seats[to], state.seats[f]]; toast('Swapped places'); renderAll(); };
+  });
+  $('#sw-tv').setAttribute('aria-checked', state.tv);
+  renderAudio();
+}
+function renderAudio() {
+  $('#audio').innerHTML = state.seats.map((s, i) => s ? `<label class="audio-row"><i style="background:${COLORS[i]}"></i>
+    <select id="audio-${i}" data-a="${i}" aria-label="${esc(s.name)} sound">${AUDIO.map((a, k) => `<option value="${k}" ${k===s.audio?'selected':''}>${esc(s.name)}: ${a}</option>`).join('')}</select></label>` : '').join('') || '<p>Nobody has joined yet.</p>';
+  $$('[data-a]').forEach(sel => sel.onchange = () => { state.seats[+sel.dataset.a].audio = +sel.value; });
+}
+['tv','fit','task','pc2'].forEach(k => { const sw = $('#sw-' + k); sw.onclick = () => {
+  const on = sw.getAttribute('aria-checked') !== 'true'; sw.setAttribute('aria-checked', on);
+  if (k === 'tv') { state.tv = on; if (!on && state.layout === 'per') state.layout = 'auto'; renderAll(); }
+  if (k === 'fit') { state.fit = on; renderScreens(); }
+  if (k === 'pc2') {
+    state.pc2 = on;
+    if (on) {
+      const all = state.seats.map((s, i) => s ? i : -1).filter(i => i >= 0);
+      state.remote = all.length >= 3 ? all.slice(2) : all.slice(-1);
+      state.remote.forEach(i => state.seats[i].audio = AUDIO.indexOf(SENT));
+      toast('Paired with Den PC over the ethernet cable');
+    }
+    renderAll();
+  }
+}; });
+
+/* ---------- discover ---------- */
+const CATALOG = [
+  { g:'fnv', mod:'Fallout New Vegas co-op', who:'Co-op Anything', status:'Playable', pct:72, couchlink:true },
+  { g:'dx', mod:'Deus Ex co-op', who:'Co-op Anything', status:'Released', pct:85, couchlink:true },
+  { g:'div2', mod:'Divinity II split-screen', who:'Co-op Anything', status:'Playable', pct:90, couchlink:true },
+  { g:'pw64', mod:'Birdman64', who:'Community', status:'Playable', pct:100, couchlink:true },
+  { g:'hades', mod:'Local co-op for Hades', who:'Community', status:'Playable', pct:80, couchlink:true },
+  { g:'ug', name:'S.T.A.L.K.E.R. Shadow of Chernobyl', art:['#6b7046','#1d1f12'], mod:'Shadow of COOP', who:'Co-op Anything', status:'Playable', pct:70, couchlink:false },
+  { g:'ug', name:'Dungeon Keeper', art:['#8b3dbf','#200b30'], mod:'KeeperFX shared keeper', who:'Co-op Anything', status:'Alpha', pct:45, couchlink:false },
+  { g:'ug', name:'Zelda: Ocarina of Time', art:['#3fa36b','#0e2a1d'], mod:'Ocarina co-op', who:'Co-op Anything', status:'Playable', pct:95, couchlink:false },
+];
+let dfilter = 'all';
+function renderDiscover() {
+  const DF = [['all','Everything'],['couchlink','Works with Couchlink'],['online','Online only']];
+  $('#dfilters').innerHTML = DF.map(([k,l]) => `<button class="chip" data-df="${k}" aria-pressed="${dfilter===k}">${l}</button>`).join('');
+  $$('[data-df]').forEach(c => c.onclick = () => { dfilter = c.dataset.df; renderDiscover(); });
+  const q = ($('#q').value || '').toLowerCase();
+  const rows = CATALOG.filter(c => (dfilter === 'all' || (dfilter === 'couchlink') === c.couchlink))
+    .map(c => ({ ...c, G: c.name ? { name:c.name, art:c.art } : GAMES.find(x => x.id === c.g) }))
+    .filter(c => !q || (c.G.name + c.mod).toLowerCase().includes(q));
+  $('#dlist').innerHTML = rows.map(c => `<div class="item">${art(c.G, false)}
+    <div><b>${esc(c.G.name)}</b><small>${esc(c.mod)} · ${esc(c.who)}</small></div>
+    <div class="col-status">${c.couchlink ? '<span class="tag sdk">Works with Couchlink</span>' : '<span class="tag">Online co-op</span>'} <small style="margin-left:6px">${c.status}</small></div>
+    <div class="col-pct"><div class="meter"><i style="width:${c.pct}%"></i></div><div class="pct">Co-op ${c.pct}%</div></div>
+    <button class="btn small ${c.couchlink?'primary':''}" data-add="${esc(c.G.name)}" data-couchlink="${c.couchlink}">${c.couchlink ? 'Set up' : 'Open page'}</button></div>`).join('')
+    || '<div class="item" style="grid-template-columns:1fr;color:var(--ink-3)">No projects match that search.</div>';
+  $$('[data-add]').forEach(b => b.onclick = () => toast(b.dataset.couchlink === 'true' ? `${b.dataset.add} added to your Library` : `Opens ${b.dataset.add} on coopanything.app`));
+}
+$('#q').oninput = renderDiscover;
+$('#validate').onclick = () => toast('couchlink.json looks good: 2 to 4 players, instances, SDK found');
+
+/* ---------- party bar ---------- */
+function renderParty() {
+  const g = game(), n = seated().length;
+  $('#p-game').innerHTML = `${art(g, false)}<div style="min-width:0"><small>Game</small><b>${g.name}</b></div>`;
+  $('#p-seats').innerHTML = `<span class="dots">${state.seats.map((s, i) => `<i style="background:${s ? COLORS[i] : 'var(--hair-strong)'}"></i>`).join('')}</span>
+    <div style="min-width:0"><small>Players</small><b>${n ? seated().map(s => esc(s.name)).join(', ') : 'Nobody yet'}</b></div>`;
+  const l = effectiveLayout(n), t = l === 'per' ? { cols:'1fr 1fr', rows:'1fr' } : tilesFor(l, n);
+  const order = state.seats.map((s, i) => s ? i : -1).filter(i => i >= 0);
+  const cells = l === 'per' ? order.slice(0, 2) : (l === 'grid' ? [0,1,2,3] : t.cells).map(c => order[c] ?? -1);
+  $('#p-layout').innerHTML = `<span class="mini" style="grid-template-columns:${t.cols};grid-template-rows:${t.rows}">${(cells.length?cells:[-1]).map(c => `<i style="background:${c >= 0 ? COLORS[c] : '#2a2b31'}"></i>`).join('')}</span>
+    <div style="min-width:0"><small>Screens</small><b>${{ one:'Full screen', lr:'Side by side', tb:'Stacked', grid:'Grid', per:'One per screen' }[l]}${state.tv ? ', on the TV' : ''}${state.pc2 ? ' + Den PC' : ''}</b></div>`;
+  const ok = n >= g.players[0] || (g.tier === 'native' && n >= 1);
+  $('#play').disabled = !ok;
+  $('#play span').textContent = ok ? `Play with ${n}` : `Need ${g.players[0]} players`;
+}
+
+/* ---------- launch ---------- */
+const STEPS = ['Making a copy for this player', 'Starting the game', 'Placing the window', 'Connecting the controller', 'Joining the host'];
+function launch() {
+  const g = game(), order = state.seats.map((s, i) => s ? i : -1).filter(i => i >= 0);
+  if (!order.length) return;
+  const single = g.tier === 'native';
+  $('#lcard').innerHTML = `<h2 id="ltitle">Starting ${g.name}</h2><p>${single ? 'One copy with built-in split-screen.' : `${order.length} copies, one per player. Your desktop comes back when you quit.`}</p>
+    <div style="display:grid;gap:14px" id="lrows">${order.map(i => `<div class="lrow"><div class="num" style="background:${COLORS[i]}">${i+1}</div>
+      <div><b>${esc(state.seats[i].name)}</b><small id="lstep-${i}">Waiting</small><div class="bar"><i id="lbar-${i}" style="background:${COLORS[i]}"></i></div></div>
+      <div class="check" id="lchk-${i}"><svg viewBox="0 0 12 12"><path d="M2.5 6.2l2.3 2.3 4.7-5" stroke="currentColor" stroke-width="1.8" fill="none"/></svg></div></div>`).join('')}</div>
+    <div class="lfoot"><span>Press <span class="kbd">Guide</span> + <span class="kbd">Start</span> any time to swap seats or end the session.</span><button class="btn small" id="lcancel">Cancel</button></div>`;
+  $('#launch').classList.add('on');
+  let cancelled = false;
+  $('#lcancel').onclick = () => { cancelled = true; $('#launch').classList.remove('on'); };
+  const base = single ? ['Starting the game', 'Handing out controllers', 'Going full screen'] : STEPS;
+  const REMOTE = ['Den PC: making a copy', 'Den PC: starting the game', 'Den PC: placing the window', 'Joining the host over the cable', 'Sending sound to this PC'];
+  const stepsFor = i => !single && state.pc2 && state.remote.includes(i) ? REMOTE : base;
+  const longest = Math.max(...order.map(i => stepsFor(i).length));
+  order.forEach((i, k) => { const steps = stepsFor(i); steps.forEach((st, j) => setTimeout(() => {
+    if (cancelled) return;
+    $('#lstep-' + i).textContent = st; $('#lbar-' + i).style.width = ((j + 1) / steps.length * 100) + '%';
+    if (j === steps.length - 1) setTimeout(() => { if (!cancelled) $('#lchk-' + i).classList.add('done'); }, 380);
+  }, 400 + k * 260 + j * 520)); });
+  setTimeout(() => { if (!cancelled) inGame(order); }, 400 + order.length * 260 + longest * 520 + 700);
+}
+function inGame(order) {
+  const l = effectiveLayout(order.length), g = game();
+  const t = l === 'per' ? { cols:'1fr', rows:'1fr' } : tilesFor(l, order.length);
+  const cells = (l === 'grid' ? [0,1,2,3] : l === 'per' ? [0] : t.cells).map(c => order[c] ?? -1);
+  $('#lcard').innerHTML = `<h2 id="ltitle">Everyone’s in</h2><p>${g.name} is running${state.tv ? ' on the TV' : ''}. This is what each screen part shows.</p>
+    <div class="ingame" style="grid-template-columns:${t.cols};grid-template-rows:${t.rows}">${cells.map(c => c >= 0 ? `<div style="background:linear-gradient(150deg,${g.art[0]},${g.art[1]})"><span style="position:relative">P${c+1} · ${esc(state.seats[c].name)}</span></div>` : '<div style="background:#15161b;color:#55565f">Free</div>').join('')}</div>
+    <div class="lfoot"><span>Session controls live on <span class="kbd">Guide</span> + <span class="kbd">Start</span>.</span>
+    <span style="display:flex;gap:8px"><button class="btn small" id="lswap">Swap seats</button><button class="btn small primary" id="lend">End session</button></span></div>`;
+  $('#lswap').onclick = () => { $('#launch').classList.remove('on'); go('screens'); };
+  $('#lend').onclick = () => { $('#launch').classList.remove('on'); toast('Session ended. Saves kept for every player.'); };
+}
+$('#play').onclick = launch;
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { $('#launch').classList.remove('on'); $('#sheet').classList.remove('open'); }
+  if (e.target.matches('input, select')) return;
+  const k = +e.key; if (k >= 1 && k <= 4) { const d = DEVICES[k - 1]; join(d.id); fakeInput(d.id); }
+});
+
+/* ---------- live input: real controllers through the Gamepad API, fake presses otherwise ---------- */
+function fakeInput(id) {
+  let t = 0; const iv = setInterval(() => { t++; state.live[id] = { x: Math.sin(t / 3), y: Math.cos(t / 4), b: [t % 4 === 0, t % 5 === 0, false, t % 7 === 0] }; if (t > 30) { clearInterval(iv); state.live[id] = { x:0, y:0, b:[] }; } }, 50);
+}
+const realPads = {};
+window.addEventListener('gamepadconnected', e => {
+  const id = 'gp' + e.gamepad.index;
+  if (!devById(id)) DEVICES.push({ id, kind:'pad', name: e.gamepad.id.replace(/\(.*\)/, '').trim().slice(0, 34) || 'Controller', sub:'Connected' });
+  realPads[id] = e.gamepad.index; toast('Controller found. Press A to join.'); renderPlayers();
+});
+window.addEventListener('gamepaddisconnected', e => { delete realPads['gp' + e.gamepad.index]; });
+function rumbleReal(id) { try { const gp = navigator.getGamepads()[realPads[id]]; gp && gp.vibrationActuator && gp.vibrationActuator.playEffect('dual-rumble', { duration: 300, strongMagnitude: .8, weakMagnitude: .5 }); } catch (e) {} }
+function tick() {
+  let pads = []; try { pads = navigator.getGamepads ? navigator.getGamepads() : []; } catch (e) {}
+  for (const id in realPads) {
+    const gp = pads[realPads[id]]; if (!gp) continue;
+    const b = gp.buttons.slice(0, 4).map(x => x.pressed);
+    if (b.some(Boolean) && seatOf(id) < 0) join(id);
+    state.live[id] = { x: gp.axes[0] || 0, y: gp.axes[1] || 0, b };
+  }
+  state.seats.forEach((s, i) => {
+    if (!s) return; const L = state.live[s.dev] || { x:0, y:0, b:[] };
+    const st = document.getElementById('stick-' + s.dev); if (st) st.style.transform = `translate(${L.x * 17}px, ${L.y * 17}px)`;
+    const bs = document.getElementById('btns-' + s.dev); if (bs) [...bs.children].forEach((el, k) => el.style.background = L.b[k] ? COLORS[i] : 'transparent');
+  });
+  requestAnimationFrame(tick);
+}
+
+function renderAll() { renderLibrary(); renderPlayers(); renderScreens(); renderParty(); }
+renderAll(); renderDiscover(); requestAnimationFrame(tick);
+</script>

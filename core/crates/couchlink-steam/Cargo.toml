@@ -1,0 +1,28 @@
+[package]
+name = "couchlink-steam"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Couchlink Steam layer: library scan, gbe_fork per-seat setup, optional second-account plan"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+sevenz-rust2 = { version = "0.20", default-features = false }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_Security",
+    "Win32_Security_Credentials",
+    "Win32_Security_Cryptography",
+    "Win32_NetworkManagement_NetManagement",
+] }
+
+[dev-dependencies]
+# Only tests build tiny 7z archives, so the encoder is not shipped.
+sevenz-rust2 = { version = "0.20", default-features = false, features = ["compress", "util"] }

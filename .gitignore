@@ -1,0 +1,16 @@
+/core/target/
+/core/target-*/
+/app/build/
+/app/.dart_tool/
+/app/.flutter-plugins*
+/app/windows/flutter/ephemeral/
+*.log
+/.brand-tmp/
+/dist/
+
+# Cargo output anywhere (extra target dirs too)
+target/
+target-*/
+
+# Hub handler scripts are third-party work: local test fixtures only, never published
+/core/crates/couchlink-nucleus/tests/fixtures/
