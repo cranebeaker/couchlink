@@ -17,7 +17,7 @@ TagKind tagKind(Tier t) => switch (t) {
       Tier.tryIt => TagKind.plain,
     };
 
-const _filters = <(String, String)>[('all', 'All'), ('native', 'Native'), ('sdk', 'Couchlink SDK'), ('recipe', 'Recipes')];
+const _filters = <(String, String)>[('all', 'All'), ('installed', 'On this PC')];
 
 class LibraryView extends StatefulWidget {
   const LibraryView({super.key});
@@ -48,7 +48,9 @@ class _LibraryViewState extends State<LibraryView> {
       builder: (context, _) {
         final catalog = scope.client.catalog;
         final all = libraryGames(scope.client);
-        final list = all.where((g) => ui.libraryFilter == 'all' || g.tier.name == ui.libraryFilter).toList();
+        final onlyHere = ui.libraryFilter == 'installed';
+        final here = all.where((g) => g.installed).toList();
+        final notHere = all.where((g) => !g.installed).toList();
         final picked = pickedGame(scope.client, ui);
         final r = picked != null && picked.installed ? picked : all.where((g) => g.installed).firstOrNull;
         final st = scope.client.state ?? DaemonState.empty;
@@ -60,7 +62,7 @@ class _LibraryViewState extends State<LibraryView> {
             children: [
               PageHead(
                 title: 'Library',
-                subtitle: 'Games on this PC that Couchlink can split. Pick one, then bring in your players.',
+                subtitle: 'Every game Couchlink can split, yours first. Pick one, then bring in your players.',
                 trailing: Wrap(spacing: 8, runSpacing: 8, children: [
                   for (final (k, l) in _filters) CChip(key: ValueKey('filter-$k'), label: l, selected: ui.libraryFilter == k, onTap: () => ui.setLibraryFilter(k)),
                 ]),
@@ -115,10 +117,12 @@ class _LibraryViewState extends State<LibraryView> {
               if (scope.client.games == null) const _Note('Looking for your games'),
               if (scope.client.games != null && all.isEmpty)
                 const _Note('Couchlink found no game recipes yet. Add one to the recipes folder and it shows up here.'),
-              // Your games first, then every other game Couchlink can split, so the whole list is always there.
+              if (all.isNotEmpty && here.isEmpty && onlyHere)
+                const _Note('None of the games Couchlink supports are on this PC yet. Pick All to see them.'),
+              // Your games first, then every other game Couchlink supports that is not on this PC yet.
               for (final (label, games, key) in [
-                ('On this PC', list.where((g) => g.installed).toList(), 'section-installed'),
-                ('More games for the couch', list.where((g) => !g.installed).toList(), 'section-more'),
+                ('On this PC', here, 'section-installed'),
+                if (!onlyHere) ('Not on this PC yet', notHere, 'section-more'),
               ])
                 if (games.isNotEmpty) ...[
                   SectionLabel(label, key: ValueKey(key), sub: '${games.length} ${games.length == 1 ? 'game' : 'games'}'),

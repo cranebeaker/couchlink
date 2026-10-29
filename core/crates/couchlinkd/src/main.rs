@@ -76,14 +76,42 @@ fn parse_args() -> Result<Args, String> {
     Ok(args)
 }
 
-/// True when a live daemon already answers on the port in daemon.json.
+/// True when another daemon for the same state folder runs. A named mutex settles two daemons that start in the
+/// same moment (two app windows opened at once); the port check covers a daemon from an older build.
 fn already_running() -> bool {
+    if !claim_single_instance() {
+        return true;
+    }
     let Some(info) = paths::read_daemon_info() else { return false };
     if info.pid == std::process::id() {
         return false;
     }
     let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, info.port));
     TcpStream::connect_timeout(&addr, Duration::from_millis(500)).is_ok()
+}
+
+/// Takes the per-state-folder mutex for the life of the process; false when another process holds it.
+#[cfg(windows)]
+fn claim_single_instance() -> bool {
+    use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError};
+    use windows_sys::Win32::System::Threading::CreateMutexW;
+    let dir = paths::state_dir().display().to_string().to_lowercase();
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in dir.bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    let name: Vec<u16> = format!("Local\\couchlinkd-{h:016x}").encode_utf16().chain(std::iter::once(0)).collect();
+    // SAFETY: a NUL-terminated name; the handle is kept open on purpose until the process exits.
+    unsafe {
+        let m = CreateMutexW(std::ptr::null(), 0, name.as_ptr());
+        !m.is_null() && GetLastError() != ERROR_ALREADY_EXISTS
+    }
+}
+
+#[cfg(not(windows))]
+fn claim_single_instance() -> bool {
+    true
 }
 
 fn random_token() -> Result<String, String> {

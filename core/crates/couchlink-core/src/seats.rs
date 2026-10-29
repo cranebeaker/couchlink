@@ -153,10 +153,32 @@ impl SeatManager {
         if self.seat_of(device).is_some() {
             return Err(SeatError::AlreadySeated(device.to_string()));
         }
+        // A keyboard and a mouse are one player: one joins the first seat that has the other kind and not its own.
+        if let Some(idx) = self.kbm_partner_seat(device) {
+            if let Some(seat) = self.seats[idx].as_mut() {
+                seat.devices.push(device.to_string());
+            }
+            self.sync_device_seats();
+            return Ok(idx);
+        }
         let idx = self.seat_to_fill().ok_or(SeatError::NoFreeSeat)?;
         self.seats[idx].get_or_insert_with(|| Self::new_seat(idx)).devices.push(device.to_string());
         self.sync_device_seats();
         Ok(idx)
+    }
+
+    /// For a `kbd:` device the first seat with a `mouse:` and no `kbd:`, and the other way round.
+    fn kbm_partner_seat(&self, device: &str) -> Option<usize> {
+        let (mine, other) = if device.starts_with("kbd:") {
+            ("kbd:", "mouse:")
+        } else if device.starts_with("mouse:") {
+            ("mouse:", "kbd:")
+        } else {
+            return None;
+        };
+        self.seats.iter().position(|s| {
+            s.as_ref().is_some_and(|s| s.devices.iter().any(|d| d.starts_with(other)) && !s.devices.iter().any(|d| d.starts_with(mine)))
+        })
     }
 
     /// Free a seat. Its devices become unseated.
@@ -286,6 +308,34 @@ mod tests {
             charging: false,
             seat: None,
         }
+    }
+
+    fn kbm_dev(id: &str) -> Device {
+        Device {
+            id: id.to_string(),
+            kind: DeviceKind::Kbm,
+            name: id.to_string(),
+            family: Family::Kbm,
+            connection: Connection::Usb,
+            battery: None,
+            charging: false,
+            seat: None,
+        }
+    }
+
+    #[test]
+    fn a_keyboard_and_a_mouse_join_as_one_player() {
+        let mut m = SeatManager::new();
+        for d in ["kbd:1", "mouse:1", "kbd:2", "mouse:2"] {
+            m.upsert_device(kbm_dev(d));
+        }
+        m.upsert_device(pad(7));
+        assert_eq!(m.join("mouse:1"), Ok(0));
+        assert_eq!(m.join("kbd:1"), Ok(0), "the keyboard sits with the lone mouse");
+        assert_eq!(m.join("pad:7"), Ok(1), "a pad takes its own seat");
+        assert_eq!(m.join("kbd:2"), Ok(2), "seat 0 already has a keyboard");
+        assert_eq!(m.join("mouse:2"), Ok(2), "and the second mouse joins the second keyboard");
+        assert_eq!(m.seats()[0].as_ref().unwrap().devices, ["mouse:1", "kbd:1"]);
     }
 
     fn mgr(pads: &[u32]) -> SeatManager {

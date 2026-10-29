@@ -40,6 +40,16 @@ void main() {
       expect(find.descendant(of: byKey('section-installed'), matching: find.text('8 games')), findsOneWidget);
       expect(find.descendant(of: byKey('section-more'), matching: find.text('2 games')), findsOneWidget);
 
+      // The On this PC tab shows only the installed games.
+      await tester.tap(byKey('filter-installed'));
+      await settle(tester);
+      expect(byKey('section-more'), findsNothing);
+      expect(byKey('game-l4d2'), findsNothing);
+      expect(byKey('game-fnv'), findsOneWidget);
+      expect(byKey('filter-native'), findsNothing, reason: 'the tabs are All and On this PC only');
+      await tester.tap(byKey('filter-all'));
+      await settle(tester);
+
       // Not installed: l4d2 and ug come after every installed game, dimmed.
       expect(find.text('Not installed'), findsNWidgets(2));
       final lastInstalled = spot(tester, 'game-hades');
