@@ -54,13 +54,15 @@ impl Placer {
     }
 
     /// Bring every game window to the front (`front`), or minimise them all so the desktop shows.
-    pub fn show_all(&mut self, front: bool) {
+    /// With `front`, bring every game window up; `on_top` keeps them above all other windows until called again
+    /// without it (as Nucleus does). Without `front`, minimise them all.
+    pub fn show_all(&mut self, front: bool, on_top: bool) {
         #[cfg(windows)]
-        win::show_all(&self.seats, front);
+        win::show_all(&self.seats, front, on_top);
         #[cfg(target_os = "linux")]
-        linux::show_all(&mut self.linux, front);
+        linux::show_all(&mut self.linux, front, on_top);
         #[cfg(not(any(windows, target_os = "linux")))]
-        let _ = front;
+        let _ = (front, on_top);
     }
 
     /// Give every window back its original borders and position.
@@ -465,6 +467,7 @@ mod win {
         }
         // SAFETY: calls on a window we changed earlier.
         unsafe {
+            SetWindowPos(p.hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
             SetWindowLongPtrW(p.hwnd, GWL_STYLE, p.style);
             SetWindowLongPtrW(p.hwnd, GWL_EXSTYLE, p.exstyle);
             SetWindowPos(
@@ -479,7 +482,7 @@ mod win {
         }
     }
 
-    pub fn show_all(seats: &HashMap<usize, Placed>, front: bool) {
+    pub fn show_all(seats: &HashMap<usize, Placed>, front: bool, on_top: bool) {
         let mut order: Vec<_> = seats.iter().collect();
         order.sort_by_key(|(seat, _)| **seat);
         for (_, p) in &order {
@@ -490,9 +493,11 @@ mod win {
             unsafe {
                 if front {
                     ShowWindow(p.hwnd, SW_RESTORE);
-                    // Above everything for a moment, then back to normal, so the windows come up without staying on top.
+                    // Above everything; without `on_top` only for a moment, so the windows come up without staying there.
                     SetWindowPos(p.hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
-                    SetWindowPos(p.hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+                    if !on_top {
+                        SetWindowPos(p.hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+                    }
                 } else {
                     ShowWindow(p.hwnd, SW_MINIMIZE);
                 }

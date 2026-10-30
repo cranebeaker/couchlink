@@ -257,7 +257,9 @@ pub fn maintain(p: &mut Placed, seat: usize, root_pid: u32, rect: Rect, borderle
 
 /// Every placed window to the front, player 1's last so it is on top with the keyboard (`front`), or all minimised
 /// so the desktop shows.
-pub fn show_all(p: &mut Placed, front: bool) {
+pub fn show_all(p: &mut Placed, front: bool, on_top: bool) {
+    let _ = on_top; // kept above other windows on Windows; on Linux the windows come up
+
     let mut seats: Vec<(usize, Window)> = p.seats.iter().map(|(s, w)| (*s, *w)).collect();
     seats.sort();
     let Some(x) = p.x() else { return };
@@ -353,10 +355,10 @@ mod tests {
         let settle = || std::thread::sleep(std::time::Duration::from_millis(300));
         settle();
         assert!(wins.iter().all(|w| viewable(&x.conn, *w)));
-        show_all(&mut p, false);
+        show_all(&mut p, false, false);
         settle();
         assert!(wins.iter().all(|w| !viewable(&x.conn, *w)), "hidden");
-        show_all(&mut p, true);
+        show_all(&mut p, true, true);
         settle();
         assert!(wins.iter().all(|w| viewable(&x.conn, *w)), "back");
         let top = x.conn.query_tree(x.root).unwrap().reply().unwrap().children;

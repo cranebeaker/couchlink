@@ -229,6 +229,29 @@ fn different_volumes(game: &Path, copies: &Path) -> String {
     )
 }
 
+/// Where a game's copies go: `instances` in Couchlink's state folder, or, when the game is on another drive (hardlinks
+/// only work within one drive), `.couchlink-copies` at the root of the game's drive, so games on any drive work.
+pub fn instances_root(state_dir: &Path, game_dir: &Path) -> PathBuf {
+    let home = state_dir.join("instances");
+    if let (Some(a), Some(b)) = (volume(game_dir), volume(&home))
+        && a != b
+        && let Some(root) = drive_root(game_dir)
+    {
+        return root.join(".couchlink-copies");
+    }
+    home
+}
+
+/// The root of the drive `p` is on (`G:\`), when it has one.
+fn drive_root(p: &Path) -> Option<PathBuf> {
+    let full = p.canonicalize().ok()?;
+    let mut parts = full.components();
+    match (parts.next()?, parts.next()?) {
+        (pre @ Component::Prefix(_), root @ Component::RootDir) => Some([pre, root].iter().collect()),
+        _ => None,
+    }
+}
+
 /// Fail early, with a clear message, when the two folders are plainly on different drives.
 fn check_same_volume(game: &Path, copies: &Path) -> Result<(), String> {
     match (volume(game), volume(copies)) {
@@ -331,6 +354,21 @@ mod tests {
         assert_eq!(read(&seat.join("a.bin")), "a, new and longer");
         assert_eq!(read(&seat.join("settings.ini")), "s=1 and a new line");
         assert_eq!(read(&seat.join("saves/slot1.sav")), "save");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn copies_stay_on_the_state_drive_when_the_game_is_there_too() {
+        let root = temp("sameroot");
+        let game = root.join("game");
+        write(&game.join("g.exe"), "g");
+        assert_eq!(instances_root(&root, &game), root.join("instances"));
+        #[cfg(windows)]
+        {
+            let r = drive_root(&game).unwrap();
+            assert!(r.to_string_lossy().ends_with(":\\"), "{}", r.display());
+            assert!(game.canonicalize().unwrap().starts_with(&r));
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 

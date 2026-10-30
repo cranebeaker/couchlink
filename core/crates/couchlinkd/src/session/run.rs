@@ -79,6 +79,8 @@ struct Run {
     stop: Arc<AtomicBool>,
     /// The shortcut hid the game windows: keep them where they are until it brings them back.
     hidden: bool,
+    /// The game windows stay above all other windows (the front shortcut toggles it).
+    on_top: bool,
     report: Report,
     info: SessionInfo,
     journal: Journal,
@@ -145,6 +147,7 @@ pub fn run(plan: Plan, deps: Deps, stop: Arc<AtomicBool>, report: Report) {
         placer: Placer::new(),
         last_maintain: Instant::now(),
         hidden: false,
+        on_top: true,
         #[cfg(target_os = "linux")]
         nested: None,
     };
@@ -272,7 +275,7 @@ impl Run {
     }
 
     fn copies(&mut self, recipe: &Recipe) -> Result<(), String> {
-        let instances = self.plan.state_dir.join("instances").join(&recipe.id);
+        let instances = copies::instances_root(&self.plan.state_dir, &self.plan.game_dir).join(&recipe.id);
         let copy = recipe.files.real_copies();
         let exclude = copies::Excludes::new(&recipe.files.exclude_files, &recipe.files.exclude_dirs);
         for idx in 0..self.seats.len() {
@@ -368,7 +371,7 @@ impl Run {
     /// Everything the recipe changes in files, up front: the seats' own save folders, their per-seat files and
     /// patches, and the edits that are the same for every seat.
     fn seat_files(&mut self, recipe: &Recipe) -> Result<(), String> {
-        let instances = self.plan.state_dir.join("instances").join(&recipe.id);
+        let instances = copies::instances_root(&self.plan.state_dir, &self.plan.game_dir).join(&recipe.id);
         for idx in 0..self.seats.len() {
             self.set_step(idx, Step::Copy, None);
             let outcome = (|| -> Result<(), String> {
@@ -673,7 +676,7 @@ impl Run {
             rect: s.plan.rect,
             borderless: recipe.window.borderless,
             fps_limit: self.plan.fps_limit,
-            data_dir: self.plan.state_dir.join("instances").join(&recipe.id).join(".seats").join(s.plan.seat.to_string()),
+            data_dir: copies::instances_root(&self.plan.state_dir, &self.plan.game_dir).join(&recipe.id).join(".seats").join(s.plan.seat.to_string()),
             #[cfg(target_os = "linux")]
             sandbox_pid: s.ns.as_ref().map(|n| n.pid),
             #[cfg(not(target_os = "linux"))]
@@ -745,15 +748,18 @@ impl Run {
     }
 
     /// Act on a front or hide request from the shortcuts (`request_windows`). While hidden, windows are left alone.
+    /// The front shortcut toggles "games above every other window" (as Nucleus's Ctrl+T does); after hide it brings
+    /// them back on top. Hide minimises them, and while hidden the session leaves them alone.
     fn window_request(&mut self) {
         match WINDOW_REQUEST.swap(0, Ordering::Relaxed) {
             1 => {
+                self.on_top = self.hidden || !self.on_top;
                 self.hidden = false;
-                self.placer.show_all(true);
+                self.placer.show_all(true, self.on_top);
             }
             2 => {
                 self.hidden = true;
-                self.placer.show_all(false);
+                self.placer.show_all(false, false);
             }
             _ => {}
         }
@@ -763,6 +769,8 @@ impl Run {
         if self.info.state != SessionState::Running {
             return Outcome::Done;
         }
+        // The games start above every other window, as with Nucleus; the front shortcut switches that off and on.
+        self.placer.show_all(true, self.on_top);
         loop {
             if self.stopped() || self.seats.iter().all(|s| s.exited) {
                 return Outcome::Done;

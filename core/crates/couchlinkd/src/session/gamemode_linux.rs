@@ -241,13 +241,13 @@ mod tests {
         let viewable = |w: u32| conn.get_window_attributes(w).unwrap().reply().unwrap().map_state == x11rb::protocol::xproto::MapState::VIEWABLE;
         let active_atom = conn.intern_atom(false, b"_NET_ACTIVE_WINDOW").unwrap().reply().unwrap().atom;
         let active_window = || conn.get_property(false, root, active_atom, AtomEnum::WINDOW, 0, 1).unwrap().reply().unwrap().value32().and_then(|mut v| v.next());
-        super::super::window::linux::show_all(&mut placed, false);
+        super::super::window::linux::show_all(&mut placed, false, false);
         let t = Instant::now();
         while copies.iter().any(|(_, w)| viewable(*w)) {
             assert!(t.elapsed() < Duration::from_secs(10), "the windows were not minimised");
             std::thread::sleep(Duration::from_millis(100));
         }
-        super::super::window::linux::show_all(&mut placed, true);
+        super::super::window::linux::show_all(&mut placed, true, true);
         let t = Instant::now();
         while !copies.iter().all(|(_, w)| viewable(*w)) || active_window() != Some(copies[0].1) {
             assert!(t.elapsed() < Duration::from_secs(10), "the windows did not come back with player 1 active (active: {:?})", active_window());

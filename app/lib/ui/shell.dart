@@ -655,7 +655,7 @@ class _BindingsTab extends StatelessWidget {
           Text(t('These work while a game has the focus.'), style: txt(context, size: 12, color: c.ink2, height: 1.4)),
           const SizedBox(height: 12),
           _KeyBinding(id: 'stop', label: 'Close the games', keys: st.stopKeys, onSet: (k) => client.setStopShortcut(keys: k)),
-          _KeyBinding(id: 'front', label: 'Bring the games to the front', keys: st.frontKeys, onSet: (k) => client.setWindowKeys(front: k)),
+          _KeyBinding(id: 'front', label: 'Keep the games on top (on and off)', keys: st.frontKeys, onSet: (k) => client.setWindowKeys(front: k)),
           _KeyBinding(id: 'hide', label: 'Hide the games', keys: st.hideKeys, onSet: (k) => client.setWindowKeys(hide: k)),
           const SizedBox(height: 4),
           Text(t('Close the games with a controller (hold both)'), style: txt(context, size: 12, weight: FontWeight.w600, color: c.ink2)),
