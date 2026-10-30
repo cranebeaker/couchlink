@@ -328,6 +328,31 @@ mod tests {
         assert_eq!(played(Some(&default), &mut ProcState::new(), 0, &sample), PadState::from_sample(&sample), "the default changes nothing");
     }
 
+    /// The real Windows feed: a seat's shared-memory section holds what its profile made of the pad, read back the way
+    /// the hook in the game reads it.
+    #[cfg(windows)]
+    #[test]
+    fn a_seat_feed_in_shared_memory_holds_the_profiles_state() {
+        let swap = Profile::from_value(&serde_json::json!({"id": "s", "name": "S", "buttons": {"south": {"type": "pad", "value": "east"}}})).unwrap();
+        let default = couchlink_core::profile::builtin("default").unwrap();
+        set_profiles(&[default.clone(), swap, default]);
+        let pid = std::process::id();
+        let mine = attach_for_seat(&feed_name(format!("test{pid}"), 1), &["pad:4242".to_string()], Some(1), None).unwrap();
+        let plain = attach_for_seat(&feed_name(format!("test{pid}"), 2), &["pad:4242".to_string()], None, None).unwrap();
+        let mut sample = InputSample::neutral();
+        sample.buttons = vec![Button::South];
+        publish_sample("pad:4242", &sample);
+        let read = |g: &FeedGuard| {
+            let reg = registry();
+            let e = reg.entries.iter().find(|e| e.id == g.id).expect("attached");
+            (e.feed.is_connected(), e.feed.read_state().0.buttons)
+        };
+        assert_eq!(read(&mine), (true, xb::B), "seat 1's profile plays South as East");
+        assert_eq!(read(&plain), (true, xb::A), "a feed without a seat gets the pad as it is");
+        drop((mine, plain));
+        assert!(!active());
+    }
+
     #[test]
     fn feed_names_are_per_session_and_seat() {
         assert_eq!(feed_name("s7", 2), "Local\\couchlink-pad-s7-2");

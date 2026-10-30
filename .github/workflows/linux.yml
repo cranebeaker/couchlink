@@ -141,6 +141,11 @@ jobs:
         working-directory: core
         run: cargo check --workspace --all-targets --locked
 
+      - name: Pad feed tests on Windows
+        # The shared-memory feeds the hook reads, with each seat's profile applied (session/padfeed.rs).
+        working-directory: core
+        run: cargo test --locked -p couchlinkd --bin couchlinkd padfeed -- --nocapture
+
   app:
     name: Flutter app
     runs-on: ubuntu-24.04
