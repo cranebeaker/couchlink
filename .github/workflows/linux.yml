@@ -85,6 +85,31 @@ jobs:
           path: core/target/release/couchlinkd
           if-no-files-found: error
 
+  gamescope:
+    # Ubuntu does not package gamescope; Arch does. Runs the integration test with the copies in real gamescope
+    # windows on Xvfb (software Vulkan), so window placement and the gamescope command line are checked for real.
+    name: gamescope end to end
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:latest
+      options: --privileged
+    steps:
+      - name: Packages
+        run: |
+          pacman -Syu --noconfirm --needed git rust cmake ninja pkgconf gcc python gamescope xorg-server-xvfb             vulkan-swrast bubblewrap fuse-overlayfs libx11 libxext libxrandr libxi libxfixes libxcursor libxss libxtst             wayland libxkbcommon dbus alsa-lib libpulse systemd-libs
+          gamescope --version || true
+
+      - uses: actions/checkout@v4
+
+      - name: Integration test in gamescope
+        working-directory: core
+        env:
+          COUCHLINK_REQUIRE_GAMESCOPE_TEST: "1"
+          XDG_RUNTIME_DIR: /tmp/xdg-runtime
+        run: |
+          mkdir -p -m 0700 "$XDG_RUNTIME_DIR"
+          xvfb-run -a -s "-screen 0 1920x1080x24" cargo test -p couchlinkd --test integration --locked -- --nocapture
+
   windows-check:
     # The Linux port edits shared session files; this keeps the Windows build compiling.
     name: Windows still compiles

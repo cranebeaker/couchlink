@@ -117,6 +117,15 @@ pub async fn run(c: &mut Checks, fx: &Fixture) {
             &format!("linux: seat {seat}'s copy sees no input device that is not its own"),
             s["input_nodes"].as_array().is_some_and(Vec::is_empty),
         );
+        if std::env::var_os("DISPLAY").is_some() {
+            // testgame opens an X11 window at 100,100; the daemon moves it onto the seat's half of the display.
+            let region = if seat == 0 { [0.0, 0.0, 0.5, 1.0] } else { [0.5, 0.0, 0.5, 1.0] };
+            let want = expected_rect(&table.display, region);
+            let placed = wait_status(&copy.join("status.json"), Duration::from_secs(10), |s| rect_of(s).is_some_and(|r| near(r, want, 2))).await;
+            if !c.check(&format!("linux: seat {seat}'s window is on its region"), placed.is_some()) {
+                println!("  seat {seat}: window {:?}, region {want:?}", read_status(&copy.join("status.json")).and_then(|s| rect_of(&s)));
+            }
+        }
         c.check(&format!("linux: seat {seat}'s copy runs in a sandbox of its own"), pid > 0 && mount_ns(pid).is_some() && mount_ns(pid) != mount_ns(std::process::id() as u64));
         if layers {
             c.check(
