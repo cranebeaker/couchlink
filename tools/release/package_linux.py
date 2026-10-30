@@ -1,7 +1,7 @@
 """Builds a Couchlink release tarball for Linux.
 
-    python3 -I tools/release/package_linux.py [--version 0.1.0] [--build-root /tmp/cl-build]
-    python3 -I tools/release/package_linux.py --version 0.1.0 --daemon PATH --app-bundle DIR
+    python3 -I tools/release/package_linux.py [--version 0.1.1] [--build-root /tmp/cl-build]
+    python3 -I tools/release/package_linux.py --version 0.1.1 --daemon PATH --app-bundle DIR
 
 Without --daemon and --app-bundle it builds both, from a neutral folder outside the user's home (with its own
 Cargo and pub caches), because compilers bake the build folder into the binaries. CI passes what its jobs built.
@@ -125,7 +125,7 @@ def tar_filter(info):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--version", default="0.1.0")
+    ap.add_argument("--version", default="0.1.1")
     ap.add_argument("--build-root", default="/tmp/cl-build")
     ap.add_argument("--daemon", help="a couchlinkd that is already built")
     ap.add_argument("--app-bundle", help="a Flutter Linux bundle folder that is already built")
