@@ -9,7 +9,7 @@ import 'locate.dart';
 import 'models.dart';
 import 'profile.dart';
 
-const String appVersion = '0.1.3';
+const String appVersion = '0.1.4';
 
 /// Start of the `log` warning couchlinkd sends when a catalog download fails.
 const String catalogFailurePrefix = 'Game catalog could not be refreshed';
