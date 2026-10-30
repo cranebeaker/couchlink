@@ -93,7 +93,7 @@ pub fn save_report(state: &serde_json::Value, session: &serde_json::Value) -> Re
     }
     logs.sort();
     for log in &logs {
-        let text = std::fs::read(log).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_else(|e| format!("(cannot read: {e})"));
+        let text = read_end(log, REPORT_MAX_BYTES).unwrap_or_else(|e| format!("(cannot read: {e})"));
         out += &format!("\n== {} ==\n{}\n", log.display(), text.trim_end());
     }
     if logs.is_empty() {
@@ -107,6 +107,27 @@ pub fn save_report(state: &serde_json::Value, session: &serde_json::Value) -> Re
     let path = dir().join(format!("couchlink-report-{stamp}.txt"));
     std::fs::write(&path, out).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
     Ok(path)
+}
+
+/// How much of each log a full report holds: Wine and Proton can write hundreds of MB of notes into a copy's log.
+const REPORT_MAX_BYTES: u64 = 4 << 20;
+
+/// A file, or its last `max` bytes (from the first whole line) with a note of what was left out.
+fn read_end(path: &std::path::Path, max: u64) -> std::io::Result<String> {
+    let mut f = std::fs::File::open(path)?;
+    let len = f.metadata()?.len();
+    let start = len.saturating_sub(max);
+    f.seek(SeekFrom::Start(start))?;
+    let mut buf = Vec::new();
+    f.read_to_end(&mut buf)?;
+    let text = String::from_utf8_lossy(&buf);
+    if start == 0 {
+        return Ok(text.into_owned());
+    }
+    let rest = text.split_once('
+').map_or(&*text, |(_, rest)| rest);
+    Ok(format!("(the first {} MB are left out)
+{rest}", start.div_ceil(1 << 20)))
 }
 
 fn home_dir() -> Option<String> {
@@ -190,6 +211,24 @@ mod tests {
         assert!(r.contains("== drg, player 2 ==\nline 1\nfatal: no window"), "{r}");
         assert!(!r.contains("player 1 =="), "players without a log are left out: {r}");
         let _ = std::fs::remove_dir_all(&state);
+    }
+
+    #[test]
+    fn a_huge_log_keeps_its_end_in_the_report() {
+        let p = std::env::temp_dir().join(format!("couchlink-big-log-{}.log", std::process::id()));
+        let mut text = String::new();
+        for i in 0..3000 {
+            text += &format!("fixme:line {i}
+");
+        }
+        std::fs::write(&p, &text).unwrap();
+        assert_eq!(read_end(&p, 1 << 20).unwrap(), text, "a small log is whole");
+        let end = read_end(&p, 1000).unwrap();
+        assert!(end.starts_with("(the first 1 MB are left out)
+fixme:line "), "{end}");
+        assert!(end.ends_with("fixme:line 2999
+") && end.len() < 1100);
+        let _ = std::fs::remove_file(&p);
     }
 
     #[test]
