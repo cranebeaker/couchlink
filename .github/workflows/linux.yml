@@ -122,10 +122,7 @@ jobs:
     steps:
       - name: Packages
         run: |
-          grep -q '^\[multilib\]' /etc/pacman.conf || printf '
-[multilib]
-Include = /etc/pacman.d/mirrorlist
-' >> /etc/pacman.conf
+          grep -q '^\[multilib\]' /etc/pacman.conf || printf '\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n' >> /etc/pacman.conf
           pacman -Syu --noconfirm --needed git rust cmake make ninja pkgconf gcc python gamescope bubblewrap fuse-overlayfs \
             vulkan-swrast lib32-vulkan-swrast ttf-dejavu umu-launcher mingw-w64-gcc libx11 libxext libxrandr libxi libxfixes \
             libxcursor libxss libxtst wayland libxkbcommon dbus alsa-lib libpulse systemd-libs
