@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'daemon/client.dart';
+import 'l10n/l10n.dart';
 import 'theme/tokens.dart';
 import 'ui/app_state.dart';
 import 'ui/shell.dart';
@@ -74,7 +75,7 @@ class _CouchlinkAppState extends State<CouchlinkApp> {
           toaster: _toaster,
           child: DefaultTextStyle(style: txt(context), child: child!),
         ),
-        home: const Shell(),
+        home: Shell(key: ValueKey(currentLang)),
       ),
     );
   }

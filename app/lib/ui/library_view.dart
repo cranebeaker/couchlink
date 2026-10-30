@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 import '../daemon/models.dart';
 import '../theme/tokens.dart';
 import 'app_state.dart';
@@ -61,8 +63,8 @@ class _LibraryViewState extends State<LibraryView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               PageHead(
-                title: 'Library',
-                subtitle: 'Every game Couchlink can split, yours first. Pick one, then bring in your players.',
+                title: t('Library'),
+                subtitle: t('Every game Couchlink can split, yours first. Pick one, then bring in your players.'),
                 trailing: Wrap(spacing: 8, runSpacing: 8, children: [
                   for (final (k, l) in _filters) CChip(key: ValueKey('filter-$k'), label: l, selected: ui.libraryFilter == k, onTap: () => ui.setLibraryFilter(k)),
                 ]),
@@ -83,12 +85,12 @@ class _LibraryViewState extends State<LibraryView> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(r.ready ? 'READY TO PLAY' : 'ONE-TIME SETUP NEEDED', style: txt(context, size: 11, weight: FontWeight.w600, color: r.ready ? c.ink3 : c.warn, ls: .04, height: 1.3)),
+                                Text(r.ready ? t('READY TO PLAY') : t('ONE-TIME SETUP NEEDED'), style: txt(context, size: 11, weight: FontWeight.w600, color: r.ready ? c.ink3 : c.warn, ls: .04, height: 1.3)),
                                 const SizedBox(height: 10),
                                 Text(r.name, style: txt(context, size: 22, weight: FontWeight.w700, display: true, ls: -.02, height: 1.2)),
                                 const SizedBox(height: 10),
                                 Text(
-                                  names.isEmpty ? 'Nobody is seated yet. Bring in your players first.' : '${_join(names)} ${names.length == 1 ? 'is' : 'are'} ready to play.',
+                                  names.isEmpty ? t('Nobody is seated yet. Bring in your players first.') : t(names.length == 1 ? '{names} is ready to play.' : '{names} are ready to play.', {'names': _join(names)}),
                                   key: const ValueKey('hero-line'),
                                   style: txt(context, size: 13, color: c.ink2),
                                 ),
@@ -96,7 +98,7 @@ class _LibraryViewState extends State<LibraryView> {
                                 Wrap(spacing: 10, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
                                   CButton(
                                     key: const ValueKey('resume'),
-                                    label: names.isEmpty ? 'Choose players' : 'Play with the current seats',
+                                    label: names.isEmpty ? t('Choose players') : t('Play with the current seats'),
                                     primary: true,
                                     small: true,
                                     onTap: () {
@@ -114,11 +116,11 @@ class _LibraryViewState extends State<LibraryView> {
                     ),
                   ),
                 ),
-              if (scope.client.games == null) const _Note('Looking for your games'),
+              if (scope.client.games == null) _Note(t('Looking for your games')),
               if (scope.client.games != null && all.isEmpty)
-                const _Note('Couchlink found no game recipes yet. Add one to the recipes folder and it shows up here.'),
+                _Note(t('Couchlink found no game recipes yet. Add one to the recipes folder and it shows up here.')),
               if (all.isNotEmpty && here.isEmpty && onlyHere)
-                const _Note('None of the games Couchlink supports are on this PC yet. Pick All to see them.'),
+                _Note(t('None of the games Couchlink supports are on this PC yet. Pick All to see them.')),
               // Your games first, then every other game Couchlink supports that is not on this PC yet.
               for (final (label, games, key) in [
                 ('On this PC', [for (final g in here) if (g.tier != Tier.tryIt) g], 'section-installed'),
@@ -126,7 +128,7 @@ class _LibraryViewState extends State<LibraryView> {
                 if (!onlyHere) ('Not on this PC yet', notHere, 'section-more'),
               ])
                 if (games.isNotEmpty) ...[
-                  SectionLabel(label, key: ValueKey(key), sub: '${games.length} ${games.length == 1 ? 'game' : 'games'}'),
+                  SectionLabel(label, key: ValueKey(key), sub: countGames(games.length)),
                   LayoutBuilder(builder: (context, box) {
                     const gap = 18.0;
                     final cols = ((box.maxWidth + gap) / (168 + gap)).floor().clamp(1, 12);
@@ -144,8 +146,8 @@ class _LibraryViewState extends State<LibraryView> {
                 const SizedBox(height: 18),
                 _Note(
                   problems.length == 1
-                      ? 'One recipe file could not be read: ${problems.first.file}. ${problems.first.error}'
-                      : '${problems.length} recipe files could not be read: ${problems.map((p) => p.file).join(', ')}.',
+                      ? t('One recipe file could not be read: {file}. {error}', {'file': problems.first.file, 'error': problems.first.error})
+                      : t('{n} recipe files could not be read: {files}.', {'n': problems.length, 'files': problems.map((p) => p.file).join(', ')}),
                 ),
               ],
             ],
@@ -158,7 +160,7 @@ class _LibraryViewState extends State<LibraryView> {
 
 /// "Maya", "Maya and Theo", "Maya, Theo and Kai".
 String _join(List<String> names) =>
-    names.length < 2 ? names.join() : '${names.sublist(0, names.length - 1).join(', ')} and ${names.last}';
+    names.length < 2 ? names.join() : t('{first} and {last}', {'first': names.sublist(0, names.length - 1).join(', '), 'last': names.last});
 
 /// A recipe hint as a sentence: capital first letter, full stop at the end.
 String _sentence(String t) {
@@ -176,7 +178,7 @@ class _Note extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Text(text, style: txt(context, size: 13, color: context.c.ink2, height: 1.4)),
+      child: Text(t(text), style: txt(context, size: 13, color: context.c.ink2, height: 1.4)),
     );
   }
 }
@@ -196,7 +198,7 @@ class _GameCard extends StatelessWidget {
       key: ValueKey('game-${game.id}'),
       onTap: () => ui.selectGame(game.id, openSheet: true),
       radius: 14,
-      semanticLabel: game.installed ? game.name : '${game.name}, not installed',
+      semanticLabel: game.installed ? game.name : t('{name}, not installed', {'name': game.name}),
       builder: (context, s) {
         final lift = s.hover || s.focused;
         return Opacity(
@@ -224,7 +226,7 @@ class _GameCard extends StatelessWidget {
             const SizedBox(height: 6),
             Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
               Tag(game.tier.label, kind: tagKind(game.tier)),
-              Text(game.installed ? '${game.playersLabel} players' : 'Not installed', style: txt(context, size: 12, color: c.ink2, height: 1.3)),
+              Text(game.installed ? '${game.playersLabel} players' : t('Not installed'), style: txt(context, size: 12, color: c.ink2, height: 1.3)),
             ]),
           ],
         ),
@@ -261,9 +263,9 @@ class _GameSheetState extends State<GameSheet> {
         final g = _last;
         if (g == null) return const SizedBox.shrink();
         final how = switch (g.tier) {
-          Tier.native => 'Couchlink starts the game once, gives it the controllers in seat order and keeps other devices away from it.',
-          Tier.sdk => 'The mod talks to Couchlink: each copy learns its seat, its controller and its part of the screen, then joins the host by itself.',
-          Tier.recipe => 'A community recipe tells Couchlink how to run separate copies, keep their saves apart and connect them over a pretend LAN.',
+          Tier.native => t('Couchlink starts the game once, gives it the controllers in seat order and keeps other devices away from it.'),
+          Tier.sdk => t('The mod talks to Couchlink: each copy learns its seat, its controller and its part of the screen, then joins the host by itself.'),
+          Tier.recipe => t('A community recipe tells Couchlink how to run separate copies, keep their saves apart and connect them over a pretend LAN.'),
           Tier.tryIt =>
             'No recipe yet. Couchlink starts one copy per player with safe defaults: separate windows, each player\u2019s own controller, single-instance checks lifted. The copies then meet through the game\u2019s own multiplayer, which works best when every extra player has their own Steam account (Players, Steam).',
         };
@@ -301,7 +303,7 @@ class _GameSheetState extends State<GameSheet> {
                               Positioned(
                                 top: 12,
                                 right: 12,
-                                child: RoundX(key: const ValueKey('sheet-close'), label: 'Close', size: 28, bg: const Color(0x73000000), fg: Colors.white, onTap: ui.closeSheet),
+                                child: RoundX(key: const ValueKey('sheet-close'), label: t('Close'), size: 28, bg: const Color(0x73000000), fg: Colors.white, onTap: ui.closeSheet),
                               ),
                             ],
                           ),
@@ -314,7 +316,7 @@ class _GameSheetState extends State<GameSheet> {
                               children: [
                                 Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
                                   Tag(g.tier.label, kind: tagKind(g.tier)),
-                                  Text('${g.minPlayers == g.maxPlayers ? g.minPlayers : '${g.minPlayers} to ${g.maxPlayers}'} players', style: txt(context, size: 12, color: c.ink3)),
+                                  Text(g.minPlayers == g.maxPlayers ? countPlayers(g.minPlayers) : t('{min} to {max} players', {'min': g.minPlayers, 'max': g.maxPlayers}), style: txt(context, size: 12, color: c.ink3)),
                                 ]),
                                 const SizedBox(height: 14),
                                 Text(g.name, style: txt(context, size: 20, weight: FontWeight.w700, display: true, ls: -.02, height: 1.25)),
@@ -327,7 +329,7 @@ class _GameSheetState extends State<GameSheet> {
                                     _Fact('How it runs', g.mode, first: true),
                                     if (g.saves.isNotEmpty) _Fact('Saves', g.saves),
                                     _Fact('Connection', g.net),
-                                    if (!g.installed) const _Fact('On this PC', 'Not installed'),
+                                    if (!g.installed) _Fact('On this PC', t('Not installed')),
                                   ]),
                                 ),
                                 if (g.setup.isNotEmpty) ...[
@@ -359,20 +361,20 @@ class _GameSheetState extends State<GameSheet> {
                                 ],
                                 const SizedBox(height: 14),
                                 if (g.installed && !g.ready)
-                                  CButton(key: const ValueKey('sheet-recheck'), label: 'I did it, check again', primary: true, onTap: () => runCmd(context, scope.client.listGames))
+                                  CButton(key: const ValueKey('sheet-recheck'), label: t('I did it, check again'), primary: true, onTap: () => runCmd(context, scope.client.listGames))
                                 else if (g.installed)
-                                  CButton(key: const ValueKey('sheet-go'), label: 'Choose players', primary: true, onTap: () => ui.go(AppView.players))
+                                  CButton(key: const ValueKey('sheet-go'), label: t('Choose players'), primary: true, onTap: () => ui.go(AppView.players))
                                 else if (g.steamAppId != null) ...[
                                   Text('Couchlink could not find this game on this PC. Install it with Steam, then check again.', style: txt(context, size: 13, color: c.ink2)),
                                   const SizedBox(height: 14),
                                   Wrap(spacing: 10, runSpacing: 10, children: [
-                                    CButton(key: const ValueKey('sheet-install'), label: 'Install on Steam', primary: true, onTap: () => ui.openUrl(steamInstallUri(g.steamAppId!))),
-                                    CButton(key: const ValueKey('sheet-recheck'), label: 'Check again', onTap: () => runCmd(context, scope.client.listGames)),
+                                    CButton(key: const ValueKey('sheet-install'), label: t('Install on Steam'), primary: true, onTap: () => ui.openUrl(steamInstallUri(g.steamAppId!))),
+                                    CButton(key: const ValueKey('sheet-recheck'), label: t('Check again'), onTap: () => runCmd(context, scope.client.listGames)),
                                   ]),
                                 ] else ...[
                                   Text('Couchlink could not find this game on this PC. Install it, then check again.', style: txt(context, size: 13, color: c.ink2)),
                                   const SizedBox(height: 14),
-                                  CButton(key: const ValueKey('sheet-recheck'), label: 'Check again', primary: true, onTap: () => runCmd(context, scope.client.listGames)),
+                                  CButton(key: const ValueKey('sheet-recheck'), label: t('Check again'), primary: true, onTap: () => runCmd(context, scope.client.listGames)),
                                 ],
                               ],
                             ),
@@ -408,9 +410,9 @@ class _Fact extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: txt(context, size: 13, color: c.ink2, height: 1.35)),
+          Text(t(label), style: txt(context, size: 13, color: c.ink2, height: 1.35)),
           const SizedBox(width: 12),
-          Expanded(child: Text(value, textAlign: TextAlign.right, style: txt(context, size: 13, weight: FontWeight.w500, height: 1.35))),
+          Expanded(child: Text(t(value), textAlign: TextAlign.right, style: txt(context, size: 13, weight: FontWeight.w500, height: 1.35))),
         ],
       ),
     );

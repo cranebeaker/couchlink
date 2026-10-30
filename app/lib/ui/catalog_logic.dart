@@ -1,3 +1,4 @@
+import '../l10n/l10n.dart';
 import '../daemon/models.dart';
 import 'sample_data.dart';
 
@@ -66,30 +67,30 @@ List<CatalogEntry> visibleEntries(List<CatalogEntry> all, {String filter = 'all'
 }
 
 String stageLabel(String stage) => switch (stage) {
-      'released' => 'Released',
-      'beta' => 'Beta',
-      'development' => 'In development',
-      'abandoned' => 'Abandoned',
-      'wanted' => 'Wanted',
-      _ => stage.isEmpty ? 'Unknown' : stage,
+      'released' => t('Released'),
+      'beta' => t('Beta'),
+      'development' => t('In development'),
+      'abandoned' => t('Abandoned'),
+      'wanted' => t('Wanted'),
+      _ => stage.isEmpty ? t('Unknown') : stage,
     };
 
 String votesLabel(int votes) => switch (votes) {
-      0 => 'No votes yet',
-      1 => '1 vote',
+      0 => t('No votes yet'),
+      1 => t('1 vote'),
       _ => '$votes votes',
     };
 
 /// "just now", "5 minutes ago", "3 hours ago", "2 days ago".
 String relativeTime(DateTime then, DateTime now) {
   final d = now.difference(then);
-  if (d.inSeconds < 45) return 'just now';
+  if (d.inSeconds < 45) return t('just now');
   if (d.inMinutes < 60) {
     final m = d.inMinutes < 1 ? 1 : d.inMinutes;
-    return m == 1 ? '1 minute ago' : '$m minutes ago';
+    return m == 1 ? t('1 minute ago') : t('{m} minutes ago', {'m': m});
   }
-  if (d.inHours < 24) return d.inHours == 1 ? '1 hour ago' : '${d.inHours} hours ago';
-  return d.inDays == 1 ? '1 day ago' : '${d.inDays} days ago';
+  if (d.inHours < 24) return d.inHours == 1 ? t('1 hour ago') : t('{inHours} hours ago', {'inHours': d.inHours});
+  return d.inDays == 1 ? t('1 day ago') : t('{inDays} days ago', {'inDays': d.inDays});
 }
 
 /// Lowercase letters and digits only, so "Fallout: New Vegas" and "fallout new vegas" compare equal.

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 import '../daemon/client.dart';
 import '../daemon/models.dart';
 import '../theme/tokens.dart';
@@ -20,9 +22,9 @@ class ConnectionGate extends StatelessWidget {
       listenable: client,
       builder: (context, _) {
         final s = client.state;
-        if (client.status == ConnStatus.error) return StatusPanel.error(client.errorMessage ?? 'Something went wrong.', client.retry);
+        if (client.status == ConnStatus.error) return StatusPanel.error(client.errorMessage ?? t('Something went wrong.'), client.retry);
         if (s == null) {
-          return StatusPanel.starting(client.status == ConnStatus.reconnecting ? 'Reconnecting to Couchlink service' : 'Starting Couchlink service');
+          return StatusPanel.starting(client.status == ConnStatus.reconnecting ? t('Reconnecting to Couchlink service') : t('Starting Couchlink service'));
         }
         return builder(context, s);
       },
@@ -59,7 +61,7 @@ class StatusPanel extends StatelessWidget {
               Text(message, textAlign: TextAlign.center, style: txt(context, size: 13, color: c.ink2)),
               if (isError) ...[
                 const SizedBox(height: 18),
-                CButton(key: const ValueKey('retry'), label: 'Retry', primary: true, onTap: () => onRetry!()),
+                CButton(key: const ValueKey('retry'), label: t('Retry'), primary: true, onTap: () => onRetry!()),
               ],
             ],
           ),

@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../l10n/l10n.dart';
+
 import '../daemon/client.dart';
 import '../daemon/models.dart';
 import '../layout/layout_math.dart';
@@ -66,9 +68,9 @@ class _ShellState extends State<Shell> {
     final wasLive = was == 'starting' || was == 'running' || was == 'stopping';
     if (wasLive && now.state == 'idle') {
       scope.ui.closeLaunch();
-      scope.toaster.show('The game session ended. Your desktop is back.');
+      scope.toaster.show(t('The game session ended. Your desktop is back.'));
     } else if (now.state == 'failed' && !scope.ui.launchOpen) {
-      scope.toaster.show(now.error ?? 'The game session failed.', long: true);
+      scope.toaster.show(now.error ?? t('The game session failed.'), long: true);
     }
   }
 
@@ -80,8 +82,8 @@ class _ShellState extends State<Shell> {
         // A state event follows `joined`, so give it a moment to carry the seat name.
         Future<void>.delayed(const Duration(milliseconds: 120), () {
           if (!mounted) return;
-          final name = scope.client.state?.seats[seat]?.name ?? 'Player ${seat + 1}';
-          scope.toaster.show('$name joined as Player ${seat + 1}');
+          final name = scope.client.state?.seats[seat]?.name ?? t('Player {seat_1}', {'seat_1': seat + 1});
+          scope.toaster.show(t('{name} joined as Player {seat_1}', {'name': name, 'seat_1': seat + 1}));
         });
       case LogEvent(:final text):
         scope.toaster.show(text);
@@ -274,9 +276,9 @@ class _CaptionButtons extends StatelessWidget {
       valueListenable: chrome.maximized,
       builder: (context, max, _) => Row(
         children: [
-          _Caption(key: const ValueKey('win-min'), icon: iconMinimize, label: 'Minimize', onTap: chrome.minimize),
-          _Caption(key: const ValueKey('win-max'), icon: max ? iconRestore : iconMaximize, label: max ? 'Restore' : 'Maximize', onTap: chrome.toggleMaximize),
-          _Caption(key: const ValueKey('win-close'), icon: iconClose, label: 'Close', onTap: chrome.close, danger: true),
+          _Caption(key: const ValueKey('win-min'), icon: iconMinimize, label: t('Minimize'), onTap: chrome.minimize),
+          _Caption(key: const ValueKey('win-max'), icon: max ? iconRestore : iconMaximize, label: max ? t('Restore') : t('Maximize'), onTap: chrome.toggleMaximize),
+          _Caption(key: const ValueKey('win-close'), icon: iconClose, label: t('Close'), onTap: chrome.close, danger: true),
         ],
       ),
     );
@@ -343,16 +345,16 @@ class Sidebar extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _SideHeading('Play', first: true),
-                      item(AppView.library, iconLibrary, 'Library', step: '1'),
+                      _SideHeading(t('Play'), first: true),
+                      item(AppView.library, iconLibrary, t('Library'), step: '1'),
                       const SizedBox(height: 2),
-                      item(AppView.players, iconPlayers, 'Players', step: '2'),
+                      item(AppView.players, iconPlayers, t('Players'), step: '2'),
                       const SizedBox(height: 2),
-                      item(AppView.screens, iconScreens, 'Screens', step: '3'),
-                      const _SideHeading('Find more'),
-                      item(AppView.discover, iconDiscover, 'Co-op Anything'),
+                      item(AppView.screens, iconScreens, t('Screens'), step: '3'),
+                      _SideHeading(t('Find more')),
+                      item(AppView.discover, iconDiscover, t('Co-op Anything')),
                       const SizedBox(height: 2),
-                      item(AppView.dev, iconCode, 'Add your game'),
+                      item(AppView.dev, iconCode, t('Add your game')),
                     ],
                   ),
                 ),
@@ -361,8 +363,17 @@ class Sidebar extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(20, 10, 12, 14),
                 child: Row(
                   children: [
-                    Expanded(child: Text('Appearance', style: txt(context, size: 12, color: c.ink2))),
+                    Expanded(child: Text(t('Appearance'), style: txt(context, size: 12, color: c.ink2))),
                     _ThemeSwitch(value: ui.themeMode, onChanged: ui.setThemeMode),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 12, 14),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(t('Language'), style: txt(context, size: 12, color: c.ink2))),
+                    _LangSwitch(value: ui.lang, onChanged: ui.setLang),
                   ],
                 ),
               ),
@@ -384,13 +395,54 @@ class Kbd extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
       decoration: BoxDecoration(borderRadius: BorderRadius.circular(4), border: Border.all(color: c.hairStrong)),
-      child: Text(label,
+      child: Text(t(label),
           style: txt(context, size: 11, color: c.ink2, height: 1.3).copyWith(fontFamily: monoFamily, fontFamilyFallback: monoFallback)),
     );
   }
 }
 
 /// System / light / dark, as three icon buttons in one pill.
+class _LangSwitch extends StatelessWidget {
+  const _LangSwitch({required this.value, required this.onChanged});
+
+  final AppLang value;
+  final ValueChanged<AppLang> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(color: c.raised, borderRadius: BorderRadius.circular(9), border: Border.all(color: c.hair)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final l in AppLang.values)
+            Tooltip(
+              message: l.name,
+              waitDuration: const Duration(milliseconds: 500),
+              child: Pressable(
+                key: ValueKey('lang-${l.name.toLowerCase()}'),
+                onTap: () => onChanged(l),
+                radius: 7,
+                semanticLabel: l.name,
+                toggled: l == value,
+                builder: (context, s) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 140),
+                  width: 30,
+                  height: 24,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(color: l == value ? c.pane : Colors.transparent, borderRadius: BorderRadius.circular(7)),
+                  child: Text(l.short, style: txt(context, size: 11, weight: FontWeight.w600, color: l == value ? c.ink : c.ink3)),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ThemeSwitch extends StatelessWidget {
   const _ThemeSwitch({required this.value, required this.onChanged});
 
@@ -414,7 +466,7 @@ class _ThemeSwitch extends StatelessWidget {
         children: [
           for (final (mode, label) in options)
             Tooltip(
-              message: label,
+              message: t(label),
               waitDuration: const Duration(milliseconds: 500),
               child: Pressable(
                 key: ValueKey('theme-${mode.name}'),
@@ -454,7 +506,7 @@ class _SideHeading extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.fromLTRB(10, first ? 0 : 14, 10, 6),
-      child: Text(label, style: txt(context, size: 11, weight: FontWeight.w600, color: context.c.ink3, ls: .02, height: 1.3)),
+      child: Text(t(label), style: txt(context, size: 11, weight: FontWeight.w600, color: context.c.ink3, ls: .02, height: 1.3)),
     );
   }
 }
@@ -488,7 +540,7 @@ class _NavItem extends StatelessWidget {
             children: [
               Opacity(opacity: .9, child: CIcon(icon, size: 17, color: fg)),
               const SizedBox(width: 10),
-              Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: txt(context, size: 13.5, color: fg, height: 1.3))),
+              Expanded(child: Text(t(label), maxLines: 1, overflow: TextOverflow.ellipsis, style: txt(context, size: 13.5, color: fg, height: 1.3))),
               if (step != null)
                 Opacity(opacity: .6, child: Text(step!, style: txt(context, size: 11, color: fg, height: 1.3).copyWith(fontFeatures: const [FontFeature.tabularFigures()]))),
             ],
@@ -522,16 +574,16 @@ class PartyBar extends StatelessWidget {
             final live = scope.client.session.isLive;
             final ok = game != null && game.installed && canPlay(players: n, minPlayers: game.minPlayers, native: game.tier == Tier.native);
             final playLabel = live
-                ? 'Session running'
+                ? t('Session running')
                 : game == null
-                    ? 'Pick a game'
+                    ? t('Pick a game')
                     : !game.installed
-                        ? 'Not installed'
+                        ? t('Not installed')
                         : !game.ready
-                            ? 'Set up first'
+                            ? t('Set up first')
                             : ok
-                            ? 'Play with $n'
-                            : 'Need ${game.minPlayers} players';
+                            ? t('Play with {n}', {'n': n})
+                            : t('Need {minPlayers} players', {'minPlayers': game.minPlayers});
             final names = taken.map((i) => st.seats[i]!.name).join(', ');
             return Row(
               children: [
@@ -541,8 +593,8 @@ class PartyBar extends StatelessWidget {
                     key: const ValueKey('party-game'),
                     onTap: () => scope.ui.go(AppView.library),
                     leading: SizedBox(width: 42, height: 42, child: GameArt(colors: game?.art ?? noGameArt, radius: 9, coverUrl: game == null ? null : coverFor(scope.client.catalog, game))),
-                    label: 'Game',
-                    value: game?.name ?? 'No game yet',
+                    label: t('Game'),
+                    value: game?.name ?? t('No game yet'),
                   ),
                 ),
                 const SizedBox(width: 20),
@@ -561,8 +613,8 @@ class PartyBar extends StatelessWidget {
                           decoration: BoxDecoration(shape: BoxShape.circle, color: st.seats[i] != null ? c.seat[i] : c.hairStrong),
                         ),
                     ]),
-                    label: 'Players',
-                    value: n == 0 ? 'Nobody yet' : names,
+                    label: t('Players'),
+                    value: n == 0 ? t('Nobody yet') : names,
                   ),
                 ),
                 const SizedBox(width: 20),
@@ -572,7 +624,7 @@ class PartyBar extends StatelessWidget {
                     key: const ValueKey('party-layout'),
                     onTap: () => scope.ui.go(AppView.screens),
                     leading: MiniScreens(state: st),
-                    label: 'Screens',
+                    label: t('Screens'),
                     value: screensSummary(st),
                   ),
                 ),
@@ -622,7 +674,7 @@ class _Slot extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(label, style: txt(context, size: 11, color: c.ink3, height: 1.3)),
+                  Text(t(label), style: txt(context, size: 11, color: c.ink3, height: 1.3)),
                   Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: txt(context, size: 13, weight: FontWeight.w600, height: 1.3)),
                 ],
               ),

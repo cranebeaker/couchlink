@@ -1,3 +1,4 @@
+import '../l10n/l10n.dart';
 import 'dart:math' as math;
 
 /// A region on a screen as fractions of its size: x, y, width, height.
@@ -22,7 +23,7 @@ class Box {
   @override
   int get hashCode => Object.hash((x * 1e6).round(), (y * 1e6).round(), (w * 1e6).round(), (h * 1e6).round());
   @override
-  String toString() => 'Box(${x.toStringAsFixed(3)}, ${y.toStringAsFixed(3)}, ${w.toStringAsFixed(3)}, ${h.toStringAsFixed(3)})';
+  String toString() => t('Box({toStringAsFixed}, {toStringAsFixed2}, {toStringAsFixed3}, {toStringAsFixed4})', {'toStringAsFixed': x.toStringAsFixed(3), 'toStringAsFixed2': y.toStringAsFixed(3), 'toStringAsFixed3': w.toStringAsFixed(3), 'toStringAsFixed4': h.toStringAsFixed(3)});
 }
 
 /// A split tree: a leaf holds one slot (an index into the screen's players), a split lays its kids
@@ -44,7 +45,7 @@ class Split extends Node {
 }
 
 /// The named shapes for each player count, in the order the editor shows them.
-const Map<int, List<String>> shapesFor = {
+Map<int, List<String>> shapesFor = {
   1: ['full'],
   2: ['lr', 'tb'],
   3: ['top', 'left', 'cols', 'rows'],
@@ -55,16 +56,16 @@ const Map<int, List<String>> shapesFor = {
   8: ['grid', 'cols', 'rows'],
 };
 
-const Map<String, String> shapeNames = {
-  'full': 'Full screen',
-  'lr': 'Side by side',
-  'tb': 'Stacked',
-  'top': 'One on top',
-  'left': 'One on the left',
-  'cols': 'Columns',
-  'rows': 'Rows',
-  'grid': 'Grid',
-  'big': 'One big, three small',
+Map<String, String> shapeNames = {
+  'full': t('Full screen'),
+  'lr': t('Side by side'),
+  'tb': t('Stacked'),
+  'top': t('One on top'),
+  'left': t('One on the left'),
+  'cols': t('Columns'),
+  'rows': t('Rows'),
+  'grid': t('Grid'),
+  'big': t('One big, three small'),
 };
 
 Node buildShape(String shape, int n) {

@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../l10n/l10n.dart';
+
 import '../daemon/client.dart';
 import '../daemon/models.dart';
 import '../layout/screen_layout.dart';
@@ -198,7 +200,7 @@ class ScreensController extends ChangeNotifier {
     final to = byId(displayId);
     if (to == null) return null;
     if (to.seats.contains(seat)) return null;
-    if (to.seats.length >= 4) return '${to.display.name} already has four players';
+    if (to.seats.length >= 4) return t('{name} already has four players', {'name': to.display.name});
     final from = screenOf(seat);
     if (from != null) {
       from.seats.remove(seat);

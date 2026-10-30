@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 import '../daemon/client.dart';
 import '../daemon/fake_client.dart' show kMaxSeats;
 import '../daemon/models.dart';
@@ -90,7 +92,7 @@ class _PlayersViewState extends State<PlayersView> with SingleTickerProviderStat
         if (mounted) _pulse[i].value++;
       });
     }
-    scope.toaster.show('Each controller lights up in its player’s colour');
+    scope.toaster.show(t('Each controller lights up in its player’s colour'));
   }
 
   @override
@@ -101,14 +103,14 @@ class _PlayersViewState extends State<PlayersView> with SingleTickerProviderStat
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             PageHead(
-              title: 'Who’s playing?',
+              title: t('Who’s playing?'),
               subtitle:
-                  'Press A on a controller or Enter on a keyboard to take a seat. Drag a device onto a seat to move it.',
-              trailing: CButton(key: const ValueKey('identify-all'), label: 'Find all controllers', small: true, onTap: st.takenSeats.isEmpty ? null : () => _identifyAll(st)),
+                  t('Press A on a controller or Enter on a keyboard to take a seat. Drag a device onto a seat to move it.'),
+              trailing: CButton(key: const ValueKey('identify-all'), label: t('Find all controllers'), small: true, onTap: st.takenSeats.isEmpty ? null : () => _identifyAll(st)),
             ),
-            const SectionLabel('Devices', sub: 'found on this PC', top: 4),
+            SectionLabel(t('Devices'), sub: t('found on this PC'), top: 4),
             _DevicesRow(state: st, breath: _breath),
-            SectionLabel('Seats', sub: '${st.takenSeats.length} of ${shownSeats(st)} taken'),
+            SectionLabel(t('Seats'), sub: t('{length} of {shownSeats} taken', {'length': st.takenSeats.length, 'shownSeats': shownSeats(st)})),
             LayoutBuilder(builder: (context, box) {
               final cols = box.maxWidth >= 840 ? 4 : 2;
               const gap = 14.0;
@@ -124,7 +126,7 @@ class _PlayersViewState extends State<PlayersView> with SingleTickerProviderStat
             Padding(
               padding: const EdgeInsets.only(top: 12),
               child: Text(
-                'Keyboard and mouse can take a seat too. Couchlink gives each copy of the game only its own devices, so nobody steers someone else.',
+                t('Keyboard and mouse can take a seat too. Couchlink gives each copy of the game only its own devices, so nobody steers someone else.'),
                 style: txt(context, size: 12, color: context.c.ink3),
               ),
             ),
@@ -185,7 +187,7 @@ class _DeviceChip extends StatelessWidget {
   Widget _body(BuildContext context, {bool hover = false}) {
     final c = context.c;
     final seated = seat != null;
-    final status = seated ? 'Player ${seat! + 1}' : (device.isKbm ? 'Click to join' : 'Press A to join');
+    final status = seated ? t('Player {seat_1}', {'seat_1': seat! + 1}) : (device.isKbm ? t('Click to join') : t('Press A to join'));
     final small = txt(context, size: 11.5, color: seated ? c.ink3 : c.accent, height: 1.3);
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 9, 14, 9),
@@ -242,7 +244,7 @@ class _DeviceChip extends StatelessWidget {
         if (device.isKbm) {
           runCmd(context, () => scope.client.join(device.id));
         } else {
-          scope.toaster.show('Press A on this controller to take a seat');
+          scope.toaster.show(t('Press A on this controller to take a seat'));
         }
       },
       builder: (context, s) => Opacity(opacity: seated ? .45 : 1, child: _body(context, hover: s.hover)),
@@ -405,7 +407,7 @@ class _SeatCardState extends State<_SeatCard> with SingleTickerProviderStateMixi
             children: [
               SeatBadge(number: i + 1, color: color),
               if (!feedback)
-                RoundX(key: ValueKey('leave-$i'), label: 'Remove Player ${i + 1}', onTap: () => runCmd(context, () => scope.client.leave(i))),
+                RoundX(key: ValueKey('leave-$i'), label: t('Remove Player {i_1}', {'i_1': i + 1}), onTap: () => runCmd(context, () => scope.client.leave(i))),
             ],
           ),
           const SizedBox(height: 14),
@@ -441,11 +443,11 @@ class _SeatCardState extends State<_SeatCard> with SingleTickerProviderStateMixi
               children: [
                 if (!allKbm && devices.isNotEmpty) ...[
                 Tooltip(
-                  message: 'Buzzes this controller and lights it up in ${seat.name}’s colour, so you can tell which one it is',
+                  message: t('Buzzes this controller and lights it up in {name}’s colour, so you can tell which one it is', {'name': seat.name}),
                   waitDuration: const Duration(milliseconds: 400),
                   child: CButton(
                     key: ValueKey('identify-$i'),
-                    label: 'Find controller',
+                    label: t('Find controller'),
                     small: true,
                     leading: CIcon(iconVibrate, size: 14, color: c.ink, strokeWidth: 1.8),
                     onTap: feedback
@@ -453,13 +455,13 @@ class _SeatCardState extends State<_SeatCard> with SingleTickerProviderStateMixi
                         : () {
                             widget.pulse.value++;
                             runCmd(context, () => scope.client.identify(i));
-                            scope.toaster.show('${seat.name}’s controller is buzzing and lit up');
+                            scope.toaster.show(t('{name}’s controller is buzzing and lit up', {'name': seat.name}));
                           },
                   ),
                 ),
                 CButton(
                   key: ValueKey('controls-$i'),
-                  label: 'Controls',
+                  label: t('Controls'),
                   small: true,
                   leading: CIcon(iconControls, size: 14, color: c.ink, strokeWidth: 1.8),
                   onTap: feedback ? null : () => scope.ui.openControls(i),
@@ -467,11 +469,11 @@ class _SeatCardState extends State<_SeatCard> with SingleTickerProviderStateMixi
                 ],
                 if (i >= 1)
                   Tooltip(
-                    message: 'Let ${seat.name} play on their own Steam account instead of yours',
+                    message: t('Let {name} play on their own Steam account instead of yours', {'name': seat.name}),
                     waitDuration: const Duration(milliseconds: 400),
                     child: CButton(
                       key: ValueKey('steam-account-$i'),
-                      label: 'Steam',
+                      label: t('Steam'),
                       small: true,
                       onTap: feedback ? null : () => showSteamAccountDialog(context, i, seat.name),
                     ),
@@ -521,7 +523,7 @@ class _SeatCardState extends State<_SeatCard> with SingleTickerProviderStateMixi
           ),
         ),
         childWhenDragging: Opacity(opacity: .4, child: _card(context, feedback: true)),
-        onDragStarted: () => scope.toaster.show('Drop on another seat to swap places'),
+        onDragStarted: () => scope.toaster.show(t('Drop on another seat to swap places')),
         child: _card(context),
       ),
     );

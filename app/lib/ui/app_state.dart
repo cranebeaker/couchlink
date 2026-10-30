@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../daemon/client.dart';
+import '../l10n/l10n.dart';
 import 'catalog_logic.dart';
 import 'profile_files.dart';
 
@@ -87,6 +88,15 @@ class UiState extends ChangeNotifier {
 
   void setCatalogQuery(String q) {
     catalogQuery = q;
+    notifyListeners();
+  }
+
+  /// The app's language (l10n.dart). Changing it rebuilds every screen.
+  AppLang get lang => currentLang;
+
+  void setLang(AppLang l) {
+    if (l == currentLang) return;
+    currentLang = l;
     notifyListeners();
   }
 

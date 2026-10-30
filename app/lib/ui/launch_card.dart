@@ -2,6 +2,8 @@ import 'dart:ui' as ui_;
 
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 import '../daemon/client.dart';
 import '../daemon/models.dart';
 import '../layout/layout_math.dart';
@@ -25,12 +27,12 @@ Future<void> playGame(BuildContext context, LibraryGame game) async {
   if (game.installed && !game.ready) {
     scope.ui.go(AppView.library);
     scope.ui.selectGame(game.id, openSheet: true);
-    scope.toaster.show('One-time setup first, then Play');
+    scope.toaster.show(t('One-time setup first, then Play'));
     return;
   }
   final st = scope.client.state;
   if (st == null || st.takenSeats.isEmpty) {
-    scope.toaster.show('Pick your players first');
+    scope.toaster.show(t('Pick your players first'));
     scope.ui.go(AppView.players);
     return;
   }
@@ -87,14 +89,14 @@ class _Backdrop extends StatelessWidget {
 const _stepOrder = ['copy', 'steam', 'launch', 'hook', 'place', 'running'];
 
 String _stepText(String step) => switch (step) {
-      'copy' => 'Making a copy for this player',
-      'steam' => 'Setting up Steam',
-      'launch' => 'Starting the game',
-      'hook' => 'Connecting the controller',
-      'place' => 'Placing the window',
-      'running' => 'Playing',
-      'exited' => 'Closed',
-      _ => 'Working',
+      'copy' => t('Making a copy for this player'),
+      'steam' => t('Setting up Steam'),
+      'launch' => t('Starting the game'),
+      'hook' => t('Connecting the controller'),
+      'place' => t('Placing the window'),
+      'running' => t('Playing'),
+      'exited' => t('Closed'),
+      _ => t('Working'),
     };
 
 /// The launch card, driven by the daemon's `session` events: one row per copy while it starts,
@@ -198,7 +200,7 @@ class _LaunchCardState extends State<LaunchCard> {
       );
     }
     return pickedGame(scope.client, scope.ui) ??
-        const LibraryGame(id: '', name: 'the game', tier: Tier.recipe, minPlayers: 1, maxPlayers: 4, art: noGameArt, mode: '', saves: '', net: '');
+        LibraryGame(id: '', name: t('the game'), tier: Tier.recipe, minPlayers: 1, maxPlayers: 4, art: noGameArt, mode: '', saves: '', net: '');
   }
 }
 
@@ -239,16 +241,16 @@ class _Progress extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _Title(stopping ? 'Closing ${game.name}' : 'Starting ${game.name}'),
+        _Title(stopping ? t('Closing {name}', {'name': game.name}) : t('Starting {name}', {'name': game.name})),
         const SizedBox(height: 8),
         Text(
-          '${order.length} ${order.length == 1 ? 'copy' : 'copies'}, one per player. Your desktop comes back when you end the session.',
+          t(order.length == 1 ? '{n} copy, one per player. Your desktop comes back when you end the session.' : '{n} copies, one per player. Your desktop comes back when you end the session.', {'n': order.length}),
           style: txt(context, size: 14, color: c.ink2),
         ),
         const SizedBox(height: 18),
         for (var k = 0; k < order.length; k++) ...[
           if (k > 0) const SizedBox(height: 14),
-          _SeatRow(seat: order[k], name: state.seats[order[k]]?.name ?? 'Player ${order[k] + 1}', info: _seatInfo(session, order[k])),
+          _SeatRow(seat: order[k], name: state.seats[order[k]]?.name ?? t('Player {order_k_1}', {'order_k_1': order[k] + 1}), info: _seatInfo(session, order[k])),
         ],
         const SizedBox(height: 18),
         Row(
@@ -256,7 +258,7 @@ class _Progress extends StatelessWidget {
           children: [
             CButton(
               key: const ValueKey('launch-cancel'),
-              label: 'Cancel',
+              label: t('Cancel'),
               small: true,
               onTap: stopping
                   ? null
@@ -288,7 +290,7 @@ class _SeatRow extends StatelessWidget {
     final idx = info == null ? -1 : _stepOrder.indexOf(info!.step);
     final done = !failed && info?.step == 'running';
     final frac = info?.step == 'exited' ? 1.0 : (idx < 0 ? 0.0 : (idx + 1) / _stepOrder.length);
-    final label = info == null ? 'Waiting' : (failed ? info!.error! : _stepText(info!.step));
+    final label = info == null ? t('Waiting') : (failed ? info!.error! : _stepText(info!.step));
     return Row(
       children: [
         SeatBadge(number: seat + 1, color: c.seat[seat], size: 34, radius: 10, fontSize: 15),
@@ -359,17 +361,17 @@ class _Failed extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _Title(ran ? '${game.name} stopped' : 'Could not start ${game.name}'),
+        _Title(ran ? '${game.name} stopped' : t('Could not start {name}', {'name': game.name})),
         const SizedBox(height: 8),
         Text(
-          session.error ?? 'Something went wrong while starting the game.',
+          session.error ?? t('Something went wrong while starting the game.'),
           key: const ValueKey('launch-error'),
           style: txt(context, size: 14, color: c.danger, height: 1.45),
         ),
         const SizedBox(height: 18),
         for (var k = 0; k < order.length; k++) ...[
           if (k > 0) const SizedBox(height: 14),
-          _SeatRow(seat: order[k], name: state.seats[order[k]]?.name ?? 'Player ${order[k] + 1}', info: _seatInfo(session, order[k])),
+          _SeatRow(seat: order[k], name: state.seats[order[k]]?.name ?? t('Player {order_k_1}', {'order_k_1': order[k] + 1}), info: _seatInfo(session, order[k])),
         ],
         const SizedBox(height: 18),
         Row(
@@ -377,7 +379,7 @@ class _Failed extends StatelessWidget {
           children: [
             CButton(
               key: const ValueKey('launch-close'),
-              label: 'Close',
+              label: t('Close'),
               small: true,
               primary: true,
               onTap: () {
@@ -411,10 +413,10 @@ class _InGame extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _Title(stopping ? 'Closing ${game.name}' : 'Playing'),
+        _Title(stopping ? t('Closing {name}', {'name': game.name}) : t('Playing')),
         const SizedBox(height: 8),
         Text(
-          stopping ? 'Putting your desktop back.' : '${game.name} is running, one copy per player. Each part shows one player.',
+          stopping ? t('Putting your desktop back.') : t('{name} is running, one copy per player. Each part shows one player.', {'name': game.name}),
           style: txt(context, size: 14, color: c.ink2),
         ),
         const SizedBox(height: 18),
@@ -452,11 +454,11 @@ class _InGame extends StatelessWidget {
           children: [
             Text('Your desktop comes back when you end the game.', style: txt(context, size: 12, color: c.ink3)),
             Row(mainAxisSize: MainAxisSize.min, children: [
-              CButton(key: const ValueKey('launch-hide'), label: 'Hide', small: true, onTap: scope.ui.closeLaunch),
+              CButton(key: const ValueKey('launch-hide'), label: t('Hide'), small: true, onTap: scope.ui.closeLaunch),
               const SizedBox(width: 8),
               CButton(
                 key: const ValueKey('launch-end'),
-                label: 'End',
+                label: t('End'),
                 small: true,
                 primary: true,
                 onTap: stopping ? null : () => runCmd(context, scope.client.stopSession),
