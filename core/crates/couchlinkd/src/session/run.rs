@@ -524,7 +524,7 @@ impl Run {
         self.set_step(idx, Step::Launch, None);
         let vars = self.vars(idx).map_err(|e| self.seat_failed(idx, Step::Launch, e))?;
         let dir = self.seats[idx].dir.clone();
-        let (exe, args) = launch_line(recipe);
+        let (exe, args) = launch_line(recipe, self.seats[idx].plan.seat);
         let mut spec = self.spec(Some(idx), exe, args, &dir, &vars).map_err(|e| self.seat_failed(idx, Step::Launch, e))?;
         spec.linux = self.linux_seat(idx, &vars).map_err(|e| self.seat_failed(idx, Step::Launch, format!("linux: {e}")))?;
         let prep = &self.seats[idx].prep;
@@ -792,15 +792,17 @@ impl Run {
     }
 }
 
-/// The program and arguments a seat's copy starts: the recipe's `linux.exe` (and `linux.args`) on Linux when it has one.
-fn launch_line(recipe: &Recipe) -> (&str, &str) {
+/// The program and arguments seat `seat`'s copy starts: the recipe's `linux.exe` (and `linux.args`) on Linux when it
+/// has one, and the seat's own `launch.seat_args` when the recipe has some for it.
+fn launch_line(recipe: &Recipe, seat: usize) -> (&str, &str) {
+    let args = recipe.launch.args_for(seat);
     if cfg!(target_os = "linux")
         && let Some(l) = &recipe.linux
         && let Some(exe) = &l.exe
     {
-        return (exe, l.args.as_deref().unwrap_or(&recipe.launch.args));
+        return (exe, l.args.as_deref().unwrap_or(args));
     }
-    (&recipe.launch.exe, &recipe.launch.args)
+    (&recipe.launch.exe, args)
 }
 
 /// A path from a recipe: absolute as it is, relative to `dir` otherwise.

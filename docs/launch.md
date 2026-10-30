@@ -146,6 +146,9 @@ or an anti-cheat or copy protection component (EasyAntiCheat, BattlEye, Vanguard
 `port:N` (a TCP or UDP port on this PC is open; a helper whose first wait is a port that is already open is left alone, it counts as already running), `delay:MS`, `file:PATH`, `window:TEXT` (a visible window on the PC has TEXT in its title), `exit` (the helper ends by itself, up to 5 minutes).
 Waits may use variables. `at` is `start` (default, before any copy), `first_copy` (once the first copy has its window) or `placed` (once every copy has its window). `launch.per_seat_helpers` has the same fields plus `seats`, started for every seat with that seat's variables:
 `at: start` before that seat's copy launches, `placed` once its window is placed. Helpers run in the session's job: they end with the session, or when the daemon dies.
+**launch.seat_args**: arguments for some seats instead of `launch.args`, for a host and the players who join it:
+`"seat_args": [{"seats": "0", "args": "-host"}]` (the first entry whose `seats` holds the seat wins; `seats` as above).
+
 **window.fps_limit**: frames per second the copies are held to when the player set no limit in Screens (10 to 360):
 `"window": {"fps_limit": 30}`. Linux: gamescope's `--framerate-limit`; both systems: `DXVK_FRAME_RATE` and
 `VKD3D_FRAME_RATE` for games that draw through DXVK or VKD3D (the recipe's own `launch.env` wins).

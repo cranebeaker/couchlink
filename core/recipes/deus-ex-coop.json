@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "id": "deus-ex-coop",
+  "game": "Deus Ex (co-op)",
+  "match": { "steamAppId": 6910, "exe": "System/DeusEx.exe" },
+  "players": [2, 4],
+  "mode": "instances",
+  "steam": "none",
+  "present": "window",
+  "launch": {
+    "exe": "$HX",
+    "args": "127.0.0.1:7790?Name=$PLAYER -log=Seat$SEAT.log",
+    "seat_args": [
+      { "seats": "0", "args": "\"$MAP?Listen?Game=HXFix.HXFixGameInfo?Name=$PLAYER\" -log=Host.log" }
+    ]
+  },
+  "files": { "copy": [], "link": "all", "saves": [] },
+  "edits": [
+    {
+      "file": "System/HX.ini",
+      "format": "ini",
+      "per_seat": true,
+      "set": [
+        { "section": "WinDrv.WindowsClient", "key": "StartupFullscreen", "value": "False" },
+        { "section": "WinDrv.WindowsClient", "key": "WindowedViewportX", "value": "$WIDTH" },
+        { "section": "WinDrv.WindowsClient", "key": "WindowedViewportY", "value": "$HEIGHT" },
+        { "section": "Engine.Engine", "key": "GameRenderDevice", "value": "SoftDrv.SoftwareRenderDevice" },
+        { "section": "FirstRun", "key": "FirstRun", "value": "1100" }
+      ]
+    }
+  ],
+  "locks": [],
+  "input": { "xinput": true, "dinput": false, "rawinput": false },
+  "window": { "borderless": true, "settle_ms": 8000, "wait_ms": 120000 },
+  "vars": { "HX": "System/HX.exe" },
+  "options": {
+    "MAP": {
+      "label": "Start at",
+      "choices": [
+        { "value": "01_NYC_UNATCOIsland", "label": "Liberty Island (new game)" },
+        { "value": "00_Training", "label": "Training" }
+      ],
+      "default": "01_NYC_UNATCOIsland"
+    }
+  },
+  "requires": [
+    {
+      "file": "System/HX.exe",
+      "hint": "install Deus Ex Co-op once: download it from github.com/cranebeaker/deus-ex-coop/releases and run Install.bat (it finds the game and adds HX)."
+    }
+  ],
+  "controls": {
+    "id": "deus-ex-pad",
+    "name": "Deus Ex on a controller",
+    "buttons": {
+      "south": { "type": "key", "value": "Space" },
+      "east": { "type": "key", "value": "X" },
+      "west": { "type": "key", "value": "R" },
+      "north": { "type": "key", "value": "F1" },
+      "left_shoulder": { "type": "key", "value": "Q" },
+      "right_shoulder": { "type": "key", "value": "E" },
+      "right_trigger": { "type": "mouse", "value": "left" },
+      "left_trigger": { "type": "mouse", "value": "right" },
+      "dpad_up": { "type": "mouse", "value": "wheel_up" },
+      "dpad_down": { "type": "mouse", "value": "wheel_down" },
+      "start": { "type": "key", "value": "Esc" },
+      "back": { "type": "key", "value": "Tab" }
+    },
+    "sticks": {
+      "left": { "as": "wasd" },
+      "right": { "as": "mouse" }
+    }
+  }
+}

@@ -70,6 +70,25 @@ pub struct Launch {
     /// Helpers started for every seat, with that seat's variables.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub per_seat_helpers: Vec<Helper>,
+    /// Arguments for some seats instead of `args` (the first entry whose `seats` holds the seat wins): a host and
+    /// the players who join it, for example.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub seat_args: Vec<SeatArgs>,
+}
+
+/// `launch.seat_args`: these seats start with these arguments.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SeatArgs {
+    pub seats: crate::recipe_parts::SeatSel,
+    pub args: String,
+}
+
+impl Launch {
+    /// The arguments seat `seat` starts with.
+    pub fn args_for(&self, seat: usize) -> &str {
+        self.seat_args.iter().find(|a| a.seats.matches(seat)).map_or(&self.args, |a| &a.args)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -383,6 +402,9 @@ impl Recipe {
         }
         self.check_template("launch.exe", &self.launch.exe, false)?;
         self.check_template("launch.args", &self.launch.args, false)?;
+        for (i, a) in self.launch.seat_args.iter().enumerate() {
+            self.check_template(&format!("launch.seat_args[{i}].args"), &a.args, false)?;
+        }
         if let Some(cwd) = &self.launch.cwd {
             self.check_template("launch.cwd", cwd, false)?;
         }
@@ -919,6 +941,37 @@ mod tests {
         assert!(Wait::parse("port:0").is_err());
         assert!(Wait::parse("port:70000").is_err());
         assert!(Wait::parse("delay:x").is_err());
+    }
+
+    /// Every built-in recipe (`core/recipes`) parses and validates.
+    #[test]
+    fn the_builtin_recipes_are_valid() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../recipes");
+        let mut seen = std::collections::BTreeMap::new();
+        for e in std::fs::read_dir(&dir).unwrap().flatten() {
+            if e.path().extension().is_some_and(|x| x == "json") {
+                let r = Recipe::parse(&std::fs::read_to_string(e.path()).unwrap()).unwrap_or_else(|err| panic!("{}: {err}", e.path().display()));
+                seen.insert(r.id.clone(), r);
+            }
+        }
+        let dx = &seen["deus-ex-coop"];
+        assert!(dx.launch.args_for(0).contains("?Listen"), "player 1 hosts");
+        assert!(dx.launch.args_for(1).starts_with("127.0.0.1:7790"), "the others join");
+        assert!(crate::profile::Profile::from_value(dx.controls.as_ref().unwrap()).unwrap().sends_kbm(), "a pad plays it as keyboard and mouse");
+        let oot = &seen["zelda-oot-anchor"];
+        assert_eq!(oot.launch.env["SHIP_HOME"], "$GAMEDIR", "each copy keeps its own settings and saves");
+        assert!(oot.edits[0].per_seat);
+    }
+
+    #[test]
+    fn some_seats_may_start_with_their_own_arguments() {
+        let r = Recipe::parse(r#"{"schema":1,"id":"g","game":"G","players":[2,4],"launch":{"exe":"g.exe","args":"join 127.0.0.1",
+            "seat_args":[{"seats":"0","args":"host"},{"seats":"2,3","args":"join late"}]}}"#)
+        .unwrap();
+        assert_eq!(r.launch.args_for(0), "host");
+        assert_eq!(r.launch.args_for(1), "join 127.0.0.1");
+        assert_eq!(r.launch.args_for(3), "join late");
+        assert!(Recipe::parse(r#"{"schema":1,"id":"g","game":"G","players":[2,4],"launch":{"exe":"g.exe","seat_args":[{"seats":"0","argz":"x"}]}}"#).is_err());
     }
 
     #[test]
