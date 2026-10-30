@@ -465,12 +465,13 @@ impl Worker {
 
     /// Every loop while games are running: pad state out to the game copies, rumble back to the pads.
     fn feed_pads(&mut self) {
-        use crate::session::padfeed::{publish, take_rumble};
+        use crate::session::padfeed::{publish_sample, take_rumble};
         for (id, sample) in self.read_pads() {
             // Linux: the seat's virtual pad, through the seat's profile (session/uipad_linux.rs).
             #[cfg(target_os = "linux")]
             crate::session::uipad_linux::publish(&format!("pad:{id}"), &sample);
-            publish(&format!("pad:{id}"), &sample);
+            // Each seat's feed plays the sample through the seat's profile (session/padfeed.rs).
+            publish_sample(&format!("pad:{id}"), &sample);
         }
         for (id, pad) in self.pads.iter_mut() {
             let rumble = take_rumble(&format!("pad:{id}"));

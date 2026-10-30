@@ -5,20 +5,20 @@
 //! sections and connects them to SDL devices by device id (`pad:<sdl id>`, the same id a seat lists in
 //! `LaunchSpec::devices`):
 //!
-//! - the SDL thread calls [`publish`] with every sample and [`take_rumble`] to forward rumble to the real pad,
+//! - the SDL thread calls [`publish_sample`] with every sample and [`take_rumble`] to forward rumble to the real pad;
+//!   a seat's feed gets the sample through that seat's profile (`couchlink_core::process`: remaps, layers, stick and
+//!   trigger shaping), the same processor the app shows, with profiles from the hub ([`set_profiles`]),
 //! - the launcher calls [`feed_name`] and [`attach`] before it starts a seat, and keeps the returned guard for as
-//!   long as the copy runs (dropping it closes the section; the game keeps its mapping until it exits),
-//! - the hub calls [`set_profiles`] whenever seat profiles change; every sample reaches a seat's game through that
-//!   seat's profile (`couchlink_core::process`: remaps, layers, stick and trigger shaping).
+//!   long as the copy runs (dropping it closes the section; the game keeps its mapping until it exits).
 //!
 //! Depends only on `couchlink_core` and `couchlink_hook`, so it is testable without SDL.
 
-use couchlink_core::{process, Button, InputSample, ProcState, Profile};
+use couchlink_core::profile::Profile;
+use couchlink_core::{process, Button, InputSample, Output, ProcState};
 use couchlink_hook::feed::{buttons as xb, Feed, FeedState};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::{LazyLock, Mutex};
-use std::time::Instant;
 
 /// A pad state in XInput units (the layout `XInputGetState` returns).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -96,8 +96,8 @@ impl PadState {
         )
     }
 
-    /// From what a seat's profile made of a sample (same units as [`InputSample`]).
-    pub fn from_output(o: &couchlink_core::Output) -> PadState {
+    /// From what the seat's profile made of a sample (same units as a sample).
+    pub fn from_output(o: &Output) -> PadState {
         let axis = |v: f32| (v.clamp(-1.0, 1.0) * 32767.0).round() as i16;
         PadState::from_sdl(&o.buttons, axis(o.lx), axis(o.ly), axis(o.rx), axis(o.ry), axis(o.lt.max(0.0)), axis(o.rt.max(0.0)))
     }
@@ -120,26 +120,20 @@ pub fn feed_name(session: impl Display, seat: u32) -> String {
 struct Entry {
     id: u64,
     device: String,
-    seat: usize,
-    state: ProcState,
     feed: Feed,
+    /// The seat whose profile the feed plays (none: the pad as it is).
+    seat: Option<usize>,
+    state: ProcState,
 }
 
 #[derive(Default)]
 struct Registry {
     next_id: u64,
     entries: Vec<Entry>,
-    /// Last published sample per device, so a feed attached later starts with the current state.
-    latest: HashMap<String, InputSample>,
+    /// Last published state per device, so a feed attached later starts with the current state.
+    latest: HashMap<String, PadState>,
     /// The profile on each seat, as the hub has them.
     profiles: Vec<Profile>,
-}
-
-static REGISTRY: LazyLock<Mutex<Registry>> = LazyLock::new(|| Mutex::new(Registry::default()));
-static STARTED: LazyLock<Instant> = LazyLock::new(Instant::now);
-
-fn registry() -> std::sync::MutexGuard<'static, Registry> {
-    REGISTRY.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 /// The hub's seat profiles, kept here for the feeds (called whenever they change).
@@ -147,13 +141,20 @@ pub fn set_profiles(profiles: &[Profile]) {
     registry().profiles = profiles.to_vec();
 }
 
-/// `sample` through `seat`'s profile, in XInput units.
-fn shown(profiles: &[Profile], seat: usize, state: &mut ProcState, sample: &InputSample) -> PadState {
-    let now = STARTED.elapsed().as_millis() as u64;
-    match profiles.get(seat) {
-        Some(profile) => PadState::from_output(&process(profile, state, now, sample)),
+/// What a seat's game gets for one sample: the sample through the seat's profile, or as it is without one.
+pub fn played(profile: Option<&Profile>, state: &mut ProcState, now_ms: u64, sample: &InputSample) -> PadState {
+    match profile {
+        Some(p) => PadState::from_output(&process(p, state, now_ms, sample)),
         None => PadState::from_sample(sample),
     }
+}
+
+static STARTED: LazyLock<std::time::Instant> = LazyLock::new(std::time::Instant::now);
+
+static REGISTRY: LazyLock<Mutex<Registry>> = LazyLock::new(|| Mutex::new(Registry::default()));
+
+fn registry() -> std::sync::MutexGuard<'static, Registry> {
+    REGISTRY.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 /// Keeps one seat's section alive and registered. Dropping it removes the feed.
@@ -183,36 +184,58 @@ pub fn feed_device(devices: &[String]) -> Option<&str> {
 
 /// Creates the section `name` for a seat and wires it to the seat's pad. Errors when the seat has no pad or the
 /// section cannot be created; the launcher then starts the copy without a feed.
-pub fn attach(name: &str, seat: usize, devices: &[String]) -> Result<FeedGuard, String> {
-    attach_shared(name, seat, devices, None)
+pub fn attach(name: &str, devices: &[String]) -> Result<FeedGuard, String> {
+    attach_shared(name, devices, None)
 }
 
 /// `attach`, and the Windows user `share_with` (the seat's own Steam account) may read the feed too.
-pub fn attach_shared(name: &str, seat: usize, devices: &[String], share_with: Option<&str>) -> Result<FeedGuard, String> {
+pub fn attach_shared(name: &str, devices: &[String], share_with: Option<&str>) -> Result<FeedGuard, String> {
+    attach_for_seat(name, devices, None, share_with)
+}
+
+/// `attach_shared` for a seat: the feed plays the seat's profile.
+pub fn attach_for_seat(name: &str, devices: &[String], seat: Option<usize>, share_with: Option<&str>) -> Result<FeedGuard, String> {
     let device = feed_device(devices).ok_or_else(|| "the seat has no controller".to_string())?;
     let mut feed = Feed::create_shared(name, share_with).map_err(|e| format!("cannot create the pad feed: {e}"))?;
     let mut reg = registry();
-    let mut state = ProcState::new();
-    if let Some(sample) = reg.latest.get(device) {
-        feed.write_state(&shown(&reg.profiles, seat, &mut state, sample).feed_state());
+    if let Some(state) = reg.latest.get(device) {
+        feed.write_state(&state.feed_state());
     }
     reg.next_id += 1;
     let id = reg.next_id;
-    reg.entries.push(Entry { id, device: device.to_string(), seat, state, feed });
+    reg.entries.push(Entry { id, device: device.to_string(), feed, seat, state: ProcState::new() });
     Ok(FeedGuard { id, name: name.to_string() })
 }
 
-/// Publishes one sample of a device to every seat feed that uses it, through each seat's profile. Call it every
-/// sample, also when nothing changed: profiles have timed bindings (hold, turbo).
-pub fn publish(device_id: &str, sample: &InputSample) {
+/// Publishes the current state of a device to every seat feed that uses it. Cheap; call it every sample.
+pub fn publish(device_id: &str, state: PadState) {
     let mut reg = registry();
-    let Registry { entries, latest, profiles, .. } = &mut *reg;
-    latest.insert(device_id.to_string(), sample.clone());
-    for e in entries.iter_mut().filter(|e| e.device == device_id) {
+    if reg.latest.get(device_id) != Some(&state) {
+        reg.latest.insert(device_id.to_string(), state);
+    }
+    for e in reg.entries.iter_mut().filter(|e| e.device == device_id) {
         if !e.feed.is_connected() {
             e.feed.set_connected(true);
         }
-        let state = shown(profiles, e.seat, &mut e.state, sample);
+        e.feed.write_state(&state.feed_state());
+    }
+}
+
+/// Publishes one sample of a device to every seat feed that uses it, through each seat's profile. Call it every sample.
+pub fn publish_sample(device_id: &str, sample: &InputSample) {
+    let now = STARTED.elapsed().as_millis() as u64;
+    let mut reg = registry();
+    let raw = PadState::from_sample(sample);
+    if reg.latest.get(device_id) != Some(&raw) {
+        reg.latest.insert(device_id.to_string(), raw);
+    }
+    let Registry { entries, profiles, .. } = &mut *reg;
+    for e in entries.iter_mut().filter(|e| e.device == device_id) {
+        let profile = e.seat.and_then(|s| profiles.get(s));
+        let state = played(profile, &mut e.state, now, sample);
+        if !e.feed.is_connected() {
+            e.feed.set_connected(true);
+        }
         e.feed.write_state(&state.feed_state());
     }
 }
@@ -291,6 +314,21 @@ mod tests {
     }
 
     #[test]
+    fn a_seat_feed_plays_its_profile() {
+        let swap = Profile::from_value(&serde_json::json!({"id": "s", "name": "S", "buttons": {"south": {"type": "pad", "value": "east"}}})).unwrap();
+        let mut sample = InputSample::neutral();
+        sample.buttons = vec![Button::South];
+        sample.lx = 0.5;
+        let mut st = ProcState::new();
+        let s = played(Some(&swap), &mut st, 0, &sample);
+        assert_eq!(s.buttons, xb::B, "South is played as East");
+        assert_eq!(s.lx, 16384);
+        assert_eq!(played(None, &mut ProcState::new(), 0, &sample).buttons, xb::A, "no profile: the pad as it is");
+        let default = couchlink_core::profile::builtin("default").unwrap();
+        assert_eq!(played(Some(&default), &mut ProcState::new(), 0, &sample), PadState::from_sample(&sample), "the default changes nothing");
+    }
+
+    #[test]
     fn feed_names_are_per_session_and_seat() {
         assert_eq!(feed_name("s7", 2), "Local\\couchlink-pad-s7-2");
         assert_ne!(feed_name("s7", 1), feed_name("s7", 2));
@@ -301,16 +339,6 @@ mod tests {
         let d = vec!["kbm:system".to_string(), "pad:5".to_string(), "pad:6".to_string()];
         assert_eq!(feed_device(&d), Some("pad:5"));
         assert_eq!(feed_device(&["kbm:system".to_string()]), None);
-        assert!(attach("Local\\couchlink-pad-none-0", 0, &["kbm:system".to_string()]).is_err());
-    }
-
-    #[test]
-    fn a_seat_profile_remaps_what_its_game_sees() {
-        let swap = Profile::from_value(&serde_json::json!({"id": "t", "name": "T", "buttons": {"south": {"type": "pad", "value": "east"}}})).unwrap();
-        let mut sample = InputSample::neutral();
-        sample.buttons = vec![Button::South];
-        let mut st = ProcState::new();
-        assert_eq!(shown(&[swap], 0, &mut st, &sample).buttons, xb::B, "South is East on this seat");
-        assert_eq!(shown(&[], 0, &mut ProcState::new(), &sample).buttons, xb::A, "no profile: the pad as it is");
+        assert!(attach("Local\\couchlink-pad-none-0", &["kbm:system".to_string()]).is_err());
     }
 }

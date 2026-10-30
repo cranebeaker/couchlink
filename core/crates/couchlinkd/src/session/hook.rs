@@ -163,7 +163,7 @@ impl Launcher for HookLauncher {
         // the fallback when the seat has no pad to feed from.
         let mut feed = spec.seat.and_then(|seat| {
             let tag = format!("{}-{}", std::process::id(), LAUNCHES.fetch_add(1, Ordering::Relaxed));
-            super::padfeed::attach(&super::padfeed::feed_name(tag, seat as u32), seat, &spec.devices).ok()
+            super::padfeed::attach_for_seat(&super::padfeed::feed_name(tag, seat as u32), &spec.devices, Some(seat), None).ok()
         });
         // The seat's own keyboards and mice reach the copy through a second feed; a seat without any keeps the
         // shared desktop keyboard and mouse.
@@ -283,7 +283,7 @@ fn launch_as_seat_user(spec: &LaunchSpec, account: &couchlink_steam::AccountsCon
     }
     let feed = spec.seat.and_then(|seat| {
         let tag = format!("{}-{}", std::process::id(), LAUNCHES.fetch_add(1, Ordering::Relaxed));
-        super::padfeed::attach_shared(&super::padfeed::feed_name(tag, seat as u32), seat, &spec.devices, Some(&user)).ok()
+        super::padfeed::attach_for_seat(&super::padfeed::feed_name(tag, seat as u32), &spec.devices, Some(seat), Some(&user)).ok()
     });
     let kbm = spec.seat.and_then(|seat| {
         let tag = format!("{}-{}", std::process::id(), LAUNCHES.fetch_add(1, Ordering::Relaxed));

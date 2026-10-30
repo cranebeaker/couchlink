@@ -52,6 +52,10 @@ impl Launcher for LinuxLauncher {
                 if let Some(file) = &line.display_file {
                     let _ = std::fs::remove_file(file);
                     kbm = super::rawkbm::linux::attach_x(&spec.devices, file.clone());
+                    // What the seat's profile turns into keys and mouse input goes to the same display.
+                    if let Some(seat) = spec.seat {
+                        super::uipad_linux::set_display(seat, file.clone());
+                    }
                 } else if spec.devices.iter().any(|d| super::rawkbm::is_kbm_id(d)) {
                     eprintln!("couchlinkd: seat {:?} has a keyboard or mouse of its own, but runs without gamescope; it gets the desktop's", spec.seat);
                 }

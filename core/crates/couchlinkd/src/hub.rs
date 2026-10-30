@@ -111,7 +111,7 @@ impl Hub {
                 .and_then(|id| builtin(id).or_else(|| store.load(id)))
                 .unwrap_or_else(default_profile)
         });
-        // Game copies get each seat's pad through the seat's profile: the pad feed (Windows), a virtual pad (Linux).
+        // Games play the seat's profile: the pad feeds (Windows) and the virtual pads (Linux) get them.
         crate::session::padfeed::set_profiles(&seat_profiles);
         #[cfg(target_os = "linux")]
         crate::session::uipad_linux::set_profiles(&seat_profiles);

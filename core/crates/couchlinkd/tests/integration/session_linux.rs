@@ -308,6 +308,9 @@ async fn gamescope(c: &mut Checks, cl: &mut Client, state: &Path, display: &Valu
             }
         }
     }
+    // Player 1's profile types Q with the South button (a binding to a key, which reaches the game through XTEST).
+    let typed = cl.request(json!({"cmd": "set_profile", "seat": 0, "profile": {"id": "keys-test", "name": "Keys", "buttons": {"south": {"type": "key", "value": "Q"}}}})).await;
+    c.check("gamescope: player 1's profile types Q with South", typed["ok"] == true);
     cl.backlog.clear();
     let r = cl.request(json!({"cmd": "start_session", "recipe": "testgame-gamescope"})).await;
     if !c.check("gamescope: start_session accepted", r["ok"] == true) {
@@ -368,6 +371,19 @@ async fn gamescope(c: &mut Checks, cl: &mut Client, state: &Path, display: &Valu
                 println!("  seat {seat} got keys {keys:?}");
             }
         }
+    }
+    // South on player 1's pad: player 1's copy gets Q (X code 24), player 2's nothing.
+    let gs = cl.request(json!({"cmd": "get_state"})).await;
+    let pad = gs["state"]["seats"][0]["devices"].as_array().and_then(|d| d.iter().filter_map(Value::as_str).find(|d| d.starts_with("pad:")).map(str::to_string));
+    if let Some(pad) = pad {
+        let r = cl.request(json!({"cmd": "debug_press", "device": pad, "button": "south"})).await;
+        let got = seat_status(&inst, 0, Duration::from_secs(10), |s| s["keys"].as_array().is_some_and(|k| k.iter().any(|k| k.as_u64() == Some(24)))).await;
+        let other: Vec<u64> = read_status(&seat_file(&inst, 1, "status.json")).and_then(|s| s["keys"].as_array().map(|k| k.iter().filter_map(Value::as_u64).collect())).unwrap_or_default();
+        if !c.check("gamescope: a pad button bound to a key types it in its own player's game only", r["ok"] == true && got.is_some() && !other.contains(&24)) {
+            println!("  press: {r}, player 2 got {other:?}");
+        }
+    } else {
+        c.check("gamescope: player 1 has a pad", false);
     }
     let r = cl.request(json!({"cmd": "stop_session"})).await;
     c.check("gamescope: stop_session accepted", r["ok"] == true);
