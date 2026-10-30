@@ -77,7 +77,9 @@ pub async fn run(c: &mut Checks, fx: &Fixture) {
     let cl = &mut table.cl;
     cl.backlog.clear();
     let r = cl.request(json!({"cmd": "start_session", "recipe": "testgame-linux"})).await;
-    c.check("linux: start_session accepted", r["ok"] == true);
+    if !c.check("linux: start_session accepted", r["ok"] == true) {
+        println!("  start_session: {}", r["error"]);
+    }
     let events = session_until(cl, Duration::from_secs(60), |e| e["state"] == "running" || e["state"] == "failed").await;
     let last = events.last().cloned().unwrap_or(Value::Null);
     c.check("linux: the session reaches running", last["state"] == "running");

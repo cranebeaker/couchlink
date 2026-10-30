@@ -289,13 +289,14 @@ fn search(root: &Path, file: &str, depth: u8) -> Option<PathBuf> {
 }
 
 /// Where the game is installed, if a locator finds it and the folder looks right (it exists and holds
-/// the exe the recipe launches).
+/// the exe the recipe launches; on Linux its `linux.exe` when it has one).
 pub fn locate(locators: &[Locator], recipe: &Recipe) -> Option<PathBuf> {
     let dir = locators.iter().find_map(|l| l(recipe))?;
     if !dir.is_dir() {
         return None;
     }
-    let exe = &recipe.launch.exe;
+    let native = recipe.linux.as_ref().and_then(|l| l.exe.as_ref()).filter(|_| cfg!(target_os = "linux"));
+    let exe = native.unwrap_or(&recipe.launch.exe);
     if !exe.contains('$') && !dir.join(exe).is_file() && !Path::new(exe).is_file() {
         return None;
     }
