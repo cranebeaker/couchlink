@@ -23,6 +23,8 @@ pub use config::{HookChild, HookConfig, HookFlags, HookOptions, HookStatus, Test
 pub use error::{HookError, Result};
 
 #[cfg(windows)]
+mod sec;
+#[cfg(windows)]
 mod sys;
 #[cfg(windows)]
 pub use sys::{HookHandle, Launched, inject, inject_with, join_args, launch_suspended, resume};

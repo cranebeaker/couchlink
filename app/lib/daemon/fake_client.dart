@@ -241,6 +241,39 @@ class FakeClient extends CouchClient {
 
   // ---- controller profiles, kept in memory
 
+  /// Seats with their own Steam account (fake: set up at once).
+  final Set<int> _ownSteam = {};
+
+  static const List<SteamPlanStep> _plan = [
+    SteamPlanStep(id: 'create_user', title: 'Create a local Windows user for this seat', detail: 'Only used to run a second Steam.', needsAdmin: true),
+    SteamPlanStep(id: 'sign_in', title: 'Sign in with the seat’s own Steam account', detail: 'Couchlink never sees a Steam password.'),
+    SteamPlanStep(id: 'remove', title: 'One-click removal', detail: 'Removes the Windows user again.', needsAdmin: true),
+  ];
+
+  @override
+  Future<({SteamAccounts? value, String? error})> steamAccounts() async => (
+        value: SteamAccounts(accounts: [
+          for (var i = 1; i < kMaxSeats; i++) SteamAccount(seat: i, ready: _ownSteam.contains(i), running: _ownSteam.contains(i), plan: _plan),
+        ]),
+        error: null,
+      );
+
+  @override
+  Future<String?> setupSteamAccount(int seat) async {
+    if (seat < 1 || seat >= kMaxSeats) return 'Seat ${seat + 1} cannot have its own Steam account';
+    _ownSteam.add(seat);
+    return null;
+  }
+
+  @override
+  Future<String?> openSteamAccount(int seat) async => _ownSteam.contains(seat) ? null : 'Player ${seat + 1} has no Steam account set up yet';
+
+  @override
+  Future<String?> removeSteamAccount(int seat) async {
+    _ownSteam.remove(seat);
+    return null;
+  }
+
   final List<Profile> _seatProfiles = List.generate(kMaxSeats, (_) => builtinProfiles().first);
   final Map<String, Profile> _saved = {};
 

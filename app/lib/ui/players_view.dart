@@ -11,6 +11,7 @@ import 'app_state.dart';
 import 'icons.dart';
 import 'kit.dart';
 import 'shell.dart';
+import 'steam_account_dialog.dart';
 import 'status.dart';
 
 /// Drag payload: a device from the devices row.
@@ -116,7 +117,7 @@ class _PlayersViewState extends State<PlayersView> with SingleTickerProviderStat
                 spacing: gap,
                 runSpacing: gap,
                 children: [
-                  for (var i = 0; i < shownSeats(st); i++) SizedBox(width: w, height: 318, child: _SeatSlot(index: i, state: st, pulse: _pulse[i])),
+                  for (var i = 0; i < shownSeats(st); i++) SizedBox(width: w, height: 340, child: _SeatSlot(index: i, state: st, pulse: _pulse[i])),
                 ],
               );
             }),
@@ -433,11 +434,12 @@ class _SeatCardState extends State<_SeatCard> with SingleTickerProviderStateMixi
                 ]),
               ),
           const SizedBox(height: 12),
-          if (!allKbm && devices.isNotEmpty)
+          if ((!allKbm && devices.isNotEmpty) || i >= 1)
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
+                if (!allKbm && devices.isNotEmpty) ...[
                 Tooltip(
                   message: 'Buzzes this controller and lights it up in ${seat.name}’s colour, so you can tell which one it is',
                   waitDuration: const Duration(milliseconds: 400),
@@ -462,6 +464,18 @@ class _SeatCardState extends State<_SeatCard> with SingleTickerProviderStateMixi
                   leading: CIcon(iconControls, size: 14, color: c.ink, strokeWidth: 1.8),
                   onTap: feedback ? null : () => scope.ui.openControls(i),
                 ),
+                ],
+                if (i >= 1)
+                  Tooltip(
+                    message: 'Let ${seat.name} play on their own Steam account instead of yours',
+                    waitDuration: const Duration(milliseconds: 400),
+                    child: CButton(
+                      key: ValueKey('steam-account-$i'),
+                      label: 'Steam',
+                      small: true,
+                      onTap: feedback ? null : () => showSteamAccountDialog(context, i, seat.name),
+                    ),
+                  ),
               ],
             ),
           const Spacer(),

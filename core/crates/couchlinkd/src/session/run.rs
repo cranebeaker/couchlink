@@ -391,6 +391,7 @@ impl Run {
             input: recipe.input,
             saves,
             hook_children: false,
+            run_as: None,
         })
     }
 
@@ -455,6 +456,7 @@ impl Run {
             input: self.plan.recipe.input,
             saves: Vec::new(),
             hook_children: false,
+            run_as: None,
         };
         let launched = self.deps.launcher.launch(&spec)?;
         self.helpers.push(launched.child);
@@ -482,6 +484,7 @@ impl Run {
         spec.env.extend(prep.env.clone());
         // A recipe whose window belongs to another exe, or a loader that starts the game, runs through a launcher.
         spec.hook_children = recipe.window.exe.is_some() || prep.follow.is_some();
+        spec.run_as = prep.run_as.clone();
         if let Some((exe, args, cwd)) = &prep.launch {
             spec.exe = exe.clone();
             spec.args = args.clone();

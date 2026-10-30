@@ -156,8 +156,13 @@ pub fn feed_device(devices: &[String]) -> Option<&str> {
 /// Creates the section `name` for a seat and wires it to the seat's pad. Errors when the seat has no pad or the
 /// section cannot be created; the launcher then starts the copy without a feed.
 pub fn attach(name: &str, devices: &[String]) -> Result<FeedGuard, String> {
+    attach_shared(name, devices, None)
+}
+
+/// `attach`, and the Windows user `share_with` (the seat's own Steam account) may read the feed too.
+pub fn attach_shared(name: &str, devices: &[String], share_with: Option<&str>) -> Result<FeedGuard, String> {
     let device = feed_device(devices).ok_or_else(|| "the seat has no controller".to_string())?;
-    let mut feed = Feed::create(name).map_err(|e| format!("cannot create the pad feed: {e}"))?;
+    let mut feed = Feed::create_shared(name, share_with).map_err(|e| format!("cannot create the pad feed: {e}"))?;
     let mut reg = registry();
     if let Some(state) = reg.latest.get(device) {
         feed.write_state(&state.feed_state());

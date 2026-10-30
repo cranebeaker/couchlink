@@ -110,6 +110,20 @@ abstract class CouchClient extends ChangeNotifier {
   /// `stop_session`: ends the session and undoes everything. `session` events follow.
   Future<String?> stopSession();
 
+  // ---- own Steam accounts (seat 2 and up; docs/protocol.md)
+
+  /// `steam_accounts`: which seats play on their own Steam account, and the setup plan.
+  Future<({SteamAccounts? value, String? error})> steamAccounts();
+
+  /// `setup_steam_account`: one Windows prompt, then that seat's Steam opens for sign-in. Replies at once.
+  Future<String?> setupSteamAccount(int seat);
+
+  /// `open_steam_account`: starts that seat's own Steam.
+  Future<String?> openSteamAccount(int seat);
+
+  /// `remove_steam_account`: the seat goes back to the PC owner's account (one Windows prompt).
+  Future<String?> removeSteamAccount(int seat);
+
   /// Fake client only: acts as pressing key 1 to 4.
   void debugKey(int n) {}
 

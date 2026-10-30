@@ -115,10 +115,18 @@ mod imp {
         /// Creates the section `name` (for example `Local\couchlink-pad-<session>-<seat>`), connected, all zero.
         /// A leftover section of the same name is reused and reset.
         pub fn create(name: &str) -> Result<Feed> {
+            Self::create_shared(name, None)
+        }
+
+        /// Like `create`, and the Windows user `share_with` may open it too (a copy that runs as a seat's own Steam
+        /// account). Nobody else can.
+        pub fn create_shared(name: &str, share_with: Option<&str>) -> Result<Feed> {
             let wide: Vec<u16> = OsStr::new(name).encode_wide().chain(std::iter::once(0)).collect();
-            // SAFETY: wide is NUL terminated; the mapping is backed by the paging file.
+            let shared = share_with.map(crate::sec::SharedWith::user).transpose()?;
+            let sa = shared.as_ref().map_or(null(), |s| s.as_ptr());
+            // SAFETY: wide is NUL terminated; sa is null or lives in `shared`; the mapping is backed by the paging file.
             let handle = unsafe {
-                CreateFileMappingW(INVALID_HANDLE_VALUE, null(), PAGE_READWRITE, 0, FEED_SIZE as u32, wide.as_ptr())
+                CreateFileMappingW(INVALID_HANDLE_VALUE, sa, PAGE_READWRITE, 0, FEED_SIZE as u32, wide.as_ptr())
             };
             if handle.is_null() {
                 return Err(HookError::last("CreateFileMappingW"));
@@ -259,6 +267,9 @@ mod stub {
     pub struct Feed;
 
     impl Feed {
+        pub fn create_shared(_name: &str, _share_with: Option<&str>) -> Result<Feed> {
+            Err(crate::error::HookError::Unsupported("feeds need Windows".into()))
+        }
         pub fn create(_name: &str) -> Result<Feed> {
             Err(HookError::Unsupported("the pad feed is only available on Windows".into()))
         }

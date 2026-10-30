@@ -88,6 +88,17 @@ pub enum Command {
         options: BTreeMap<String, String>,
     },
     StopSession,
+    /// Seats 2 and up with their own Steam account: list, set up (one Windows prompt), start its Steam, remove.
+    SteamAccounts,
+    SetupSteamAccount {
+        seat: usize,
+    },
+    OpenSteamAccount {
+        seat: usize,
+    },
+    RemoveSteamAccount {
+        seat: usize,
+    },
 }
 
 impl Request {

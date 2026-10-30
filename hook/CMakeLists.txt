@@ -66,7 +66,7 @@ function(cl_hook_dll target)
   target_include_directories(${target} PRIVATE src ${MINHOOK_DIR}/include)
   target_compile_definitions(${target} PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
   target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:C,CXX>:/W3 /utf-8 /EHsc /GS->)
-  target_link_libraries(${target} PRIVATE user32 shell32 ole32 gdi32)
+  target_link_libraries(${target} PRIVATE user32 shell32 ole32 gdi32 advapi32)
 endfunction()
 
 # 1. The injected DLL (fallback for games that load none of the stand-in names).

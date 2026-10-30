@@ -19,6 +19,30 @@ void main() {
     expect(ids(DaemonState(devices: [d('kbm:system', seat: 0), d('kbd:1')])), ['kbm:system', 'kbd:1'], reason: 'someone sits with it');
   });
 
+  testWidgets('seat 2 can get its own Steam account and go back to yours; seat 1 cannot', (tester) async {
+    final fake = newFake();
+    await pumpApp(tester, fake, size: const Size(1400, 1100));
+    expect(byKey('steam-account-0'), findsNothing, reason: "seat 1 always plays on the PC owner's account");
+    await tester.tap(byKey('steam-account-1'));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(byKey('steam-setup'), findsOneWidget);
+    expect(find.textContaining('Windows asks for permission'), findsWidgets);
+    await tester.tap(byKey('steam-setup'));
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(byKey('steam-ready'), findsOneWidget);
+    await tester.tap(byKey('steam-remove'));
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(byKey('steam-setup'), findsOneWidget, reason: "back on the owner's account");
+    await tester.tap(byKey('steam-close'));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+  });
+
   testWidgets('shows the four seats and the devices', (tester) async {
     final fake = newFake();
     await pumpApp(tester, fake);

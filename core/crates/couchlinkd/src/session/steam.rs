@@ -14,9 +14,7 @@ impl Prepare for SteamPrepare {
     fn prepare_seat(&self, ctx: &PrepareCtx, journal: &mut Journal) -> Result<SeatPrep, String> {
         let mode = match ctx.recipe.steam {
             SteamMode::Goldberg => couchlink_steam::SteamMode::Goldberg,
-            SteamMode::Accounts => {
-                return Err("separate Steam accounts are set up from Couchlink's settings first; this build cannot start them yet".to_string());
-            }
+            SteamMode::Accounts | SteamMode::Shared => return own_account(ctx),
             _ => return Ok(SeatPrep::default()),
         };
         let app_id = ctx.recipe.matching.steam_app_id.ok_or_else(|| format!("{} uses Goldberg but its recipe has no match.steamAppId", ctx.recipe.game))?;
@@ -56,6 +54,42 @@ impl Prepare for SteamPrepare {
         }
         Ok(prep)
     }
+}
+
+/// How long a seat's own Steam gets to start before its game copy is launched.
+const OWN_STEAM_WAIT: std::time::Duration = std::time::Duration::from_secs(40);
+
+/// A seat that has its own Steam account set up (Players, "Own Steam account") plays on it in every game that uses real
+/// Steam: its Steam is started if needed and its copy runs as that seat's helper Windows user. Seat 1 always uses the
+/// Steam of the person at the PC. A recipe with `steam: accounts` needs every extra seat to have one.
+fn own_account(ctx: &PrepareCtx) -> Result<SeatPrep, String> {
+    let seat = ctx.seat.seat as u8;
+    if seat == 0 {
+        return Ok(SeatPrep::default());
+    }
+    let cfg = couchlink_steam::seat_config(seat).filter(couchlink_steam::accounts_ready);
+    let Some(cfg) = cfg else {
+        if ctx.recipe.steam == SteamMode::Accounts {
+            return Err(format!(
+                "{} needs every extra player on their own Steam account; set one up for {} under Players",
+                ctx.recipe.game, ctx.seat.player
+            ));
+        }
+        return Ok(SeatPrep::default());
+    };
+    if !couchlink_steam::accounts_steam_running(&cfg) {
+        couchlink_steam::accounts_start_steam(&cfg, true).map_err(|e| format!("cannot start {}'s Steam: {}", ctx.seat.player, e.user_message()))?;
+        let start = std::time::Instant::now();
+        while !couchlink_steam::accounts_steam_running(&cfg) && start.elapsed() < OWN_STEAM_WAIT {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        // Steam takes a moment after its process appears before games can talk to it.
+        std::thread::sleep(std::time::Duration::from_secs(5));
+    }
+    let mut prep = SeatPrep::default();
+    prep.env.insert("steam_master_ipc_name_override".to_string(), cfg.ipc_name());
+    prep.run_as = Some(cfg);
+    Ok(prep)
 }
 
 /// Undoers with the Steam layer's entry registered.

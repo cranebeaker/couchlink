@@ -431,12 +431,17 @@ pub fn feed_devices(devices: &[String]) -> Vec<&str> {
 /// Errors when the seat has none (it keeps the shared desktop keyboard and mouse then) or the section cannot be
 /// created; the launcher starts the copy without `kbm_feed` in that case. Starts the listener when needed.
 pub fn attach(name: &str, devices: &[String]) -> Result<KbmGuard, String> {
+    attach_shared(name, devices, None)
+}
+
+/// `attach`, and the Windows user `share_with` (the seat's own Steam account) may read the feed too.
+pub fn attach_shared(name: &str, devices: &[String], share_with: Option<&str>) -> Result<KbmGuard, String> {
     let ids: Vec<String> = feed_devices(devices).into_iter().map(str::to_string).collect();
     if ids.is_empty() {
         return Err("the seat has no keyboard or mouse of its own".to_string());
     }
     start()?;
-    let feed = KbmFeed::create(name).map_err(|e| format!("cannot create the keyboard and mouse feed: {e}"))?;
+    let feed = KbmFeed::create_shared(name, share_with).map_err(|e| format!("cannot create the keyboard and mouse feed: {e}"))?;
     let mut reg = registry();
     reg.next_seat_id += 1;
     let id = reg.next_seat_id;

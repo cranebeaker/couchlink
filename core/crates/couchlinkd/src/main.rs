@@ -1,5 +1,6 @@
 //! couchlinkd: the Couchlink background daemon.
 
+mod accounts;
 mod catalog;
 mod displays;
 mod hub;
@@ -121,6 +122,10 @@ fn random_token() -> Result<String, String> {
 }
 
 fn main() {
+    // The elevated half of setting up or removing a seat's own Steam account (see accounts.rs).
+    if let Some(code) = accounts::cli(&std::env::args().collect::<Vec<_>>()) {
+        std::process::exit(code);
+    }
     let args = match parse_args() {
         Ok(a) => a,
         Err(e) => {

@@ -8,6 +8,8 @@
 
 #include "common.h"
 
+#include <sddl.h>
+
 #ifdef CL_PROXY
 // Fills the table the stand-in's jump stubs use with the real DLL's functions (src/proxy_forward.inl).
 extern "C" void ClProxyForwardInit();
@@ -264,8 +266,16 @@ DWORD WINAPI ServerThread(LPVOID) {
     wchar_t name[96];
     wsprintfW(name, L"\\\\.\\pipe\\couchlink-hook-%lu", GetCurrentProcessId());
     for (;;) {
+        // The copy may run as a seat's own Windows user (its own Steam account) while the daemon runs as the person
+        // at the PC: interactive users may read and write (status and ping only; a second config is refused).
+        SECURITY_ATTRIBUTES sa = {sizeof(sa), nullptr, FALSE};
+        PSECURITY_DESCRIPTOR sd = nullptr;
+        if (ConvertStringSecurityDescriptorToSecurityDescriptorW(L"D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;OW)(A;;GRGW;;;IU)", SDDL_REVISION_1, &sd,
+                                                                 nullptr))
+            sa.lpSecurityDescriptor = sd;
         HANDLE pipe = CreateNamedPipeW(name, PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 1,
-                                       65536, 65536, 0, nullptr);
+                                       65536, 65536, 0, sd ? &sa : nullptr);
+        if (sd) LocalFree(sd);
         if (pipe == INVALID_HANDLE_VALUE) return 1;
         if (ConnectNamedPipe(pipe, nullptr) || GetLastError() == ERROR_PIPE_CONNECTED) {
             std::string pending, line;

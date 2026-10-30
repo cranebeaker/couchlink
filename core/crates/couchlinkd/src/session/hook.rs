@@ -57,8 +57,34 @@ pub fn launcher() -> Arc<dyn Launcher> {
 /// Journal entry kind for a stand-in DLL put into a game folder.
 const KIND: &str = "hook_standin";
 
+/// Journal entry kind for write access given to a seat's helper user on its copy.
+const ACL_KIND: &str = "hook_acl";
+
+fn icacls(args: &[String]) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    let out = std::process::Command::new("icacls").args(args).creation_flags(0x0800_0000).output().map_err(|e| format!("icacls: {e}"))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(format!("icacls {}: {}", args.join(" "), String::from_utf8_lossy(&out.stdout).trim()))
+    }
+}
+
+/// Gives `user` modify rights on `dir` and everything below it.
+fn grant_folder(dir: &Path, user: &str) -> Result<(), String> {
+    icacls(&[dir.display().to_string(), "/grant".into(), format!("{user}:(OI)(CI)M"), "/T".into(), "/Q".into()])
+}
+
 /// Registers the undo for stand-in DLLs: the file is removed if it is still ours.
 pub fn register_undoers(undoers: &Undoers) {
+    undoers.register(ACL_KIND, |data: &serde_json::Value| {
+        let path = data.get("path").and_then(|p| p.as_str()).ok_or("hook_acl entry without a path")?;
+        let user = data.get("user").and_then(|p| p.as_str()).ok_or("hook_acl entry without a user")?;
+        if !Path::new(path).exists() {
+            return Ok(());
+        }
+        icacls(&[path.to_string(), "/remove".into(), user.to_string(), "/T".into(), "/Q".into()])
+    });
     undoers.register(KIND, |data: &serde_json::Value| {
         let path = data.get("path").and_then(|p| p.as_str()).ok_or("hook_standin entry without a path")?;
         proxy::uninstall(Path::new(path)).map_err(|e| e.to_string())
@@ -107,6 +133,13 @@ pub struct HookLauncher;
 
 impl Launcher for HookLauncher {
     fn prepare(&self, spec: &LaunchSpec, journal: &mut Journal) -> Result<(), String> {
+        if let Some(account) = &spec.run_as {
+            // The seat's helper user writes to its own copy (game settings, logs, broken hardlinks).
+            let user = account.user_name();
+            let data = serde_json::json!({ "path": spec.game_dir, "user": user });
+            journal.record_external(ACL_KIND, data).map_err(|e| format!("could not write the journal: {e}"))?;
+            grant_folder(&spec.game_dir, &user)?;
+        }
         if !wants_hook(spec) {
             return Ok(());
         }
@@ -120,6 +153,9 @@ impl Launcher for HookLauncher {
     }
 
     fn launch(&self, spec: &LaunchSpec) -> Result<Launched, String> {
+        if let Some(account) = &spec.run_as {
+            return launch_as_seat_user(spec, account);
+        }
         if !wants_hook(spec) || !hook_built() {
             return CommandLauncher.launch(spec);
         }
@@ -231,6 +267,134 @@ fn launch_injected(
     Ok(Launched { child: Box::new(Hooked { held, _handle: handle, _feed: feed, _kbm: kbm, job }), hooked: true })
 }
 
+/// A seat on its own Steam account: the copy is started as that seat's helper Windows user, with the stand-in hook
+/// (injection across users is not done), feeds that this one other user may read, and saves in that user's own
+/// profile (no redirection needed).
+fn launch_as_seat_user(spec: &LaunchSpec, account: &couchlink_steam::AccountsConfig) -> Result<Launched, String> {
+    let user = account.user_name();
+    let mut env: Vec<(String, String)> = spec.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let args = couchlink_hook::join_args(&spec.args);
+    let start = |env: &[(String, String)]| {
+        couchlink_steam::accounts_launch(account, &spec.exe, &args, &spec.cwd, env).map_err(|e| format!("cannot start {} as {user}: {}", spec.exe.display(), e.user_message()))
+    };
+    if !wants_hook(spec) {
+        let l = start(&env)?;
+        return Ok(Launched { child: Box::new(AsUser::new(l, None, None, None)), hooked: false });
+    }
+    let feed = spec.seat.and_then(|seat| {
+        let tag = format!("{}-{}", std::process::id(), LAUNCHES.fetch_add(1, Ordering::Relaxed));
+        super::padfeed::attach_shared(&super::padfeed::feed_name(tag, seat as u32), &spec.devices, Some(&user)).ok()
+    });
+    let kbm = spec.seat.and_then(|seat| {
+        let tag = format!("{}-{}", std::process::id(), LAUNCHES.fetch_add(1, Ordering::Relaxed));
+        super::rawkbm::attach_shared(&super::rawkbm::feed_name(tag, seat as u32), &spec.devices, Some(&user)).ok()
+    });
+    let config = couchlink_hook::HookConfig {
+        pad: pad_slot(&spec.devices),
+        feed: feed.as_ref().map(|g| g.name().to_string()),
+        focus: true,
+        locks: spec.locks.clone(),
+        cow_root: Some(spec.game_dir.clone()),
+        saves: Vec::new(),
+        kbm_feed: kbm.as_ref().map(|g| g.name().to_string()),
+        fake_cursor: kbm.is_some(),
+        hook_children: spec.hook_children,
+        own_pads: Some(own_pad_paths(&spec.devices)),
+    };
+    let s = stand_in_for(spec).ok_or_else(|| {
+        format!("{} cannot run on its own Steam account yet: none of Couchlink's stand-in DLLs fits it", spec.exe.display())
+    })?;
+    proxy::install(s.name, s.x86, &s.dir).map_err(|e| format!("cannot place the {} stand-in: {e}", s.name))?;
+    // The helper user cannot read this user's temp folder; the copy's own folder is shared with it.
+    let n = LAUNCHES.fetch_add(1, Ordering::Relaxed);
+    let cfg_path = spec.game_dir.join(format!(".couchlink-hook-{}-{n}.json", std::process::id()));
+    proxy::write_config(&cfg_path, &config).map_err(|e| format!("cannot write the hook config: {e}"))?;
+    env.push((proxy::CONFIG_ENV.to_string(), cfg_path.display().to_string()));
+    let launched = start(&env);
+    let launched = match launched {
+        Ok(l) => l,
+        Err(e) => {
+            let _ = std::fs::remove_file(&cfg_path);
+            return Err(e);
+        }
+    };
+    let pid = launched.pid;
+    let connected = couchlink_hook::HookHandle::connect(pid, STANDIN_WAIT);
+    let _ = std::fs::remove_file(&cfg_path);
+    let child = AsUser::new(launched, None, feed, kbm);
+    match connected {
+        Ok(handle) => Ok(Launched { child: Box::new(child.with_hook(handle)), hooked: true }),
+        Err(e) => {
+            let mut child = child;
+            child.kill();
+            Err(format!("the input hook did not start in {} as {user}: {e}", spec.exe.display()))
+        }
+    }
+}
+
+/// A copy running as a seat's helper user. Only the process handle from its start lets this user wait for it and end
+/// it; it is also put in a job so the processes it starts end with it.
+struct AsUser {
+    pid: u32,
+    process: windows_sys::Win32::Foundation::HANDLE,
+    job: Option<Job>,
+    _handle: Option<couchlink_hook::HookHandle>,
+    _feed: Option<super::padfeed::FeedGuard>,
+    _kbm: Option<super::rawkbm::KbmGuard>,
+}
+
+// SAFETY: a process handle may be used and closed from any thread.
+unsafe impl Send for AsUser {}
+
+impl AsUser {
+    fn new(
+        l: couchlink_steam::LaunchedAs,
+        handle: Option<couchlink_hook::HookHandle>,
+        feed: Option<super::padfeed::FeedGuard>,
+        kbm: Option<super::rawkbm::KbmGuard>,
+    ) -> AsUser {
+        let process = l.process as windows_sys::Win32::Foundation::HANDLE;
+        AsUser { pid: l.pid, process, job: Job::adopt_handle(process), _handle: handle, _feed: feed, _kbm: kbm }
+    }
+
+    fn with_hook(mut self, handle: couchlink_hook::HookHandle) -> AsUser {
+        self._handle = Some(handle);
+        self
+    }
+}
+
+impl Child for AsUser {
+    fn pid(&self) -> u32 {
+        self.pid
+    }
+
+    fn try_wait(&mut self) -> Result<Option<i32>, String> {
+        let mut code = 0u32;
+        // SAFETY: the handle is owned by this value.
+        if unsafe { windows_sys::Win32::System::Threading::GetExitCodeProcess(self.process, &mut code) } == 0 {
+            return Err(format!("cannot check on process {}", self.pid));
+        }
+        Ok(if code == 259 { None } else { Some(code as i32) })
+    }
+
+    fn kill(&mut self) {
+        match &self.job {
+            Some(job) => job.terminate(),
+            // SAFETY: the handle is owned by this value.
+            None => unsafe {
+                windows_sys::Win32::System::Threading::TerminateProcess(self.process, 1);
+            },
+        }
+    }
+}
+
+impl Drop for AsUser {
+    fn drop(&mut self) {
+        // SAFETY: closing the handle we own.
+        unsafe { windows_sys::Win32::Foundation::CloseHandle(self.process) };
+    }
+}
+
 /// A copy that loaded the stand-in itself. The pipe stays open for status queries while the game runs.
 struct Proxied {
     inner: Box<dyn Child>,
@@ -318,6 +482,7 @@ mod tests {
             input: Default::default(),
             saves: vec![],
             hook_children: false,
+            run_as: None,
         };
         let undoers = Undoers::new();
         register_undoers(&undoers);

@@ -31,6 +31,8 @@ pub struct LaunchSpec {
     pub saves: Vec<(PathBuf, PathBuf)>,
     /// The exe is a launcher that starts the real game: the hook follows every process the copy starts.
     pub hook_children: bool,
+    /// The seat plays on its own Steam account: the copy runs as that seat's helper Windows user.
+    pub run_as: Option<couchlink_steam::AccountsConfig>,
 }
 
 /// A started process. Dropping it must not leave processes behind unless they were stopped by `kill`.
@@ -132,7 +134,7 @@ pub(super) mod job {
             }
         }
 
-        fn adopt_handle(process: HANDLE) -> Option<Job> {
+        pub fn adopt_handle(process: HANDLE) -> Option<Job> {
             // SAFETY: plain Win32 calls; the handle is closed in Drop.
             unsafe {
                 let h = CreateJobObjectW(std::ptr::null(), std::ptr::null());
@@ -343,6 +345,7 @@ mod tests {
             input: Input::default(),
             saves: vec![],
             hook_children: false,
+            run_as: None,
         };
         let mut l = CommandLauncher.launch(&spec).unwrap();
         assert!(!l.hooked);

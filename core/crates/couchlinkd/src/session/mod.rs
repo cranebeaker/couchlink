@@ -61,6 +61,8 @@ pub struct SeatPrep {
     pub launch: Option<(PathBuf, Vec<String>, PathBuf)>,
     /// Exe name whose window is the game's, when `launch` starts something else.
     pub follow: Option<String>,
+    /// The seat plays on its own Steam account (`couchlink_steam::accounts`): its copy runs as that helper user.
+    pub run_as: Option<couchlink_steam::AccountsConfig>,
 }
 
 /// Per-seat setup between copying and launching. Record every system change with `journal` BEFORE

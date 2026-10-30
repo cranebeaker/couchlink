@@ -40,6 +40,10 @@ Daemon to client (events, no id): `{"event": "<name>", ...}`
 | `list_games` | | `{"games": [Game], "errors": [{"file", "error"}]}`. See [Game sessions](#game-sessions). |
 | `start_session` | `recipe` (recipe id), optional `options` (`{NAME: value}`) | Checks, replies at once, then runs the launch pipeline in the background; progress comes as `session` events. Error text if the recipe or game is missing or the seats on screens do not fit. |
 | `stop_session` | | Ends the session and undoes everything. Replies at once; `session` events follow. Fine when nothing runs (and undoes a journal an earlier crash left behind). |
+| `steam_accounts` | | `{"accounts": [{"seat", "ready", "running", "plan": [{"id", "title", "detail", "needs_admin"}]}], "steam": bool}` for seats 1 and up (seat 0 always plays on the PC owner's Steam). A seat that is `ready` plays on its own Steam account in every game whose recipe uses real Steam (`shared` or `accounts`). |
+| `setup_steam_account` | `seat` | Replies at once with `{"started": "setup"}`. Windows asks for permission once (a helper Windows user for that seat, its password in Credential Manager, read access to the Steam library), then that seat's Steam opens for the player to sign in. The outcome arrives as a `log` event. |
+| `open_steam_account` | `seat` | Starts that seat's own Steam (to sign in, or to check it). |
+| `remove_steam_account` | `seat` | Like setup, in reverse: one Windows prompt, then the seat plays on the PC owner's account again. The helper user's profile folder is left in place. |
 
 ## Events
 

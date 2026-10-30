@@ -386,6 +386,22 @@ class DaemonClient extends CouchClient {
   @override
   Future<String?> stopSession() => _cmd('stop_session');
 
+  @override
+  Future<({SteamAccounts? value, String? error})> steamAccounts() async {
+    final r = await _request('steam_accounts', const {});
+    if (r['ok'] != true) return (value: null, error: _errorOf(r));
+    return (value: SteamAccounts.fromJson(r), error: null);
+  }
+
+  @override
+  Future<String?> setupSteamAccount(int seat) => _cmd('setup_steam_account', {'seat': seat});
+
+  @override
+  Future<String?> openSteamAccount(int seat) => _cmd('open_steam_account', {'seat': seat});
+
+  @override
+  Future<String?> removeSteamAccount(int seat) => _cmd('remove_steam_account', {'seat': seat});
+
   // ---- controller profiles
 
   static String _errorOf(Map<String, dynamic> r) {

@@ -570,3 +570,57 @@ class SessionInfo {
     );
   }
 }
+
+/// One step of setting up a seat's own Steam account, as the daemon describes it.
+class SteamPlanStep {
+  const SteamPlanStep({required this.id, required this.title, required this.detail, this.needsAdmin = false});
+  final String id;
+  final String title;
+  final String detail;
+  final bool needsAdmin;
+
+  factory SteamPlanStep.fromJson(Map<String, dynamic> j) => SteamPlanStep(
+        id: _str(j['id']),
+        title: _str(j['title']),
+        detail: _str(j['detail']),
+        needsAdmin: j['needs_admin'] == true,
+      );
+}
+
+/// A seat (2 and up) and whether it plays on its own Steam account.
+class SteamAccount {
+  const SteamAccount({required this.seat, this.ready = false, this.running = false, this.plan = const []});
+  final int seat;
+  final bool ready;
+  final bool running;
+  final List<SteamPlanStep> plan;
+
+  factory SteamAccount.fromJson(Map<String, dynamic> j) => SteamAccount(
+        seat: j['seat'] is num ? (j['seat'] as num).toInt() : 0,
+        ready: j['ready'] == true,
+        running: j['running'] == true,
+        plan: [
+          if (j['plan'] is List)
+            for (final x in j['plan'] as List)
+              if (x is Map) SteamPlanStep.fromJson(x.cast<String, dynamic>()),
+        ],
+      );
+}
+
+/// The `steam_accounts` answer.
+class SteamAccounts {
+  const SteamAccounts({this.accounts = const [], this.steam = true});
+  final List<SteamAccount> accounts;
+
+  /// False when Steam is not installed on this PC.
+  final bool steam;
+
+  factory SteamAccounts.fromJson(Map<String, dynamic> j) => SteamAccounts(
+        accounts: [
+          if (j['accounts'] is List)
+            for (final x in j['accounts'] as List)
+              if (x is Map) SteamAccount.fromJson(x.cast<String, dynamic>()),
+        ],
+        steam: j['steam'] != false,
+      );
+}

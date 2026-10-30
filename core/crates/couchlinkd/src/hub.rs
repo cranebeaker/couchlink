@@ -59,6 +59,8 @@ pub enum HubMsg {
     Session(SessionInfo),
     /// A keyboard or mouse was plugged in or out, or pressed a key without a seat (see `session::rawkbm`).
     Kbm(RawKbmEvent),
+    /// A seat's own Steam account step finished (setup or removal), with its outcome for the log.
+    SteamAccountDone { seat: usize, step: &'static str, result: Result<(), String> },
 }
 
 struct Client {
@@ -192,6 +194,14 @@ impl Hub {
                 HubMsg::RecipesFetched(Err(e)) => self.log(LogLevel::Warn, format!("Live recipes could not be refreshed ({e}); using the ones already on this PC")),
                 HubMsg::Session(info) => self.session_changed(info),
                 HubMsg::Kbm(ev) => self.handle_kbm(ev),
+                HubMsg::SteamAccountDone { seat, step, result } => match result {
+                    Ok(()) if step == "setup" => self.log(
+                        LogLevel::Info,
+                        format!("Player {}'s Steam account is ready: sign in with their account in the Steam window that opens", seat + 1),
+                    ),
+                    Ok(()) => self.log(LogLevel::Info, format!("Player {}'s own Steam account was removed", seat + 1)),
+                    Err(e) => self.log(LogLevel::Warn, format!("Player {}'s Steam account: {e}", seat + 1)),
+                },
             }
         }
         self.sdl
@@ -272,6 +282,23 @@ impl Hub {
             Err(e) => Reply::err(id, e),
         };
         self.send_to(client, &reply.to_json());
+    }
+
+    /// Setup or removal of a seat's own Steam account. The Windows prompt waits for the person at the PC, so the
+    /// step runs off the hub task and reports back with `SteamAccountDone`.
+    fn steam_account_step(&mut self, step: &'static str, seat: usize) -> Result<serde_json::Value, String> {
+        if seat == 0 || seat >= MAX_SEATS {
+            return Err(format!("seat {} cannot have its own Steam account (seat 1 uses yours)", seat + 1));
+        }
+        let tx = self.self_tx.clone();
+        std::thread::spawn(move || {
+            let mut result = crate::accounts::run_elevated_step(step, seat);
+            if result.is_ok() && step == "setup" {
+                result = crate::accounts::open(seat);
+            }
+            let _ = tx.send(HubMsg::SteamAccountDone { seat, step, result });
+        });
+        Ok(json!({ "started": step }))
     }
 
     fn exec(&mut self, client: u64, cmd: Command) -> Result<serde_json::Value, String> {
@@ -416,6 +443,10 @@ impl Hub {
             }
             Command::StartSession { recipe, options } => self.start_session(&recipe, &options),
             Command::StopSession => self.stop_session(),
+            Command::SteamAccounts => Ok(crate::accounts::list()),
+            Command::OpenSteamAccount { seat } => crate::accounts::open(seat).map(|_| none),
+            Command::SetupSteamAccount { seat } => self.steam_account_step("setup", seat),
+            Command::RemoveSteamAccount { seat } => self.steam_account_step("remove", seat),
             Command::DebugPress { device, button } => {
                 if !self.model.dev() {
                     return Err("debug_press needs couchlinkd --dev".to_string());

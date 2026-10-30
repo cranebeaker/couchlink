@@ -137,6 +137,52 @@ pub fn accounts_plan(cfg: &AccountsConfig) -> Vec<Step> {
     ]
 }
 
+/// The account config for `seat` on this PC: the Steam install and its libraries. None without Steam.
+pub fn seat_config(seat: u8) -> Option<AccountsConfig> {
+    let root = crate::library::steam_root()?;
+    Some(AccountsConfig { seat, steam_exe: root.join("steam.exe"), library_dirs: crate::library::steam_libraries() })
+}
+
+/// True once the seat's helper user is set up (its password is stored). Cheap: reads Credential Manager only.
+pub fn accounts_ready(cfg: &AccountsConfig) -> bool {
+    check_name(cfg).is_ok() && imp::ready(cfg)
+}
+
+/// True while a Steam client runs as the seat's helper user.
+pub fn accounts_steam_running(cfg: &AccountsConfig) -> bool {
+    check_name(cfg).is_ok() && imp::steam_running(cfg)
+}
+
+/// A process started as a seat's helper user. `process` is an owned Windows process handle (full access), the only
+/// way this Windows user can wait for or end a process of another user.
+#[derive(Debug)]
+pub struct LaunchedAs {
+    pub pid: u32,
+    pub process: isize,
+}
+
+/// Starts `exe` as the seat's helper user, in that user's own environment (its profile folders, so its saves and
+/// settings are its own) plus `env` on top. The Steam client it should talk to is named by the
+/// `steam_master_ipc_name_override` variable, which callers set from [`AccountsConfig::ipc_name`].
+pub fn accounts_launch(cfg: &AccountsConfig, exe: &std::path::Path, args: &str, cwd: &std::path::Path, env: &[(String, String)]) -> Result<LaunchedAs> {
+    check_name(cfg)?;
+    imp::launch(cfg, exe, args, cwd, env)
+}
+
+/// Merges `overrides` into an environment given as `NAME=value` entries (names compare case-insensitively).
+pub fn merge_env(base: &[String], overrides: &[(String, String)]) -> Vec<String> {
+    let mut out: Vec<String> = base
+        .iter()
+        .filter(|e| {
+            let name = e.split('=').next().unwrap_or("");
+            name.is_empty() || !overrides.iter().any(|(k, _)| k.eq_ignore_ascii_case(name))
+        })
+        .cloned()
+        .collect();
+    out.extend(overrides.iter().map(|(k, v)| format!("{k}={v}")));
+    out
+}
+
 /// Create the helper user, store its password, share the library. Only after the user confirmed the plan.
 pub fn accounts_apply(cfg: &AccountsConfig, confirmed: bool) -> Result<()> {
     if !confirmed {
@@ -217,6 +263,15 @@ mod imp {
     pub fn remove(_: &AccountsConfig) -> Result<()> {
         Err(no())
     }
+    pub fn ready(_: &AccountsConfig) -> bool {
+        false
+    }
+    pub fn steam_running(_: &AccountsConfig) -> bool {
+        false
+    }
+    pub fn launch(_: &AccountsConfig, _: &std::path::Path, _: &str, _: &std::path::Path, _: &[(String, String)]) -> Result<LaunchedAs> {
+        Err(no())
+    }
 }
 
 #[cfg(windows)]
@@ -232,6 +287,8 @@ mod imp {
         CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC, CREDENTIALW, CredDeleteW, CredFree, CredReadW, CredWriteW,
     };
     use windows_sys::Win32::Security::Cryptography::{BCRYPT_USE_SYSTEM_PREFERRED_RNG, BCryptGenRandom};
+    use windows_sys::Win32::Security::{LOGON32_LOGON_INTERACTIVE, LOGON32_PROVIDER_DEFAULT, LogonUserW};
+    use windows_sys::Win32::System::Environment::{CreateEnvironmentBlock, DestroyEnvironmentBlock};
     use windows_sys::Win32::System::Threading::{
         CREATE_UNICODE_ENVIRONMENT, CreateProcessWithLogonW, LOGON_WITH_PROFILE, PROCESS_INFORMATION, STARTUPINFOW,
     };
@@ -417,6 +474,99 @@ mod imp {
         }
     }
 
+    pub fn ready(cfg: &AccountsConfig) -> bool {
+        matches!(read_password(&cfg.credential_target()), Ok(Some(_)))
+    }
+
+    pub fn steam_running(cfg: &AccountsConfig) -> bool {
+        let filter_user = format!("USERNAME eq {}", cfg.user_name());
+        match run_hidden("tasklist", &["/FI".into(), filter_user, "/FI".into(), "IMAGENAME eq steam.exe".into(), "/NH".into()]) {
+            Ok(out) => String::from_utf8_lossy(&out.stdout).to_lowercase().contains("steam.exe"),
+            Err(_) => false,
+        }
+    }
+
+    /// The helper user's own environment block (from its profile), as `NAME=value` entries.
+    fn user_environment(user: &str, password: &str) -> Result<Vec<String>> {
+        let user_w = w(user);
+        let domain_w = w(".");
+        let pass_w = w(password);
+        // SAFETY: valid NUL terminated strings; the token and the block are released below.
+        unsafe {
+            let mut token = null_mut();
+            if LogonUserW(user_w.as_ptr(), domain_w.as_ptr(), pass_w.as_ptr(), LOGON32_LOGON_INTERACTIVE, LOGON32_PROVIDER_DEFAULT, &mut token)
+                == FALSE
+            {
+                return Err(SteamError::System(format!("LogonUserW failed ({})", std::io::Error::last_os_error())));
+            }
+            let mut block: *mut std::ffi::c_void = null_mut();
+            let ok = CreateEnvironmentBlock(&mut block, token, FALSE);
+            CloseHandle(token);
+            if ok == FALSE || block.is_null() {
+                return Err(SteamError::System(format!("CreateEnvironmentBlock failed ({})", std::io::Error::last_os_error())));
+            }
+            let mut out = Vec::new();
+            let mut p = block as *const u16;
+            loop {
+                let mut len = 0;
+                while *p.add(len) != 0 {
+                    len += 1;
+                }
+                if len == 0 {
+                    break;
+                }
+                out.push(String::from_utf16_lossy(std::slice::from_raw_parts(p, len)));
+                p = p.add(len + 1);
+            }
+            DestroyEnvironmentBlock(block);
+            Ok(out)
+        }
+    }
+
+    pub fn launch(cfg: &AccountsConfig, exe: &std::path::Path, args: &str, cwd: &std::path::Path, env: &[(String, String)]) -> Result<LaunchedAs> {
+        let user = cfg.user_name();
+        let password = read_password(&cfg.credential_target())?
+            .ok_or_else(|| SteamError::System(format!("Player {} has no Steam account set up yet", cfg.seat as u32 + 1)))?;
+        let entries = merge_env(&user_environment(&user, &password)?, env);
+        let mut block: Vec<u16> = Vec::new();
+        for e in &entries {
+            block.extend(e.encode_utf16());
+            block.push(0);
+        }
+        block.push(0);
+        let user_w = w(&user);
+        let domain_w = w(".");
+        let pass_w = w(&password);
+        let app_w = w(&exe.display().to_string());
+        let mut cmd_w = w(&format!("\"{}\" {args}", exe.display()));
+        let cwd_w = w(&cwd.display().to_string());
+        // SAFETY: valid NUL terminated wide strings and environment block living through the call; zeroed
+        // STARTUPINFOW / PROCESS_INFORMATION are valid initial states.
+        unsafe {
+            let mut si: STARTUPINFOW = std::mem::zeroed();
+            si.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
+            let mut pi: PROCESS_INFORMATION = std::mem::zeroed();
+            let ok = CreateProcessWithLogonW(
+                user_w.as_ptr(),
+                domain_w.as_ptr(),
+                pass_w.as_ptr(),
+                LOGON_WITH_PROFILE,
+                app_w.as_ptr(),
+                cmd_w.as_mut_ptr(),
+                CREATE_UNICODE_ENVIRONMENT,
+                block.as_ptr().cast(),
+                cwd_w.as_ptr(),
+                &si,
+                &mut pi,
+            );
+            if ok == FALSE {
+                return Err(SteamError::System(format!("CreateProcessWithLogonW failed ({})", std::io::Error::last_os_error())));
+            }
+            CloseHandle(pi.hThread);
+            Ok(LaunchedAs { pid: pi.dwProcessId, process: pi.hProcess as isize })
+        }
+    }
+
     pub fn remove(cfg: &AccountsConfig) -> Result<()> {
         let user = cfg.user_name();
         let mut first: Option<SteamError> = None;
@@ -459,6 +609,16 @@ mod tests {
             steam_exe: PathBuf::from(r"C:\Program Files (x86)\Steam\steam.exe"),
             library_dirs: vec![PathBuf::from(r"C:\Program Files (x86)\Steam"), PathBuf::from(r"D:\SteamLibrary")],
         }
+    }
+
+    #[test]
+    fn overrides_replace_variables_of_the_same_name() {
+        let base = vec!["Path=C:\\Windows".to_string(), "USERPROFILE=C:\\Users\\CouchlinkSeat2".to_string(), "=C:=C:\\".to_string()];
+        let out = merge_env(&base, &[("PATH".into(), "x".into()), ("steam_master_ipc_name_override".into(), "couchlink_seat2".into())]);
+        assert!(out.contains(&"USERPROFILE=C:\\Users\\CouchlinkSeat2".to_string()), "the helper user's own folders stay");
+        assert!(out.contains(&"PATH=x".to_string()) && !out.iter().any(|e| e.starts_with("Path=")));
+        assert!(out.contains(&"steam_master_ipc_name_override=couchlink_seat2".to_string()));
+        assert!(out.contains(&"=C:=C:\\".to_string()), "drive entries are kept");
     }
 
     #[test]
