@@ -147,9 +147,25 @@ pub fn bwrap_args(own: &[PathBuf], all: &[PathBuf], binds: &[(PathBuf, PathBuf)]
     a
 }
 
+/// bwrap's arguments that give the sandbox a `/tmp/.X11-unix` of its own with the host's X `sockets` bound in, for a
+/// host folder that belongs to someone else (see `ns_linux::own_x11_dir`). Go before `bwrap_args`' closing `--`.
+pub fn x11_args(sockets: &[PathBuf]) -> Vec<String> {
+    let dir = super::ns_linux::X11_DIR;
+    let mut a: Vec<String> = vec!["--perms".into(), "1777".into(), "--tmpfs".into(), dir.into()];
+    for sk in sockets {
+        a.extend(["--bind".into(), sk.display().to_string(), sk.display().to_string()]);
+    }
+    a
+}
+
 /// bwrap's arguments for a copy whose seat has the devices at `paths` (SDL device paths).
 pub fn seat_args(paths: &[String], binds: &[(PathBuf, PathBuf)]) -> Vec<String> {
-    bwrap_args(&own_nodes(paths), &input_nodes(), binds, Path::new("/dev/input").is_dir())
+    let mut a = bwrap_args(&own_nodes(paths), &input_nodes(), binds, Path::new("/dev/input").is_dir());
+    if super::ns_linux::x11_dir_foreign() {
+        let at = a.len() - 2; // before "--die-with-parent --"
+        a.splice(at..at, x11_args(&super::ns_linux::x11_sockets(Path::new(super::ns_linux::X11_DIR))));
+    }
+    a
 }
 
 const EVIOCGNAME_256: libc::c_ulong = 0x8100_4506;
@@ -241,6 +257,12 @@ mod tests {
         assert_eq!(sibling_nodes_in(&root, Path::new("/dev/input/event30")), paths(&["/dev/input/event30"]), "uinput: the input device");
         assert_eq!(sibling_nodes_in(&root, Path::new("/dev/input/event99")), paths(&["/dev/input/event99"]), "unknown: only itself");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_sandbox_can_have_an_x11_folder_of_its_own() {
+        let a = x11_args(&paths(&["/tmp/.X11-unix/X0", "/tmp/.X11-unix/X1"])).join(" ");
+        assert_eq!(a, "--perms 1777 --tmpfs /tmp/.X11-unix --bind /tmp/.X11-unix/X0 /tmp/.X11-unix/X0 --bind /tmp/.X11-unix/X1 /tmp/.X11-unix/X1");
     }
 
     #[test]

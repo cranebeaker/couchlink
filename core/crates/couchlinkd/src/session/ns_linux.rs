@@ -4,7 +4,8 @@
 //! - mounts the seat's copy as a kernel overlay (the install below, the seat's own layer on top; Linux 5.11 and later
 //!   allow this without root), so the copy takes no disk and the install is never written,
 //! - replaces `/dev/input` with an empty tmpfs that holds only the seat's own nodes, and covers every `/dev/hidraw*`
-//!   the seat does not own with `/dev/null` (as `sandbox_linux.rs` does with bwrap).
+//!   the seat does not own with `/dev/null` (as `sandbox_linux.rs` does with bwrap),
+//! - gives `/tmp/.X11-unix` a folder of its own when the host's belongs to someone else (`own_x11_dir`).
 //!
 //! The daemon reaches the copy through `/proc/<holder>/root/...` (it owns the namespace, so it may), and the seat's
 //! game copies join the holder's namespaces right before they start. The holder ends with the session, or with the
@@ -126,6 +127,57 @@ fn mask_input(own: &[PathBuf], all: &[PathBuf]) -> Result<(), String> {
     Ok(())
 }
 
+/// The folder X servers keep their sockets in.
+pub const X11_DIR: &str = "/tmp/.X11-unix";
+
+/// The X sockets in `dir` (X0, X1 and so on), sorted.
+pub fn x11_sockets(dir: &Path) -> Vec<PathBuf> {
+    use std::os::unix::fs::FileTypeExt;
+    let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
+    let mut out: Vec<PathBuf> = rd
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().starts_with('X') && e.file_type().is_ok_and(|t| t.is_socket()))
+        .map(|e| e.path())
+        .collect();
+    out.sort();
+    out
+}
+
+/// True when `/tmp/.X11-unix` exists and belongs to someone other than this user. On most desktops it is root's; in a
+/// seat's namespace only this user is mapped, so it shows as nobody's there, and wlroots (gamescope's Xwayland) will
+/// not put its X socket in a folder that is neither root's nor its own.
+pub fn x11_dir_foreign() -> bool {
+    use std::os::unix::fs::MetadataExt;
+    // SAFETY: a plain process call.
+    std::fs::metadata(X11_DIR).is_ok_and(|m| m.uid() != unsafe { libc::getuid() })
+}
+
+/// Inside the namespace: a fresh `/tmp/.X11-unix` of this user's, with the host's X sockets bound back in, so gamescope
+/// still reaches the desktop's display and its Xwayland may add a socket of its own. The host's folder is untouched.
+fn own_x11_dir() -> Result<(), String> {
+    if !x11_dir_foreign() {
+        return Ok(());
+    }
+    let dir = Path::new(X11_DIR);
+    // Hold the sockets before the tmpfs hides them; they are bound back from these handles.
+    let mut keep = Vec::new();
+    for s in x11_sockets(dir) {
+        let c = cstr(&s)?;
+        // SAFETY: a valid path; the descriptor is owned below.
+        let fd = unsafe { libc::open(c.as_ptr(), libc::O_PATH | libc::O_CLOEXEC) };
+        if fd >= 0 {
+            // SAFETY: fd is a new descriptor nobody else owns.
+            keep.push((s, unsafe { OwnedFd::from_raw_fd(fd) }));
+        }
+    }
+    mount(Some(Path::new("tmpfs")), dir, Some("tmpfs"), libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC, Some("mode=1777"))?;
+    for (socket, fd) in keep {
+        File::create(&socket).map_err(|e| format!("{}: {e}", socket.display()))?;
+        mount(Some(&PathBuf::from(format!("/proc/self/fd/{}", fd.as_raw_fd()))), &socket, None, libc::MS_BIND, None)?;
+    }
+    Ok(())
+}
+
 /// End this process when its parent ends. Set after any change of user namespace: changing credentials clears it.
 /// If the parent is already gone (it ended before this ran), end now.
 fn die_with(parent: libc::pid_t) {
@@ -153,6 +205,7 @@ fn setup(cfg: &Config) -> Result<(bool, String), String> {
         None => (false, String::new()),
     };
     mask_input(&cfg.own, &cfg.all)?;
+    own_x11_dir().map_err(|e| format!("{X11_DIR}: {e}"))?;
     Ok((overlay, why))
 }
 
@@ -362,6 +415,62 @@ mod tests {
             Command::new(exe).args(["--exact", "session::ns_linux::tests::test_holder", "--ignored", "--test-threads=1", "--nocapture", "-q"]).env("COUCHLINK_TEST_HOLDER", "1"),
             cfg,
         )
+    }
+
+    /// gamescope starts its Xwayland in a seat's namespace when the host's /tmp/.X11-unix is root's (SteamOS and most
+    /// desktops). Skipped without gamescope or user namespaces, unless COUCHLINK_REQUIRE_X11_DIR_TEST=1: CI runs it as
+    /// a normal user with a root-owned folder.
+    #[test]
+    fn gamescope_starts_its_xwayland_in_a_seat_namespace() {
+        use std::os::unix::process::CommandExt;
+        let required = std::env::var("COUCHLINK_REQUIRE_X11_DIR_TEST").is_ok_and(|v| v == "1");
+        let skip = |why: String| {
+            assert!(!required, "{why}");
+            eprintln!("skipped gamescope_starts_its_xwayland_in_a_seat_namespace: {why}");
+        };
+        let Some(gamescope) = crate::session::sandbox_linux::which("gamescope") else { return skip("no gamescope".into()) };
+        if required {
+            assert!(x11_dir_foreign(), "{X11_DIR} must belong to another user for this test");
+        }
+        let ns = match start_test_holder(&Config::default()) {
+            Ok(ns) => ns,
+            Err(e) => return skip(e),
+        };
+        if x11_dir_foreign() {
+            use std::os::unix::fs::MetadataExt;
+            let inside = std::fs::metadata(ns.view(Path::new(X11_DIR))).unwrap();
+            // SAFETY: a plain process call.
+            assert_eq!(inside.uid(), unsafe { libc::getuid() }, "the namespace has a folder of its own");
+            assert_eq!(x11_sockets(&ns.view(Path::new(X11_DIR))).len(), x11_sockets(Path::new(X11_DIR)).len(), "with the host's sockets in it");
+        }
+        let dir = std::env::temp_dir().join(format!("couchlink-x11-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let shown = dir.join("display");
+        let mut cmd = Command::new(gamescope);
+        cmd.args(["--backend", "headless", "-W", "320", "-H", "240", "--", "sh", "-c", "printf %s \"$DISPLAY\" > \"$0\"; sleep 2"])
+            .arg(&shown)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(File::create(dir.join("gamescope.log")).unwrap());
+        let mut join = joiner(ns.pid, &dir).unwrap();
+        // SAFETY: the closure only makes system calls.
+        unsafe { cmd.pre_exec(move || join()) };
+        let mut child = cmd.spawn().unwrap();
+        let t = std::time::Instant::now();
+        while std::fs::read_to_string(&shown).map_or(true, |s| s.is_empty()) && t.elapsed() < Duration::from_secs(30) {
+            if matches!(child.try_wait(), Ok(Some(_))) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+        let display = std::fs::read_to_string(&shown).unwrap_or_default();
+        let log = std::fs::read_to_string(dir.join("gamescope.log")).unwrap_or_default();
+        let tail: Vec<&str> = log.lines().rev().take(25).collect::<Vec<_>>().into_iter().rev().collect();
+        assert!(display.starts_with(':'), "gamescope started its Xwayland in the namespace; its log ends:\n{}", tail.join("\n"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// A holder with an overlay: the copy shows the install, takes changes without writing the install, keeps them in

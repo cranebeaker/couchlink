@@ -30,7 +30,17 @@ if [ "$mode" = gamescope ]; then
   export XDG_RUNTIME_DIR=/tmp/xdg-runtime COUCHLINK_KBM_VIRTUAL=1
   mkdir -p -m 0700 "$XDG_RUNTIME_DIR"
   cd core
-  exec cargo test -p couchlinkd --test integration --locked -- --nocapture
+  cargo test -p couchlinkd --test integration --locked -- --nocapture
+  # SteamOS and most desktops keep /tmp/.X11-unix as root's, and players are not root: gamescope must still start
+  # its Xwayland inside a seat's namespace, where that folder is nobody's.
+  install -d -m 1777 -o root -g root /tmp/.X11-unix
+  useradd -m player
+  chown -R player: /w
+  chmod 0666 /dev/udmabuf 2>/dev/null || true
+  install -d -m 0700 -o player /tmp/xdg-player
+  exec runuser -u player -- env HOME=/home/player USER=player XDG_RUNTIME_DIR=/tmp/xdg-player TMPDIR="$TMPDIR" \
+    CARGO_TERM_COLOR=never COUCHLINK_REQUIRE_X11_DIR_TEST=1 \
+    cargo test -p couchlinkd --bin couchlinkd --locked gamescope_starts_its_xwayland_in_a_seat_namespace -- --nocapture
 fi
 
 # Proton: umu-launcher refuses to run as root, so the test runs as a normal user.
