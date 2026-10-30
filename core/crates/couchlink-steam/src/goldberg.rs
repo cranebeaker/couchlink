@@ -79,14 +79,16 @@ pub struct SteamClientFiles {
     pub overlay_x64: Option<PathBuf>,
 }
 
-/// Canonical cached name for each wanted archive file (archive names are compared lower case).
-const SC_WANTED: [(&str, &str); 6] = [
+/// Canonical cached name for each wanted archive file (archive names are compared lower case). gbe_fork names the
+/// 32-bit loader after its build platform: `x32` in older releases, `x86` since.
+const SC_WANTED: [(&str, &str); 7] = [
     ("steamclient.dll", "steamclient.dll"),
     ("steamclient64.dll", "steamclient64.dll"),
     ("steamclient_loader_x32.exe", "steamclient_loader_x32.exe"),
     ("steamclient_loader_x64.exe", "steamclient_loader_x64.exe"),
     ("gameoverlayrenderer.dll", "GameOverlayRenderer.dll"),
     ("gameoverlayrenderer64.dll", "GameOverlayRenderer64.dll"),
+    ("steamclient_loader_x86.exe", "steamclient_loader_x32.exe"),
 ];
 /// The first four must be in the archive when steamclient mode is asked for; the overlay DLLs are optional.
 const SC_REQUIRED: usize = 4;
@@ -467,7 +469,8 @@ pub(crate) mod test_support {
         }
         put("steamclient_experimental/steamclient.dll", &fake_pe(Bitness::X86));
         put("steamclient_experimental/steamclient64.dll", &fake_pe(Bitness::X64));
-        put("steamclient_experimental/steamclient_loader_x32.exe", &fake_pe(Bitness::X86));
+        // Named as the pinned release names it (older releases said x32).
+        put("steamclient_experimental/steamclient_loader_x86.exe", &fake_pe(Bitness::X86));
         if with_x64_loader {
             put("steamclient_experimental/steamclient_loader_x64.exe", &fake_pe(Bitness::X64));
         }
