@@ -117,6 +117,9 @@ abstract class CouchClient extends ChangeNotifier {
   /// and "Open log folder" after an error. [error] is set when the service could not be asked.
   Future<({String text, String dir, String? error})> getLog();
 
+  /// `save_report`: one file in the log folder with every log in full and this PC's details. Returns its path.
+  Future<({String? path, String? error})> saveReport();
+
   /// `start_session`: replies at once, then `session` events show the progress. Returns the
   /// daemon's error text (already written for players), or null when the launch began.
   Future<String?> startSession(String recipe);

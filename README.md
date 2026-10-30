@@ -50,7 +50,8 @@ way the game already supports: LAN, a co-op mod's server, or Steam. Any game tha
   outside. Each copy sees only its own controller through XInput, DirectInput, Raw Input and HID.
 - Everything Couchlink changes on your PC is written to a journal first and put back when you stop, also after a
   crash.
-- In English and Russian: the app follows your Windows language, and the sidebar has an EN / RU switch.
+- In English and Russian: the app follows your system's language, and Settings (the cog at the bottom of the sidebar)
+  has an EN / RU switch.
 
 ## Get it
 
@@ -59,6 +60,9 @@ way the game already supports: LAN, a co-op mod's server, or Steam. Any game tha
 | Windows 10 and 11 (64-bit) | [Releases](https://github.com/cranebeaker/couchlink/releases): unzip, run `couchlink.exe` |
 | Linux (64-bit) | [Releases](https://github.com/cranebeaker/couchlink/releases): unpack the `.tar.gz`, run `./couchlink`. Needs nothing beyond a Steam desktop; gamescope (a window per player, a keyboard and mouse per player) is recommended. `LINUX.txt` in the download says what each optional part adds |
 | macOS | In the works |
+
+The app opens in your system's language (English or Russian). To switch, open Settings (the cog at the bottom of the
+sidebar) and pick EN or RU under Language.
 
 Some antivirus tools are wary of any program that gives games their own controllers. Couchlink is open source and
 built from this repo; if your antivirus complains, tell us on the Discord.
@@ -130,7 +134,8 @@ Couchlink запускает отдельную копию игры для ка�
   на Linux) или любая папка с игрой, которую вы добавите в библиотеке.
 - Копии игры не занимают лишнего места на диске, сохранения у каждого игрока свои.
 - Новые кооп-рецепты сами подтягиваются в приложение, с подписью.
-- Приложение на русском: язык берётся из Windows, а в боковой панели есть переключатель EN / RU.
+- Приложение на русском: язык берётся из системы, а в настройках (шестерёнка внизу боковой панели) есть
+  переключатель EN / RU.
 
 **Скачать**
 - Windows 10 и 11 (64-бит): [Releases](https://github.com/cranebeaker/couchlink/releases), распакуйте и запустите
@@ -138,6 +143,8 @@ Couchlink запускает отдельную копию игры для ка�
 - Linux (64-бит): [Releases](https://github.com/cranebeaker/couchlink/releases), распакуйте `.tar.gz` и запустите
   `./couchlink`. Кроме Steam ничего не нужно; gamescope (своё окно и своя клавиатура с мышью у каждого игрока) рекомендуется.
 - macOS: в работе.
+- Как включить русский: если система на русском, приложение сразу откроется на русском. Если нет, нажмите
+  шестерёнку внизу боковой панели и выберите RU в разделе «Язык».
 
 **Для разработчиков**
 

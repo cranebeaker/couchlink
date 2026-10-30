@@ -104,6 +104,14 @@ class UiState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The sidebar shows Settings (appearance, language, logs) in place of the pages.
+  bool settingsOpen = false;
+
+  void toggleSettings() {
+    settingsOpen = !settingsOpen;
+    notifyListeners();
+  }
+
   void setThemeMode(ThemeMode m) {
     if (m == themeMode) return;
     themeMode = m;
@@ -189,18 +197,30 @@ Future<void> copyLog(Scope scope) async {
   scope.toaster.show(t('Log copied. Paste it into your message.'));
 }
 
+/// "Save full report": one file with every log in full and this PC's details, then its folder opens.
+Future<void> saveReport(Scope scope) async {
+  final r = await scope.client.saveReport();
+  if (r.error != null || r.path == null) {
+    scope.toaster.show(r.error ?? t('That did not work.'), long: true);
+    return;
+  }
+  final name = r.path!.split(RegExp(r'[\/]')).last;
+  scope.toaster.show(t('Saved {file} in the log folder. Send it to us on the Discord.', {'file': name}), long: true);
+  await openLogFolder(scope, quiet: true);
+}
+
 /// "Open log folder": the folder with Couchlink's log and each game copy's, in the file manager.
-Future<void> openLogFolder(Scope scope) async {
+Future<void> openLogFolder(Scope scope, {bool quiet = false}) async {
   final log = await scope.client.getLog();
   if (log.error != null) {
-    scope.toaster.show(log.error!, long: true);
+    if (!quiet) scope.toaster.show(log.error!, long: true);
     return;
   }
   var ok = false;
   try {
     ok = await launchUrl(Uri.directory(log.dir), mode: LaunchMode.externalApplication);
   } catch (_) {}
-  if (!ok) scope.toaster.show(t('Could not open {dir}', {'dir': log.dir}), long: true);
+  if (!ok && !quiet) scope.toaster.show(t('Could not open {dir}', {'dir': log.dir}), long: true);
 }
 
 Future<void> runCmd(BuildContext context, Future<String?> Function() cmd) async {
