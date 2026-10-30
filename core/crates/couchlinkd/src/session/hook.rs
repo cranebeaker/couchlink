@@ -161,15 +161,16 @@ impl Launcher for HookLauncher {
         }
         // Any controller SDL sees reaches the copy through a feed the daemon writes; the XInput slot is
         // the fallback when the seat has no pad to feed from.
-        // The seat's own keyboards and mice reach the copy through a second feed; a seat without any keeps the
-        // shared desktop keyboard and mouse, unless its pad sends keys through its profile (then they get a feed).
+        // The seat's own keyboards and mice reach the copy through a second feed. A seat without any gets a feed too
+        // when its pad sends keys through its profile, or when another seat plays with a keyboard or mouse (an empty
+        // one, so that player's keys never reach this copy); otherwise it keeps the shared desktop keyboard and mouse.
         let own_kbm = spec.seat.and_then(|seat| {
             let tag = format!("{}-{}", std::process::id(), LAUNCHES.fetch_add(1, Ordering::Relaxed));
             super::rawkbm::attach(&super::rawkbm::feed_name(tag, seat as u32), &spec.devices).ok()
         });
         let fake_cursor = own_kbm.is_some();
         let mut kbm = own_kbm.or_else(|| {
-            let seat = spec.seat.filter(|s| super::padfeed::seat_sends_kbm(*s))?;
+            let seat = spec.seat.filter(|s| super::padfeed::seat_sends_kbm(*s) || spec.block_desktop_kbm)?;
             let tag = format!("{}-{}", std::process::id(), LAUNCHES.fetch_add(1, Ordering::Relaxed));
             super::rawkbm::attach_pad(&super::rawkbm::feed_name(tag, seat as u32), None).ok()
         });
@@ -493,6 +494,7 @@ mod tests {
             run_as: None,
             linux: None,
             log: None,
+            block_desktop_kbm: false,
         };
         let undoers = Undoers::new();
         register_undoers(&undoers);

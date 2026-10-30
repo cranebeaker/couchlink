@@ -397,6 +397,7 @@ mod tests {
             run_as: None,
             linux: None,
             log: None,
+            block_desktop_kbm: false,
         }
     }
 

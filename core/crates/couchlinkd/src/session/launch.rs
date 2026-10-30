@@ -37,6 +37,10 @@ pub struct LaunchSpec {
     pub linux: Option<LinuxSeat>,
     /// Where the copy's own output (stdout and stderr) goes, written again at each launch (`logfile::copy_log`).
     pub log: Option<PathBuf>,
+    /// This seat has no keyboard or mouse but another seat has: the desktop's keys and mouse must not reach this copy
+    /// either (Windows: an empty keyboard and mouse feed, so the hook hides the real ones).
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub block_desktop_kbm: bool,
 }
 
 /// A copy on Linux starts in a window of its seat's size and keeps its own data next to its copy.
@@ -410,6 +414,7 @@ mod tests {
             run_as: None,
             linux: None,
             log: None,
+            block_desktop_kbm: false,
         };
         let mut l = CommandLauncher.launch(&spec).unwrap();
         assert!(!l.hooked);

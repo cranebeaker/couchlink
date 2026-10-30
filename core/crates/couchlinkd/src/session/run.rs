@@ -497,6 +497,10 @@ impl Run {
             run_as: None,
             linux: None,
             log: seat.map(|i| crate::logfile::copy_log(&recipe.id, self.seats[i].plan.seat)),
+            block_desktop_kbm: seat.is_some_and(|i| {
+                let has_kbm = |devs: &[String]| devs.iter().any(|d| d == "kbm:system" || super::rawkbm::is_kbm_id(d));
+                !has_kbm(&self.seats[i].plan.devices) && self.seats.iter().any(|s| has_kbm(&s.plan.devices))
+            }),
         })
     }
 
@@ -564,6 +568,7 @@ impl Run {
             run_as: None,
             linux: None,
             log: None,
+            block_desktop_kbm: false,
         };
         let launched = self.deps.launcher.launch(&spec)?;
         self.helpers.push(launched.child);

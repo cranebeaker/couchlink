@@ -36,6 +36,7 @@ struct Args {
     std::wstring save_dir;
     bool known_docs = false;
     bool no_window = false;
+    bool game_window = false;  // an ordinary window, as a game makes (for whole-session tests through couchlinkd)
     bool use_version = false;  // call GetFileVersionInfoSizeW so version.dll is a loaded import
     bool pads = false;         // list the game controllers DirectInput, Raw Input and HID let this process see
     bool poll_xinput = false;  // keep reading XInput and rewrite the output file whenever it changes
@@ -453,6 +454,20 @@ std::string StateJson() {
     POINT origin = {0, 0};
     ClientToScreen(g_wnd, &origin);
     j += ",\"client_size\":[" + Num(cr.right) + "," + Num(cr.bottom) + "],\"client_origin\":[" + Num(origin.x) + "," + Num(origin.y) + "]";
+    // What a controller does to this copy, next to the keys: the buttons of XInput users 0 to 3 (-1: not connected).
+    {
+        static HMODULE xi = LoadLibraryW(L"xinput1_4.dll");
+        typedef DWORD(WINAPI * GetStateFn)(DWORD, void*);
+        static GetStateFn get = xi ? (GetStateFn)GetProcAddress(xi, "XInputGetState") : nullptr;
+        j += ",\"xinput_buttons\":[";
+        for (DWORD u = 0; u < 4; ++u) {
+            BYTE st[16] = {};
+            long long b = -1;
+            if (get && get(u, st) == ERROR_SUCCESS) b = *(WORD*)(st + 4);
+            j += (u ? "," : "") + Num(b);
+        }
+        j += "]";
+    }
     HWND overlay = nullptr;
     EnumWindows(FindOverlay, (LPARAM)&overlay);
     j += ",\"overlay_exists\":" + B(overlay != nullptr);
@@ -577,6 +592,7 @@ int wmain(int argc, wchar_t** argv) {
         else if (k == L"--save-dir") a.save_dir = Arg(argc, argv, i);
         else if (k == L"--known-docs") a.known_docs = true;
         else if (k == L"--no-window") a.no_window = true;
+        else if (k == L"--game-window") a.game_window = true;
         else if (k == L"--poll-xinput") a.poll_xinput = true;
         else if (k == L"--use-version") a.use_version = true;
         else if (k == L"--pads") a.pads = true;
@@ -613,9 +629,15 @@ int wmain(int argc, wchar_t** argv) {
         wc.lpszClassName = L"CouchlinkTestTarget";
         RegisterClassW(&wc);
         // Visible but off screen and never activated, so it cannot take focus from whatever the owner is doing.
-        wnd = CreateWindowExW(WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW, wc.lpszClassName, L"couchlink test target", WS_POPUP, -3000,
-                              -3000, 64, 64, nullptr, nullptr, wc.hInstance, nullptr);
-        ShowWindow(wnd, SW_SHOWNOACTIVATE);
+        if (a.game_window) {
+            wnd = CreateWindowExW(0, wc.lpszClassName, L"couchlink test target", WS_OVERLAPPEDWINDOW, 100, 100, 640, 480, nullptr, nullptr,
+                                  wc.hInstance, nullptr);
+            ShowWindow(wnd, SW_SHOWNOACTIVATE);
+        } else {
+            wnd = CreateWindowExW(WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW, wc.lpszClassName, L"couchlink test target", WS_POPUP, -3000,
+                                  -3000, 64, 64, nullptr, nullptr, wc.hInstance, nullptr);
+            ShowWindow(wnd, SW_SHOWNOACTIVATE);
+        }
         g_wnd = wnd;
         Pump(300);
         j += ",\"focus\":{";
