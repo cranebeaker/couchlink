@@ -33,23 +33,25 @@ Categories=Game;
 """
 
 # What the host needs for split screen, checked by couchlinkd at session start; the README lists them for packagers.
-NEEDS = """Couchlink for Linux runs each copy of a game in its own gamescope window, inside a bubblewrap sandbox
-that shows it only its own controller. Install these from your distribution first:
+NEEDS = """Couchlink for Linux
 
-  gamescope        one window per player
-  bubblewrap       (bwrap) each copy sees only its own controller
-  fuse-overlayfs   copies of a game that take no extra disk
-  umu-launcher     (umu-run) to start Windows games through Proton; native Linux games do not need it
+Run ./couchlink from this folder. couchlinkd, next to it, is started by the app.
 
-For a keyboard and mouse of their own per player, also:
+Nothing else is needed on a normal Steam desktop: Couchlink gives each player's copy of a game a sandbox of its own
+(only that player's controller is in it) and a copy of the game that takes no extra disk, by itself. Windows games run
+through the Proton you already have in Steam.
 
-  gamescope-kbm    PartyDeck's gamescope build, which reads one player's keyboard and mouse only
-  the input group  so Couchlink can see keyboards and mice: sudo usermod -aG input $USER, then log in again
+Optional, each for something more:
 
-Then run ./couchlink from this folder. couchlinkd, next to it, is started by the app.
+  gamescope        a window of its own for every player, and a keyboard and mouse of their own per player
+                   (without it the game windows are placed side by side directly, and keyboards go to the
+                   focused window)
+  the input group  so Couchlink can see your keyboards and mice for keyboard players:
+                   sudo usermod -aG input $USER, then log in again
+  umu-launcher     (umu-run) used instead of Steam's Proton when it is installed
 
-On Ubuntu 24.04 and later, AppArmor may stop Proton from starting inside Couchlink's sandbox. Couchlink checks this
-before a session and tells you what to do.
+Ubuntu 24.04 and later stop programs from making sandboxes unless allowed (AppArmor). Couchlink then uses bubblewrap
+if it is installed, and tells you what to do if Proton cannot start inside the sandbox.
 """
 
 

@@ -126,11 +126,25 @@ fn mask_input(own: &[PathBuf], all: &[PathBuf]) -> Result<(), String> {
     Ok(())
 }
 
+/// End this process when its parent ends. Set after any change of user namespace: changing credentials clears it.
+/// If the parent is already gone (it ended before this ran), end now.
+fn die_with(parent: libc::pid_t) {
+    // SAFETY: plain process calls.
+    unsafe {
+        libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+        if libc::getppid() != parent {
+            libc::_exit(1);
+        }
+    }
+}
+
 /// Everything a holder does before it reports back; true when the overlay is mounted.
 fn setup(cfg: &Config) -> Result<(bool, String), String> {
-    // SAFETY: plain process call; the holder ends with whoever started it.
-    unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) };
+    // SAFETY: a plain process call.
+    let parent = unsafe { libc::getppid() };
     own_namespaces()?;
+    // The holder ends with whoever started it (the daemon's session, or the daemon itself when it dies).
+    die_with(parent);
     let (overlay, why) = match &cfg.overlay {
         Some(o) => match mount_overlay(o) {
             Ok(()) => (true, String::new()),
@@ -273,10 +287,12 @@ pub fn joiner(pid: u32, cwd: &Path) -> Result<impl FnMut() -> std::io::Result<()
     Ok(move || {
         // SAFETY: only system calls on descriptors and a string prepared before the fork.
         unsafe {
-            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+            let parent = libc::getppid();
             if libc::setns(user.as_raw_fd(), libc::CLONE_NEWUSER) != 0 || libc::setns(mnt.as_raw_fd(), libc::CLONE_NEWNS) != 0 {
                 return Err(std::io::Error::last_os_error());
             }
+            // After the namespace change, which clears it: the copy ends with couchlinkd.
+            die_with(parent);
             if libc::chdir(cwd.as_ptr()) != 0 {
                 return Err(std::io::Error::last_os_error());
             }

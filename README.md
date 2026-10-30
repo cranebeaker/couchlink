@@ -56,7 +56,7 @@ way the game already supports: LAN, a co-op mod's server, or Steam. Any game tha
 | Platform | Status |
 |---|---|
 | Windows 10 and 11 (64-bit) | [Releases](https://github.com/cranebeaker/couchlink/releases): unzip, run `couchlink.exe` |
-| Linux | In the works |
+| Linux (64-bit) | [Releases](https://github.com/cranebeaker/couchlink/releases): unpack the `.tar.gz`, run `./couchlink`. Needs nothing beyond a Steam desktop; gamescope (a window per player, a keyboard and mouse per player) is recommended. `LINUX.txt` in the download says what each optional part adds |
 | macOS | In the works |
 
 Some antivirus tools are wary of any program that gives games their own controllers. Couchlink is open source and
@@ -133,7 +133,9 @@ Couchlink запускает отдельную копию игры для ка�
 **Скачать**
 - Windows 10 и 11 (64-бит): [Releases](https://github.com/cranebeaker/couchlink/releases), распакуйте и запустите
   `couchlink.exe`.
-- Linux и macOS: в работе.
+- Linux (64-бит): [Releases](https://github.com/cranebeaker/couchlink/releases), распакуйте `.tar.gz` и запустите
+  `./couchlink`. Кроме Steam ничего не нужно; gamescope (своё окно и своя клавиатура с мышью у каждого игрока) рекомендуется.
+- macOS: в работе.
 
 **Для разработчиков**
 

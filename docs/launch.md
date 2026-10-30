@@ -166,44 +166,50 @@ otherwise it is set once up front. Each write journals the value it replaces.
 
 ## Session pipeline (Linux)
 
-The same pipeline, with Linux parts in `session/*_linux.rs` (Windows code is untouched):
+The same pipeline, with the Linux parts in `session/*_linux.rs` (Windows code is untouched). Nothing beyond a Steam
+desktop is needed; gamescope is recommended.
 
-1. **Copies** (`copies_linux.rs`): with `fuse-overlayfs` installed, a seat's copy is a layer: the install is the lower
-   layer, `<state>/instances/<recipe>/.layers/<seat>/upper` holds what that seat changes, and the two are mounted at
-   `<state>/instances/<recipe>/<seat>/`. Each mount is journalled first and unmounted at the end (or on the next start
-   after a crash). `files.exclude_*` are deleted in the copy (a whiteout in the upper layer). Without fuse-overlayfs the
-   hardlink copies of Windows are used.
-2. **Launch** (`launch_linux.rs`): each copy runs as `bwrap [sandbox] -- gamescope -W w -H h -w w -h h [-b] -- umu-run Game.exe`
-   (Proton) or `... -- ./game` (native), in a process group of its own. Proton copies get `WINEPREFIX=<state>/instances/<recipe>/.seats/<seat>/prefix`
-   and `GAMEID`; native copies get `HOME` and `XDG_*` under `.seats/<seat>/home`, so each seat keeps its own settings and saves.
-3. **Input** (`sandbox_linux.rs`): bubblewrap shares the whole system except input: `/dev/input` is a fresh tmpfs holding
-   only the seat's own nodes, and every `/dev/hidraw*` the seat does not own is covered by `/dev/null`. A seat owns every
-   node under the same HID device (or USB interface) as the path SDL reports for its pad, so all nodes of one controller
-   (gamepad, motion sensors, touchpad, hidraw) go together. The copy reads its controller itself, so it keeps playing
-   while another copy's window has the focus.
-4. **Place** (`window_linux.rs`): gamescope's window is found over X11 by `_NET_WM_PID` and moved onto the seat's region;
-   gamescope runs with `SDL_VIDEODRIVER=x11` so that this works on Wayland desktops through XWayland. Without an X display
-   the windows keep their size and the desktop places them.
+1. **Sandbox and copy** (`ns_linux.rs`, `copies_linux.rs`): every seat gets a small holder process
+   (`couchlinkd --seat-namespace`) with a user and mount namespace of its own. Inside it the seat's copy is a kernel
+   overlay (Linux 5.11 and later): the install below, `<state>/instances/<recipe>/.layers/<seat>/upper` on top, mounted
+   at `<state>/instances/<recipe>/<seat>/`; `/dev/input` is an empty tmpfs holding only the seat's own nodes, and every
+   `/dev/hidraw*` the seat does not own is covered by `/dev/null`. The daemon writes into the copy through
+   `/proc/<holder>/root`; the copies join the holder's namespaces when they start. The holder ends with the session or
+   with the daemon (`PR_SET_PDEATHSIG`), and its mounts with it, so a crash leaves nothing mounted. `files.exclude_*` are
+   deleted in the copy (a whiteout in the upper layer). Where unprivileged user namespaces are off (Ubuntu 24.04 and
+   later, unless allowed), the copy is made with fuse-overlayfs or hardlinks and the copy runs in bwrap instead.
+2. **Pad** (`uipad_linux.rs`): each seat's controller drives a virtual uinput pad laid out like the kernel's xpad
+   (vendor 045e, product 028e) through the seat's profile (`couchlink_core::process`: remaps, layers, stick and trigger
+   shaping), and the seat's sandbox holds only that pad. Rumble the game uploads goes back to the real pad. couchlinkd's
+   own SDL thread ignores these pads. Without `/dev/uinput` the copy gets the real pad's nodes (no remaps). A seat
+   owns every node under the same HID device (or USB interface) as its pad, so all nodes of one controller go together.
+3. **Launch** (`launch_linux.rs`): `gamescope --backend sdl -W w -H h -w w -h h [-b] -- <game>` when gamescope is
+   installed, else the game itself (its own X11 window is placed); every copy in a process group of its own. Windows
+   games run through umu-run when it is installed (`WINEPREFIX=<state>/instances/<recipe>/.seats/<seat>/prefix`,
+   `GAMEID`), else through Steam's own Proton (`proton waitforexitandrun`, `STEAM_COMPAT_DATA_PATH=.seats/<seat>/compat`);
+   native games get `HOME` and `XDG_*` under `.seats/<seat>/home` (with `~/.steam` linked in, so they reach Steam).
+   Output goes to `.seats/<seat>/copy.log`. Before the first Proton copy the launcher checks that a sandbox may be
+   made inside the seat's (Proton's runtime does that) and says what to do when AppArmor forbids it.
+4. **Keyboard and mouse** (`rawkbm_linux.rs`): every evdev keyboard (letters and Enter) and mouse (relative X/Y, a left
+   button) is a device, one per physical device; Enter on one asks for a seat. While a seat's copy runs in gamescope,
+   its keyboards and mice are taken from the desktop (`EVIOCGRAB`) and their keys, buttons, motion and wheel go into
+   that copy's gamescope X display with XTEST (the copy writes the display name to `.seats/<seat>/display`), so each
+   player types and aims in their own window whatever has the focus. Reading `/dev/input` needs the `input` group.
+   Software devices are left out unless `COUCHLINK_KBM_VIRTUAL=1` (tests).
+5. **Place** (`window_linux.rs`): the copy's window (gamescope's, or the game's own) is found over X11 by `_NET_WM_PID`
+   and moved onto the seat's region; gamescope runs with `SDL_VIDEODRIVER=x11` so this works on Wayland desktops through
+   XWayland. Without an X display the desktop places the windows.
+6. **Own Steam account** (`couchlink-steam/src/accounts_linux.rs`): no helper user. An extra seat's Steam runs with a
+   home of its own (`~/.local/share/couchlink/steam-seat-<n>`), and the seat's copy runs with that home, so it talks to
+   that Steam (for Proton copies `XDG_DATA_HOME` stays the user's, so umu's runtime is shared). Setup and removal need
+   no administrator rights.
+7. **Goldberg for native games** (`couchlink-steam/src/goldberg_linux.rs`): `libsteam_api.so` in the copy is replaced by
+   gbe_fork's Linux build of the same pinned release (32 or 64-bit by ELF class), with the seat's `steam_settings`.
 
-Needs on the host: `bwrap`, `gamescope`, `umu-run` (Windows games only), `fuse-overlayfs` (optional), and
-`gamescope-kbm` (PartyDeck's gamescope fork, optional) for keyboard and mouse seats. `/tmp` stays shared on purpose:
-gamescope runs inside the sandbox and needs the desktop's X11 socket. Copies get `PROTON_ENABLE_HIDRAW=1` (Wine reads its
-own seat's hidraw node) and gamescope runs with `ENABLE_GAMESCOPE_WSI=0`, as PartyDeck does.
-
-**Proton inside the sandbox.** umu's pressure-vessel is a second bwrap inside ours. Ubuntu 24.04 and later confine
-unprivileged user namespaces with AppArmor, which can refuse that. Before the first Proton copy starts, the launcher tries a
-nested bwrap once; if it fails, the session fails at once with what to do, instead of copies that die without a window.
-
-**Keyboards and mice** (`rawkbm_linux.rs`): every evdev keyboard (letters and Enter) and mouse (relative X/Y and a left
-button) is a device, one per physical device (grouped by sysfs like controllers); Enter on one asks for a seat, as on
-Windows. Reading them needs the `input` group (or a udev rule); without it the daemon logs why and there are no keyboard
-seats. A seat that owns keyboards or mice gets their nodes in its sandbox and runs in `gamescope-kbm` (found on `PATH`, or
-`COUCHLINK_GAMESCOPE_KBM`) with `--backend-disable-keyboard --backend-disable-mouse --libinput-hold-dev=<nodes>, --grab`,
-so only that copy reads them. With plain gamescope the seat still plays, with the desktop's keyboard and mouse going to
-the focused window. Software devices (`/sys/devices/virtual`) are left out unless `COUCHLINK_KBM_VIRTUAL=1` (tests).
-
-Not yet on Linux: an own Steam account per seat (`steam: accounts`), and the input processor (remaps, profiles), since
-copies read their controllers directly.
+Also: couchlinkd runs once per state folder (a `flock` in `XDG_RUNTIME_DIR`), the Linux app is a unique GTK
+application (a second launch shows the open window), displays are read live through SDL, "Try it" finds native Linux
+builds (an executable ELF program) as well as Windows ones. Copies get `PROTON_ENABLE_HIDRAW=1` and gamescope
+`ENABLE_GAMESCOPE_WSI=0`, as PartyDeck does. `/tmp` stays shared on purpose (the desktop's X11 socket).
 
 **Recipe `linux` object** (optional; `couchlink-core/src/recipe_linux.rs`; Windows ignores it):
 
@@ -274,9 +280,13 @@ A copy is two layers: the **base** is the real install, shared read-only; the **
 ## Tests (automated, no human playtests)
 
 - Unit: recipe parsing and validation, template expansion, region to pixel maths, journal replay, Goldberg config files, hub mapping.
-- Linux (CI runs these with `COUCHLINK_REQUIRE_SANDBOX_TEST=1` and, when gamescope is packaged, `COUCHLINK_REQUIRE_GAMESCOPE_TEST=1`,
-  under Xvfb with software Vulkan): virtual keyboards and mice are listed and Enter joins; the integration test runs two testgame
-  copies through the daemon (sandbox, own home, layered copy, undo), then again inside gamescope and checks each window's region.
+- Linux (CI, `.github/workflows/linux.yml`, with `COUCHLINK_REQUIRE_SANDBOX_TEST=1` so nothing passes by skipping): unit tests
+  for the holder's kernel overlay, the bwrap sandbox, virtual pads (a profile remap reaching the uinput pad), virtual keyboards
+  and mice, Goldberg's Linux build; the integration test runs two testgame copies through the daemon (own sandbox, own virtual
+  pad and nothing else, own home, layered copy only inside the sandbox, X11 window on its region under Xvfb, undo). In Arch
+  containers: the copies inside a real gamescope (headless backend; software Vulkan lacks what its window backend needs),
+  each player with a virtual keyboard whose key reaches only their copy through XTEST, and a Windows program through
+  Proton (umu) in two seats with a prefix each.
 - Linux sandbox (`sandbox_linux.rs`): two copies of a probe program, each in its own seat's sandbox with one uinput virtual pad, each must list only its own pad and get only its own presses. CI makes it required (`COUCHLINK_REQUIRE_SANDBOX_TEST=1`); the layered copies test runs there too.
 - Integration with `testgame`: start a session of 2 to 4 testgame copies through couchlinkd, check each window lands on its region, each sees only its own (virtual SDL or synthetic) pad via the hook, unfocused copies keep running, and everything is restored after `stop_session` and after a simulated crash.
 - Real game (manual run only when the PC is unlocked and the owner is not playing): Nitrox with 2 copies on one screen.
