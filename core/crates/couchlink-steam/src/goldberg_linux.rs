@@ -3,7 +3,7 @@
 //! build it is LGPL-3 and only ever placed unmodified next to the game's own files, with the licence text beside it.
 
 use crate::error::{Result, SteamError};
-use crate::goldberg::{download, norm_components, score, sha256_hex, GoldbergPin, GOLDBERG};
+use crate::goldberg::{download, norm_components, score, seed_from_bundle, sha256_hex, GoldbergPin, GOLDBERG};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -33,10 +33,12 @@ fn files_for(cache_dir: &Path) -> LinuxFiles {
     LinuxFiles { so_x86: dir.join("x32").join("libsteam_api.so"), so_x64: dir.join("x64").join("libsteam_api.so"), dir }
 }
 
-/// Download the pinned Linux build once into `cache_dir` and take out the libraries. Blocking.
+/// Download the pinned Linux build once into `cache_dir` and take out the libraries; a release that ships them
+/// (`goldberg::seed_from_bundle`) needs no download. Blocking.
 pub fn ensure_goldberg_linux(cache_dir: &Path) -> Result<LinuxFiles> {
     let files = files_for(cache_dir);
-    if files.dir.join(MARKER).exists() && files.so_x86.is_file() && files.so_x64.is_file() {
+    let ready = |f: &LinuxFiles| f.dir.join(MARKER).exists() && f.so_x86.is_file() && f.so_x64.is_file();
+    if ready(&files) || (seed_from_bundle(cache_dir, &format!("linux/{MARKER}")) && ready(&files)) {
         return Ok(files);
     }
     let bytes = download(GOLDBERG_LINUX.url)?;

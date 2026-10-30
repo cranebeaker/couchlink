@@ -39,7 +39,8 @@ Run ./couchlink from this folder. couchlinkd, next to it, is started by the app.
 
 Nothing else is needed on a normal Steam desktop: Couchlink gives each player's copy of a game a sandbox of its own
 (only that player's controller is in it) and a copy of the game that takes no extra disk, by itself. Windows games run
-through the Proton you already have in Steam.
+through the Proton you already have in Steam. The Goldberg Steam emulator (gbe_fork, LGPL-3.0, licence and source
+link in goldberg/) is included, so Steam-only co-op games need no download.
 
 Optional, each for something more:
 
@@ -113,7 +114,9 @@ def build(root, words):
     copy_sources(src)
     run([cargo, "build", "--release", "-p", "couchlinkd", "--locked"], src / "core", env)
     run([flutter, "build", "linux", "--release"], src / "app", env)
-    return root / "target" / "release" / "couchlinkd", src / "app" / "build" / "linux" / "x64" / "release" / "bundle"
+    goldberg = root / "goldberg"
+    run([cargo, "run", "--release", "--locked", "-p", "couchlink-steam", "--example", "goldberg_bundle", "--", goldberg], src / "core", env)
+    return root / "target" / "release" / "couchlinkd", src / "app" / "build" / "linux" / "x64" / "release" / "bundle", goldberg
 
 
 def tar_filter(info):
@@ -129,6 +132,7 @@ def main():
     ap.add_argument("--build-root", default="/tmp/cl-build")
     ap.add_argument("--daemon", help="a couchlinkd that is already built")
     ap.add_argument("--app-bundle", help="a Flutter Linux bundle folder that is already built")
+    ap.add_argument("--goldberg", help="a gbe_fork bundle folder (the goldberg_bundle example's output)")
     args = ap.parse_args()
 
     words = forbidden_words()
@@ -136,8 +140,11 @@ def main():
         raise SystemExit("pass both --daemon and --app-bundle, or neither")
     if args.daemon:
         daemon, bundle = Path(args.daemon), Path(args.app_bundle)
+        if not args.goldberg:
+            raise SystemExit("pass --goldberg too: the tarball ships gbe_fork")
+        goldberg = Path(args.goldberg)
     else:
-        daemon, bundle = build(Path(args.build_root), words)
+        daemon, bundle, goldberg = build(Path(args.build_root), words)
 
     name = f"Couchlink-{args.version}"
     dist = REPO / "dist" / name
@@ -158,6 +165,10 @@ def main():
     (dist / "share" / "couchlink.desktop").write_text(DESKTOP)
     shutil.copy2(REPO / "assets" / "brand" / "png" / "couchlink-256.png", dist / "share" / "couchlink.png")
     (dist / "LINUX.txt").write_text(NEEDS)
+    # gbe_fork (LGPL-3.0, licence and source link inside), so Steam games run with no download.
+    if not (goldberg / "gbe_fork").is_dir():
+        raise SystemExit(f"no gbe_fork/ in {goldberg}")
+    shutil.copytree(goldberg / "gbe_fork", dist / "goldberg" / "gbe_fork")
 
     hits = scan(dist, words)
     if hits:
