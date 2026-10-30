@@ -36,7 +36,8 @@ type CGDisplayModeRef = *mut std::ffi::c_void;
 
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
-    fn CGGetActiveDisplayList(max: u32, displays: *mut CGDirectDisplayID, count: *mut u32) -> i32;
+    fn CGGetOnlineDisplayList(max: u32, displays: *mut CGDirectDisplayID, count: *mut u32) -> i32;
+    fn CGDisplayMirrorsDisplay(display: CGDirectDisplayID) -> CGDirectDisplayID;
     fn CGDisplayBounds(display: CGDirectDisplayID) -> CGRect;
     fn CGMainDisplayID() -> CGDirectDisplayID;
     fn CGDisplayIsBuiltin(display: CGDirectDisplayID) -> u32;
@@ -57,16 +58,19 @@ pub struct PointDisplay {
     pub scale: f64,
 }
 
-/// Every active display in points.
+/// Every display in points. The online list, not the active one: a display that sleeps (the Mac idles, the lid is
+/// half closed) stays in the list, so seats and screens do not vanish while nobody looks. Mirrors are left out.
 pub fn point_displays() -> Vec<PointDisplay> {
     let mut ids = [0u32; 16];
     let mut n = 0u32;
     // SAFETY: the buffer holds 16 ids and CoreGraphics writes at most that many.
-    if unsafe { CGGetActiveDisplayList(ids.len() as u32, ids.as_mut_ptr(), &mut n) } != 0 {
+    if unsafe { CGGetOnlineDisplayList(ids.len() as u32, ids.as_mut_ptr(), &mut n) } != 0 {
         return Vec::new();
     }
     ids[..n as usize]
         .iter()
+        // SAFETY: plain query on an online display id.
+        .filter(|&&id| unsafe { CGDisplayMirrorsDisplay(id) } == 0)
         .map(|&id| {
             // SAFETY: plain queries on an active display id; the mode is released below.
             unsafe {

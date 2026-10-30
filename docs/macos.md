@@ -139,7 +139,9 @@ survives the next session (`copies_macos.rs`).
 
 ## Displays
 
-CoreGraphics (`CGGetActiveDisplayList`, `CGDisplayBounds`, `CGDisplayCopyDisplayMode`) on the SDL thread [7]. SDL video
+CoreGraphics (`CGGetOnlineDisplayList`, `CGDisplayBounds`, `CGDisplayCopyDisplayMode`) on the SDL thread [7]. The online
+list keeps a display that sleeps (the active list drops it, which would make every screen vanish while the Mac idles);
+mirrored displays are left out. SDL video
 cannot be used: on macOS it must be initialised on the main thread [4], which runs the daemon's async side. Display
 ids come from vendor, model and serial numbers, so they stay the same across restarts. The built-in display is named
 "Built-in Display", others "Display 1", "Display 2".
