@@ -149,45 +149,51 @@ class CButton extends StatelessWidget {
 
 /// Segmented control.
 class Seg<T> extends StatelessWidget {
-  const Seg({super.key, required this.options, required this.value, required this.onChanged, this.keyPrefix = 'seg'});
+  const Seg({super.key, required this.options, required this.value, required this.onChanged, this.keyPrefix = 'seg', this.fill = false});
 
   final List<(T, String)> options;
   final T value;
   final ValueChanged<T> onChanged;
   final String keyPrefix;
 
+  /// The options share the whole width (tabs), instead of each taking its own.
+  final bool fill;
+
   @override
   Widget build(BuildContext context) {
     final c = context.c;
+    Widget option((T, String) o) {
+      final (v, label) = o;
+      return Pressable(
+        key: ValueKey('$keyPrefix-${v is Enum ? v.name : v}'),
+        onTap: () => onChanged(v),
+        radius: 7,
+        semanticLabel: t(label),
+        toggled: v == value,
+        builder: (context, s) {
+          final on = v == value;
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            alignment: fill ? Alignment.center : null,
+            decoration: BoxDecoration(
+              color: on ? c.pane : Colors.transparent,
+              borderRadius: BorderRadius.circular(7),
+              boxShadow: on ? const [BoxShadow(color: Color(0x40000000), blurRadius: 3, offset: Offset(0, 1))] : null,
+            ),
+            child: Text(t(label),
+                style: txt(context, size: 12.5, color: on ? c.ink : (s.hover ? c.ink : c.ink2), height: 1.3)),
+          );
+        },
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(color: c.raised, borderRadius: BorderRadius.circular(9), border: Border.all(color: c.hair)),
-      child: Wrap(
-        children: [
-          for (final (v, label) in options)
-            Pressable(
-              key: ValueKey('$keyPrefix-${v is Enum ? v.name : v}'),
-              onTap: () => onChanged(v),
-              radius: 7,
-              semanticLabel: t(label),
-              toggled: v == value,
-              builder: (context, s) {
-                final on = v == value;
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 140),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: on ? c.pane : Colors.transparent,
-                    borderRadius: BorderRadius.circular(7),
-                    boxShadow: on ? const [BoxShadow(color: Color(0x40000000), blurRadius: 3, offset: Offset(0, 1))] : null,
-                  ),
-                  child: Text(t(label),
-                      style: txt(context, size: 12.5, color: on ? c.ink : (s.hover ? c.ink : c.ink2), height: 1.3)),
-                );
-              },
-            ),
-        ],
-      ),
+      child: fill
+          ? Row(children: [for (final o in options) Expanded(child: option(o))])
+          : Wrap(children: [for (final o in options) option(o)]),
     );
   }
 }

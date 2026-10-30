@@ -829,12 +829,14 @@ class _SettingsPanel extends StatelessWidget {
           ]),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(14, 0, 12, 12),
+          // Lined up with the tab's content below, the two tabs sharing the width.
+          padding: const EdgeInsets.fromLTRB(18, 0, 14, 12),
           child: Seg<int>(
             keyPrefix: 'settings-tab',
             options: const [(0, 'General'), (1, 'Bindings')],
             value: ui.settingsTab,
             onChanged: ui.setSettingsTab,
+            fill: true,
           ),
         ),
         Expanded(
