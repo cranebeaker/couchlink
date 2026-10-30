@@ -136,7 +136,8 @@ pub fn x11_sockets(dir: &Path) -> Vec<PathBuf> {
     let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
     let mut out: Vec<PathBuf> = rd
         .flatten()
-        .filter(|e| e.file_name().to_string_lossy().starts_with('X') && e.file_type().is_ok_and(|t| t.is_socket()))
+        // stat, not the entry's own type: a socket bound over a file (in a seat's folder) shows as that file there.
+        .filter(|e| e.file_name().to_string_lossy().starts_with('X') && std::fs::metadata(e.path()).is_ok_and(|m| m.file_type().is_socket()))
         .map(|e| e.path())
         .collect();
     out.sort();
@@ -436,13 +437,6 @@ mod tests {
             Ok(ns) => ns,
             Err(e) => return skip(e),
         };
-        if x11_dir_foreign() {
-            use std::os::unix::fs::MetadataExt;
-            let inside = std::fs::metadata(ns.view(Path::new(X11_DIR))).unwrap();
-            // SAFETY: a plain process call.
-            assert_eq!(inside.uid(), unsafe { libc::getuid() }, "the namespace has a folder of its own");
-            assert_eq!(x11_sockets(&ns.view(Path::new(X11_DIR))).len(), x11_sockets(Path::new(X11_DIR)).len(), "with the host's sockets in it");
-        }
         let dir = std::env::temp_dir().join(format!("couchlink-x11-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -470,6 +464,15 @@ mod tests {
         let log = std::fs::read_to_string(dir.join("gamescope.log")).unwrap_or_default();
         let tail: Vec<&str> = log.lines().rev().take(25).collect::<Vec<_>>().into_iter().rev().collect();
         assert!(display.starts_with(':'), "gamescope started its Xwayland in the namespace; its log ends:\n{}", tail.join("\n"));
+        if x11_dir_foreign() {
+            use std::os::unix::fs::MetadataExt;
+            let inside = std::fs::metadata(ns.view(Path::new(X11_DIR))).unwrap();
+            // SAFETY: a plain process call.
+            assert_eq!(inside.uid(), unsafe { libc::getuid() }, "the namespace has a folder of its own");
+            let host = x11_sockets(Path::new(X11_DIR));
+            let seen = x11_sockets(&ns.view(Path::new(X11_DIR)));
+            assert!(host.iter().all(|h| seen.iter().any(|s| s.file_name() == h.file_name())), "with the host's sockets in it: {host:?} {seen:?}");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
