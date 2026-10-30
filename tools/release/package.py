@@ -1,6 +1,6 @@
 """Builds a Couchlink release zip for Windows.
 
-    python -I tools/release/package.py [--version 0.1.2] [--build-root C:\\cl-build]
+    python -I tools/release/package.py [--version 0.1.3] [--build-root C:\\cl-build]
 
 Compilers bake the folder a program was built in into the binaries (panic messages, PDB paths, asset
 paths). A personal folder name must never ship, so the whole build runs from a neutral folder outside the
@@ -66,7 +66,7 @@ def scan(root, words):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--version", default="0.1.2")
+    ap.add_argument("--version", default="0.1.3")
     ap.add_argument("--build-root", default=r"C:\cl-build")
     ap.add_argument("--skip-build", action="store_true", help="reuse the last build in the build root")
     args = ap.parse_args()
