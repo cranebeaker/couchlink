@@ -51,6 +51,10 @@ Optional, each for something more:
                    sudo usermod -aG input $USER, then log in again
   umu-launcher     (umu-run) used instead of Steam's Proton when it is installed
 
+SteamOS Game Mode shows one window at a time. There Couchlink starts KWin (kwin_wayland, part of SteamOS's desktop)
+inside Game Mode and puts every player's window in it, side by side, so add Couchlink to Steam and start it from
+Game Mode as you would a game. Elsewhere it needs the kwin package for that.
+
 Ubuntu 24.04 and later stop programs from making sandboxes unless allowed (AppArmor). Couchlink then uses bubblewrap
 if it is installed, and tells you what to do if Proton cannot start inside the sandbox.
 

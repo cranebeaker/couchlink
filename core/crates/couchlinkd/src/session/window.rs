@@ -170,7 +170,7 @@ pub fn close_windows(root_pid: u32) {
 
 #[cfg(target_os = "linux")]
 #[path = "window_linux.rs"]
-mod linux;
+pub(super) mod linux;
 
 #[cfg(windows)]
 mod win {

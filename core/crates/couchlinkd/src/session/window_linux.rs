@@ -2,7 +2,8 @@
 //! gamescope) is found over X11 by `_NET_WM_PID` among the processes of the copy, moved onto the seat's region and
 //! stripped of its decorations (`_MOTIF_WM_HINTS`). On a Wayland desktop this works through XWayland, which is why
 //! gamescope is started with `SDL_VIDEODRIVER=x11`. Without an X display nothing can be placed: gamescope's
-//! windows already have the right size, and the desktop decides where they go.
+//! windows already have the right size, and the desktop decides where they go. In SteamOS Game Mode the windows are in
+//! a nested KWin (`gamemode_linux.rs`): its display, with the regions moved to its corner.
 //!
 //! Processes come from `/proc`.
 
@@ -115,8 +116,11 @@ struct X {
 
 impl X {
     fn connect() -> Option<X> {
-        std::env::var_os("DISPLAY")?;
-        let (conn, screen) = x11rb::connect(None).ok()?;
+        let nested = crate::session::gamemode_linux::active().map(|a| a.display);
+        if nested.is_none() {
+            std::env::var_os("DISPLAY")?;
+        }
+        let (conn, screen) = x11rb::connect(nested.as_deref()).ok()?;
         let root = conn.setup().roots.get(screen)?.root;
         let atom = |name: &[u8]| conn.intern_atom(false, name).ok()?.reply().ok().map(|r| r.atom);
         let (pid_atom, clients_atom, motif_atom) = (atom(b"_NET_WM_PID")?, atom(b"_NET_CLIENT_LIST")?, atom(b"_MOTIF_WM_HINTS")?);
@@ -188,6 +192,7 @@ impl Placed {
 }
 
 pub fn place(p: &mut Placed, seat: usize, root_pid: u32, rect: Rect, borderless: bool) -> bool {
+    let rect = crate::session::gamemode_linux::to_nested(rect);
     let Some(x) = p.x() else { return true };
     let pids = tree(&processes(), root_pid);
     let Some(w) = x.window_of(&pids) else { return false };
@@ -197,6 +202,7 @@ pub fn place(p: &mut Placed, seat: usize, root_pid: u32, rect: Rect, borderless:
 }
 
 pub fn maintain(p: &mut Placed, seat: usize, root_pid: u32, rect: Rect, borderless: bool) {
+    let rect = crate::session::gamemode_linux::to_nested(rect);
     let current = p.seats.get(&seat).copied();
     let Some(x) = p.x() else { return };
     let w = match current.filter(|w| x.rect(*w).is_some()) {

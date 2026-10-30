@@ -201,6 +201,15 @@ pub fn copy_line(spec: &LaunchSpec, seat: &LinuxSeat, tools: &Tools, pad_paths: 
     line.push(exe);
     line.extend(spec.args.iter().cloned());
 
+    // In Game Mode every copy's window goes into the session's nested KWin (`gamemode_linux.rs`).
+    let nested = super::gamemode_linux::active();
+    if let Some(n) = &nested {
+        env.insert("DISPLAY".into(), n.display.clone());
+        if !n.wayland.is_empty() {
+            env.insert("WAYLAND_DISPLAY".into(), n.wayland.clone());
+        }
+    }
+
     // Around it: the seat's own window.
     let mut display_file = None;
     match (&tools.gamescope, opts.gamescope) {
@@ -222,7 +231,7 @@ pub fn copy_line(spec: &LaunchSpec, seat: &LinuxSeat, tools: &Tools, pad_paths: 
             line = g;
             display_file = Some(file);
             // gamescope's own window goes through X11 (XWayland on a Wayland desktop), where couchlinkd can place it.
-            if std::env::var_os("DISPLAY").is_some() {
+            if std::env::var_os("DISPLAY").is_some() || nested.is_some() {
                 env.insert("SDL_VIDEODRIVER".into(), "x11".into());
             }
             // gamescope's Vulkan layer is for games under a gamescope session, and makes nested ones unstable.

@@ -485,7 +485,12 @@ mod tests {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         crate::hotkey::spawn(tx).set(couchlink_core::shortcut::parse_keys("Ctrl+Shift+Q").unwrap()).unwrap();
         let mut w = Watcher::new(true);
-        w.rescan();
+        // udev makes the node readable a moment after it appears: wait until the watcher has it open.
+        let t = Instant::now();
+        while !w.rescan().iter().any(|e| matches!(e, RawKbmEvent::Added(d) if d.name == kbd.name)) {
+            assert!(t.elapsed() < Duration::from_secs(10), "the keyboard was never readable");
+            std::thread::sleep(Duration::from_millis(100));
+        }
         let press = |kbd: &mut VirtualDevice, code: u16, value: i32| {
             kbd.emit(EV_KEY, code, value);
             kbd.emit(0, 0, 0);

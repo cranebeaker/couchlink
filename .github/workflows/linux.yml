@@ -100,6 +100,39 @@ jobs:
           if-no-files-found: error
           include-hidden-files: true
 
+  game-mode:
+    # SteamOS Game Mode shows one window, so the copies go into a nested KWin there: a headless one here, with two
+    # windows that couchlinkd's placement must put side by side inside it.
+    name: Game Mode nested KWin
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System packages
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends \
+            cmake ninja-build pkg-config \
+            libudev-dev libx11-dev libxext-dev libxrandr-dev libxi-dev libxfixes-dev libxcursor-dev \
+            libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev libdbus-1-dev libasound2-dev libpulse-dev \
+            kwin-wayland xwayland dbus
+          command -v kwin_wayland
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+
+      - name: Two windows side by side in a nested KWin
+        working-directory: core
+        env:
+          COUCHLINK_REQUIRE_NESTED_TEST: "1"
+        run: |
+          export XDG_RUNTIME_DIR="$RUNNER_TEMP/xdg"
+          mkdir -p -m 0700 "$XDG_RUNTIME_DIR"
+          dbus-run-session -- cargo test -p couchlinkd --bin couchlinkd --locked gamemode_linux -- --nocapture
+
   gamescope:
     # Ubuntu does not package gamescope; Arch does. The integration test with the copies inside a real gamescope
     # (headless backend, software Vulkan), each player with a virtual keyboard of their own.

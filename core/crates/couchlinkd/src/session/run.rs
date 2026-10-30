@@ -85,6 +85,9 @@ struct Run {
     helpers: Vec<Box<dyn super::Child>>,
     placer: Placer,
     last_maintain: Instant,
+    /// SteamOS Game Mode: the nested KWin every copy's window is shown in (ends after the copies).
+    #[cfg(target_os = "linux")]
+    nested: Option<super::gamemode_linux::Nested>,
 }
 
 pub fn run(plan: Plan, deps: Deps, stop: Arc<AtomicBool>, report: Report) {
@@ -119,7 +122,20 @@ pub fn run(plan: Plan, deps: Deps, stop: Arc<AtomicBool>, report: Report) {
             vpads: Vec::new(),
         })
         .collect();
-    let mut r = Run { plan, deps, stop, report, info, journal, seats, helpers: Vec::new(), placer: Placer::new(), last_maintain: Instant::now() };
+    let mut r = Run {
+        plan,
+        deps,
+        stop,
+        report,
+        info,
+        journal,
+        seats,
+        helpers: Vec::new(),
+        placer: Placer::new(),
+        last_maintain: Instant::now(),
+        #[cfg(target_os = "linux")]
+        nested: None,
+    };
     r.publish();
     let outcome = match r.start() {
         Ok(()) => r.running(),
@@ -165,6 +181,16 @@ impl Run {
             }
         }
         self.registry(&recipe, None)?;
+        // Game Mode shows one window: the copies' windows go into one nested KWin, started before the seats'
+        // sandboxes so they see its X socket too.
+        #[cfg(target_os = "linux")]
+        if super::gamemode_linux::wanted() {
+            let rects: Vec<couchlink_core::session::Rect> = self.seats.iter().map(|s| s.plan.rect).collect();
+            let area = super::gamemode_linux::bounds(&rects).ok_or("there are no seats to show")?;
+            let log = crate::logfile::dir().join("game-mode-kwin.log");
+            let _ = std::fs::create_dir_all(crate::logfile::dir());
+            self.nested = Some(super::gamemode_linux::Nested::start(&super::gamemode_linux::dir(&self.plan.state_dir), area, &log)?);
+        }
         self.copies(&recipe)?;
         self.steam(&recipe)?;
         if self.stopped() {

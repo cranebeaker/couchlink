@@ -23,6 +23,8 @@ pub mod hook;
 #[cfg(target_os = "linux")]
 pub mod copies_linux;
 #[cfg(target_os = "linux")]
+pub mod gamemode_linux;
+#[cfg(target_os = "linux")]
 pub mod launch_linux;
 #[cfg(target_os = "linux")]
 pub mod ns_linux;
