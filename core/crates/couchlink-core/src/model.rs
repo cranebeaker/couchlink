@@ -14,6 +14,8 @@ pub struct Model {
     layout: Layout,
     screens: Vec<crate::screens::Screen>,
     fps_limit: u32,
+    stop_keys: String,
+    stop_pad: String,
     dev: bool,
 }
 
@@ -36,7 +38,7 @@ impl Model {
             charging: false,
             seat: None,
         });
-        Model { seats, displays: Vec::new(), used_overrides: HashMap::new(), layout: Layout::Auto, screens: Vec::new(), fps_limit: 0, dev }
+        Model { seats, displays: Vec::new(), used_overrides: HashMap::new(), layout: Layout::Auto, screens: Vec::new(), fps_limit: 0, stop_keys: crate::shortcut::DEFAULT_KEYS.to_string(), stop_pad: crate::shortcut::DEFAULT_PAD.to_string(), dev }
     }
 
     pub fn dev(&self) -> bool {
@@ -63,6 +65,34 @@ impl Model {
         let changed = self.fps_limit != fps;
         self.fps_limit = fps;
         Ok(changed)
+    }
+
+    /// The close-the-games shortcut: a key combination (`Ctrl+Shift+Q`, or `off`) and pad buttons (`guide+back`, or
+    /// `off`). Each is checked and kept as Settings shows it. True when either changed.
+    pub fn set_stop_shortcut(&mut self, keys: Option<&str>, pad: Option<&str>) -> Result<bool, String> {
+        let keys = match keys {
+            Some(k) => Some(crate::shortcut::parse_keys(k)?.map_or_else(|| "off".to_string(), |c| c.label())),
+            None => None,
+        };
+        if let Some(p) = pad {
+            crate::shortcut::pad_buttons(p)?;
+        }
+        let before = (self.stop_keys.clone(), self.stop_pad.clone());
+        if let Some(k) = keys {
+            self.stop_keys = k;
+        }
+        if let Some(p) = pad {
+            self.stop_pad = p.to_string();
+        }
+        Ok(before != (self.stop_keys.clone(), self.stop_pad.clone()))
+    }
+
+    pub fn stop_keys(&self) -> &str {
+        &self.stop_keys
+    }
+
+    pub fn stop_pad(&self) -> &str {
+        &self.stop_pad
     }
 
     pub fn set_layout(&mut self, layout: Layout) -> bool {
@@ -144,6 +174,8 @@ impl Model {
             screens: self.screens.clone(),
             layout: self.layout,
             fps_limit: self.fps_limit,
+            stop_keys: self.stop_keys.clone(),
+            stop_pad: self.stop_pad.clone(),
             dev: self.dev,
         }
     }

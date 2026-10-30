@@ -26,22 +26,25 @@ fn settings_file() -> std::path::PathBuf {
     couchlink_core::paths::state_dir().join("settings.json")
 }
 
-/// The saved FPS limit (0: none, also when the file is missing or broken).
-fn load_fps_limit() -> u32 {
+/// The saved settings (`settings.json`): an empty object when the file is missing or broken.
+fn load_settings() -> serde_json::Value {
     std::fs::read_to_string(settings_file())
         .ok()
         .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
-        .and_then(|v| v["fps_limit"].as_u64())
-        .map_or(0, |f| f as u32)
+        .filter(serde_json::Value::is_object)
+        .unwrap_or_else(|| json!({}))
 }
 
-fn save_fps_limit(fps: u32) {
+/// Keep one setting, leaving the others in the file as they are.
+fn save_setting(key: &str, value: serde_json::Value) {
     let path = settings_file();
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
+    let mut all = load_settings();
+    all[key] = value;
     let tmp = path.with_extension("json.tmp");
-    if std::fs::write(&tmp, serde_json::json!({ "fps_limit": fps }).to_string()).is_ok() {
+    if std::fs::write(&tmp, all.to_string()).is_ok() {
         let _ = std::fs::rename(&tmp, &path);
     }
 }
@@ -83,6 +86,8 @@ pub enum HubMsg {
     Session(SessionInfo),
     /// A keyboard or mouse was plugged in or out, or pressed a key without a seat (see `session::rawkbm`).
     Kbm(RawKbmEvent),
+    /// The close-the-games keys or pad buttons were pressed (`hotkey.rs`, `sdl.rs`).
+    StopShortcut,
     /// A seat's own Steam account step finished (setup or removal), with its outcome for the log.
     SteamAccountDone { seat: usize, step: &'static str, result: Result<(), String> },
 }
@@ -109,6 +114,8 @@ pub struct Hub {
     fetching: bool,
     urls: Urls,
     self_tx: UnboundedSender<HubMsg>,
+    /// The system-wide close-the-games keys.
+    hotkey: crate::hotkey::Hotkey,
     store: Store,
     /// The active profile of each seat (by seat index, kept even while the seat is empty).
     seat_profiles: [Profile; MAX_SEATS],
@@ -141,7 +148,7 @@ impl Hub {
         crate::session::padfeed::set_profiles(&seat_profiles);
         #[cfg(target_os = "linux")]
         crate::session::uipad_linux::set_profiles(&seat_profiles);
-        Hub {
+        let hub = Hub {
             store,
             seat_profiles,
             procs: HashMap::new(),
@@ -153,9 +160,12 @@ impl Hub {
             model: {
                 let mut m = Model::new(dev);
                 m.restore_screens(load_screens());
-                let _ = m.set_fps_limit(load_fps_limit());
+                let settings = load_settings();
+                let _ = m.set_fps_limit(settings["fps_limit"].as_u64().map_or(0, |f| f as u32));
+                let _ = m.set_stop_shortcut(settings["stop_keys"].as_str(), settings["stop_pad"].as_str());
                 m
             },
+            hotkey: crate::hotkey::spawn(self_tx.clone()),
             sdl,
             clients: HashMap::new(),
             virtual_pads: HashSet::new(),
@@ -167,6 +177,25 @@ impl Hub {
             fetching: false,
             urls,
             self_tx,
+        };
+        hub.apply_shortcut();
+        hub
+    }
+
+    /// Hand the close-the-games shortcut to the keyboard hotkey and the pad watcher.
+    fn apply_shortcut(&self) {
+        let keys = couchlink_core::shortcut::parse_keys(self.model.stop_keys()).ok().flatten();
+        if let Err(e) = self.hotkey.set(keys) {
+            self.log(LogLevel::Warn, format!("The close-the-games keys could not be set ({e}); another program may use them"));
+        }
+        crate::sdl::set_stop_pad(couchlink_core::shortcut::pad_buttons(self.model.stop_pad()).ok().flatten());
+    }
+
+    /// The shortcut was pressed: close the games and put the desktop back, when a session runs.
+    fn stop_shortcut(&mut self) {
+        if self.session_info.active() {
+            self.log(LogLevel::Info, "Closing the games (shortcut)");
+            let _ = self.stop_session();
         }
     }
 
@@ -230,6 +259,7 @@ impl Hub {
                 HubMsg::RecipesFetched(Err(e)) => self.log(LogLevel::Warn, format!("Live recipes could not be refreshed ({e}); using the ones already on this PC")),
                 HubMsg::Session(info) => self.session_changed(info),
                 HubMsg::Kbm(ev) => self.handle_kbm(ev),
+                HubMsg::StopShortcut => self.stop_shortcut(),
                 HubMsg::SteamAccountDone { seat, step, result } => match result {
                     Ok(()) if step == "setup" => self.log(
                         LogLevel::Info,
@@ -413,7 +443,16 @@ impl Hub {
             }
             Command::SetFpsLimit { fps } => {
                 if self.model.set_fps_limit(fps)? {
-                    save_fps_limit(fps);
+                    save_setting("fps_limit", json!(fps));
+                    self.changed();
+                }
+                Ok(none)
+            }
+            Command::SetStopShortcut { keys, pad } => {
+                if self.model.set_stop_shortcut(keys.as_deref(), pad.as_deref())? {
+                    save_setting("stop_keys", json!(self.model.stop_keys()));
+                    save_setting("stop_pad", json!(self.model.stop_pad()));
+                    self.apply_shortcut();
                     self.changed();
                 }
                 Ok(none)
@@ -688,6 +727,7 @@ player {}: {}", s.seat + 1, s.error.as_deref().unwrap_or_default());
                 }
             }
             SdlEvent::Input(samples) => self.input_samples(samples),
+            SdlEvent::StopCombo => self.stop_shortcut(),
         }
     }
 

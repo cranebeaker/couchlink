@@ -101,5 +101,19 @@ pub struct State {
     /// Frames per second every game copy of a session is held to; 0 means no limit (`set_fps_limit`).
     #[serde(default)]
     pub fps_limit: u32,
+    /// The close-the-games shortcut (`set_stop_shortcut`): keys like `Ctrl+Shift+Q` and pad buttons like `guide+back`,
+    /// each `off` when turned off.
+    #[serde(default = "default_stop_keys")]
+    pub stop_keys: String,
+    #[serde(default = "default_stop_pad")]
+    pub stop_pad: String,
     pub dev: bool,
+}
+
+fn default_stop_keys() -> String {
+    crate::shortcut::DEFAULT_KEYS.to_string()
+}
+
+fn default_stop_pad() -> String {
+    crate::shortcut::DEFAULT_PAD.to_string()
 }

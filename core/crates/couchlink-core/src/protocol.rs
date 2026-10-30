@@ -59,6 +59,13 @@ pub enum Command {
     SetFpsLimit {
         fps: u32,
     },
+    /// The close-the-games shortcut; either part may be left out to keep it.
+    SetStopShortcut {
+        #[serde(default)]
+        keys: Option<String>,
+        #[serde(default)]
+        pad: Option<String>,
+    },
     SetDisplayUsed {
         display: String,
         used: bool,
@@ -441,7 +448,7 @@ mod tests {
         let s = &v["state"];
         let mut keys: Vec<_> = s.as_object().unwrap().keys().cloned().collect();
         keys.sort();
-        assert_eq!(keys, ["dev", "devices", "displays", "fps_limit", "layout", "screens", "seats"]);
+        assert_eq!(keys, ["dev", "devices", "displays", "fps_limit", "layout", "screens", "seats", "stop_keys", "stop_pad"]);
         assert_eq!(s["layout"], "auto");
         assert_eq!(s["fps_limit"], 0);
         assert_eq!(s["dev"], false);
@@ -469,6 +476,8 @@ mod tests {
           "screens": [{"display": "disp:1", "on": true, "seats": [0], "regions": [[0.0, 0.0, 1.0, 1.0]], "shape": "full"}],
           "layout": "auto",
           "fps_limit": 30,
+          "stop_keys": "Ctrl+Alt+End",
+          "stop_pad": "back+start",
           "dev": false
         }"##;
         let state: State = serde_json::from_str(text).unwrap();

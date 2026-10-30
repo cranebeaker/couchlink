@@ -259,6 +259,8 @@ mod tests {
             screens,
             layout: Layout::Auto,
             fps_limit: 0,
+            stop_keys: String::new(),
+            stop_pad: String::new(),
             dev: false,
         }
     }

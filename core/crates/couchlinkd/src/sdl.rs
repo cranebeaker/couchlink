@@ -26,6 +26,7 @@ const DEBUG_HOLD: Duration = Duration::from_millis(80);
 const DEBUG_REPRESS_GAP: Duration = Duration::from_millis(30);
 /// Input sampling period (about 30 Hz).
 const INPUT_PERIOD: Duration = Duration::from_millis(33);
+const COMBO_PERIOD: Duration = Duration::from_millis(50);
 const POWER_PERIOD: Duration = Duration::from_secs(3);
 #[cfg(not(windows))]
 const DISPLAY_PERIOD: Duration = Duration::from_secs(1);
@@ -44,6 +45,13 @@ pub struct PadInfo {
     pub is_virtual: bool,
 }
 
+/// The close-the-games pad buttons (`couchlink_core::shortcut`), or none; the SDL thread watches every pad for them.
+static STOP_PAD: std::sync::Mutex<Option<[Button; 2]>> = std::sync::Mutex::new(None);
+
+pub fn set_stop_pad(buttons: Option<[Button; 2]>) {
+    *STOP_PAD.lock().unwrap_or_else(|e| e.into_inner()) = buttons;
+}
+
 #[derive(Debug)]
 pub enum SdlEvent {
     PadAdded(PadInfo),
@@ -52,6 +60,8 @@ pub enum SdlEvent {
     ButtonDown { id: u32, button: Button },
     Displays(Vec<Display>),
     Input(Vec<(u32, InputSample)>),
+    /// The close-the-games pad buttons were held together long enough on some pad.
+    StopCombo,
 }
 
 #[derive(Debug)]
@@ -169,6 +179,8 @@ struct Worker {
     led_restores: Vec<PendingLed>,
     #[cfg(not(windows))]
     refresh_displays: bool,
+    /// When each pad started holding the close-the-games buttons, and whether that hold already fired.
+    combo_since: HashMap<u32, (Instant, bool)>,
 }
 
 impl Worker {
@@ -208,6 +220,7 @@ impl Worker {
             led_restores: Vec::new(),
             #[cfg(not(windows))]
             refresh_displays: true,
+            combo_since: HashMap::new(),
         };
         for n in 0..virtual_pads {
             w.attach_virtual(n + 1)?;
@@ -249,6 +262,7 @@ impl Worker {
             }
         }
         let mut next_input = Instant::now();
+        let mut next_combo = Instant::now();
         let mut next_power = Instant::now() + POWER_PERIOD;
         #[cfg(not(windows))]
         let mut next_displays = Instant::now();
@@ -273,6 +287,10 @@ impl Worker {
             }
             if crate::session::padfeed::active() || linux_pads_active() {
                 self.feed_pads();
+            }
+            if now >= next_combo {
+                next_combo = now + COMBO_PERIOD;
+                self.watch_stop_combo(now);
             }
             if now >= next_power {
                 next_power = now + POWER_PERIOD;
@@ -480,6 +498,26 @@ impl Worker {
             if let Some((low, high)) = rumble {
                 // A changed value is sent again, so a long duration is safe (u32::MAX overflows in SDL).
                 let _ = pad.set_rumble(low, high, if low | high == 0 { 0 } else { 60_000 });
+            }
+        }
+    }
+
+    /// Close the games when a pad holds the close-the-games buttons together for `PAD_HOLD_MS`; once per hold.
+    fn watch_stop_combo(&mut self, now: Instant) {
+        let Some(combo) = *STOP_PAD.lock().unwrap_or_else(|e| e.into_inner()) else {
+            self.combo_since.clear();
+            return;
+        };
+        let hold = Duration::from_millis(couchlink_core::shortcut::PAD_HOLD_MS);
+        for (id, sample) in self.read_pads() {
+            if combo.iter().all(|b| sample.buttons.contains(b)) {
+                let (since, fired) = self.combo_since.entry(id).or_insert((now, false));
+                if !*fired && now.duration_since(*since) >= hold {
+                    *fired = true;
+                    let _ = self.events.send(SdlEvent::StopCombo);
+                }
+            } else {
+                self.combo_since.remove(&id);
             }
         }
     }

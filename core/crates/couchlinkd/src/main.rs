@@ -3,6 +3,7 @@
 mod accounts;
 mod catalog;
 mod displays;
+mod hotkey;
 mod hub;
 mod logfile;
 mod profiles;

@@ -15,6 +15,7 @@ pub mod recipe_parts;
 pub mod screens;
 pub mod seats;
 pub mod session;
+pub mod shortcut;
 pub mod types;
 
 pub use button::Button;
