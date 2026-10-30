@@ -140,6 +140,21 @@ pub struct SeatPlan {
     pub rect: Rect,
     /// Device ids seated here, for the input hook.
     pub devices: Vec<String>,
+    /// The seat each of `devices` belongs to: all `seat` for one copy per player, every player's for a native game.
+    pub device_seats: Vec<usize>,
+}
+
+impl SeatPlan {
+    /// The first pad of each player this copy plays for, with that player's seat, in seat order.
+    pub fn player_pads(&self) -> Vec<(&str, usize)> {
+        let mut out: Vec<(&str, usize)> = Vec::new();
+        for (d, &s) in self.devices.iter().zip(&self.device_seats) {
+            if d.starts_with("pad:") && !out.iter().any(|(_, o)| *o == s) {
+                out.push((d, s));
+            }
+        }
+        out
+    }
 }
 
 /// The display used for a screen whose display is not connected, when the caller allows that (`--dev`).
@@ -171,6 +186,7 @@ pub fn plan_seats(state: &State, recipe: &Recipe, allow_missing_display: bool) -
                 display: display.id.clone(),
                 rect: region_rect(&display, *region),
                 devices: info.devices.clone(),
+                device_seats: vec![seat; info.devices.len()],
             });
         }
     }
@@ -188,8 +204,9 @@ pub fn plan_seats(state: &State, recipe: &Recipe, allow_missing_display: bool) -
         // One copy for everyone: player 1's whole screen, and every player's devices in seat order.
         let display = state.displays.iter().find(|d| d.id == plans[0].display).cloned().unwrap_or_else(|| fallback_display(&plans[0].display));
         let devices = plans.iter().flat_map(|p| p.devices.iter().cloned()).collect();
+        let device_seats = plans.iter().flat_map(|p| p.device_seats.iter().copied()).collect();
         let first = plans.swap_remove(0);
-        return Ok(vec![SeatPlan { rect: region_rect(&display, [0.0, 0.0, 1.0, 1.0]), devices, ..first }]);
+        return Ok(vec![SeatPlan { rect: region_rect(&display, [0.0, 0.0, 1.0, 1.0]), devices, device_seats, ..first }]);
     }
     Ok(plans)
 }
@@ -258,7 +275,22 @@ mod tests {
         assert_eq!(plan.len(), 1);
         assert_eq!((plan[0].seat, plan[0].player.as_str()), (0, "A"));
         assert_eq!(plan[0].devices, vec!["dev-A", "dev-D"], "player 1's pad first, then the others in seat order");
+        assert_eq!(plan[0].device_seats, vec![0, 3], "and whose each one is");
         assert_eq!(plan[0].rect, Rect { x: 100, y: -50, w: 1921, h: 1081 });
+    }
+
+    #[test]
+    fn a_copy_plays_the_first_pad_of_each_of_its_players() {
+        let devices = ["pad:1", "kbm:system", "pad:2", "pad:7", "pad:8"].map(String::from).to_vec();
+        let plan = SeatPlan {
+            seat: 0,
+            player: "A".into(),
+            display: "d".into(),
+            rect: Rect { x: 0, y: 0, w: 1, h: 1 },
+            devices,
+            device_seats: vec![0, 0, 0, 3, 3],
+        };
+        assert_eq!(plan.player_pads(), vec![("pad:1", 0), ("pad:7", 3)]);
     }
 
     #[test]

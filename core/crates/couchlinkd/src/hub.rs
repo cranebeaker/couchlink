@@ -348,7 +348,8 @@ impl Hub {
                 Ok(json!({ "state": self.model.state() }))
             }
             Command::GetLog => Ok(json!({
-                "dir": crate::logfile::dir(),
+                // Made here too, so "Open log folder" works before anything was logged.
+                "dir": { let d = crate::logfile::dir(); let _ = std::fs::create_dir_all(&d); d },
                 "text": crate::logfile::report(self.session_info.recipe.as_deref()),
             })),
             Command::GetCatalog => {

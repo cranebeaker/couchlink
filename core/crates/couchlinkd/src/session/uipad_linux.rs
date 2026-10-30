@@ -116,7 +116,10 @@ struct Pad {
     id: u64,
     /// The real pad that drives it (`pad:<sdl id>`).
     device: String,
+    /// The player whose profile it plays.
     seat: usize,
+    /// The seat whose game copy (and gamescope display) it is in: `seat`, or player 1's for a native game.
+    screen: usize,
     /// The uinput device; none for a seat that plays its real pad (no `/dev/uinput`) and only gets the profile's keys.
     file: Option<File>,
     /// The event node games open.
@@ -254,7 +257,7 @@ impl XOut {
 
 /// The seat's game runs in gamescope, which tells its display name in `file`: the profile's keys and mouse go there.
 pub fn set_display(seat: usize, file: PathBuf) {
-    for p in registry().pads.iter_mut().filter(|p| p.seat == seat) {
+    for p in registry().pads.iter_mut().filter(|p| p.screen == seat) {
         p.x = XOut { file: Some(file.clone()), ..XOut::default() };
     }
 }
@@ -317,7 +320,13 @@ fn ioctl_int(f: &File, req: libc::c_ulong, v: u16) -> bool {
 }
 
 /// Make the virtual pad for `seat`, driven by the real pad `device` (`pad:<sdl id>`).
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn create(device: &str, seat: usize) -> Result<PadGuard, String> {
+    create_in(device, seat, seat)
+}
+
+/// `create` for a pad in the game copy of seat `screen` (a native game: every player's pad is in player 1's copy).
+pub fn create_in(device: &str, seat: usize, screen: usize) -> Result<PadGuard, String> {
     let file = OpenOptions::new().read(true).write(true).custom_flags(libc::O_NONBLOCK).open("/dev/uinput").map_err(|e| format!("/dev/uinput: {e}"))?;
     let mut ok = ioctl_int(&file, UI_SET_EVBIT, EV_KEY) && ioctl_int(&file, UI_SET_EVBIT, EV_ABS) && ioctl_int(&file, UI_SET_EVBIT, EV_FF);
     ok &= BUTTONS.iter().all(|(_, code)| ioctl_int(&file, UI_SET_KEYBIT, *code));
@@ -348,16 +357,16 @@ pub fn create(device: &str, seat: usize) -> Result<PadGuard, String> {
         return Err(format!("cannot make a virtual pad: {}", std::io::Error::last_os_error()));
     }
     let node = event_node(&file).ok_or("the virtual pad has no event node")?;
-    Ok(register(device, seat, Some(file), node))
+    Ok(register(device, seat, screen, Some(file), node))
 }
 
 /// For a seat that plays its real pad (no virtual one could be made): the profile's keyboard and mouse bindings
 /// still reach its game.
-pub fn keys_only(device: &str, seat: usize) -> PadGuard {
-    register(device, seat, None, PathBuf::new())
+pub fn keys_only(device: &str, seat: usize, screen: usize) -> PadGuard {
+    register(device, seat, screen, None, PathBuf::new())
 }
 
-fn register(device: &str, seat: usize, file: Option<File>, node: PathBuf) -> PadGuard {
+fn register(device: &str, seat: usize, screen: usize, file: Option<File>, node: PathBuf) -> PadGuard {
     let mut reg = registry();
     reg.next += 1;
     let id = reg.next;
@@ -365,6 +374,7 @@ fn register(device: &str, seat: usize, file: Option<File>, node: PathBuf) -> Pad
         id,
         device: device.to_string(),
         seat,
+        screen,
         file,
         node: node.clone(),
         state: ProcState::new(),

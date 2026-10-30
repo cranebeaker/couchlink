@@ -68,9 +68,9 @@ struct SeatRun {
     /// The seat's sandbox on Linux (its namespace and layered copy); it ends when this is dropped.
     #[cfg(target_os = "linux")]
     ns: Option<super::ns_linux::SeatNs>,
-    /// The seat's virtual pad on Linux, which its copy plays with.
+    /// The seat's virtual pads on Linux, which its copy plays with: one, or every player's for a native game.
     #[cfg(target_os = "linux")]
-    vpad: Option<super::uipad_linux::PadGuard>,
+    vpads: Vec<super::uipad_linux::PadGuard>,
 }
 
 struct Run {
@@ -116,7 +116,7 @@ pub fn run(plan: Plan, deps: Deps, stop: Arc<AtomicBool>, report: Report) {
             #[cfg(target_os = "linux")]
             ns: None,
             #[cfg(target_os = "linux")]
-            vpad: None,
+            vpads: Vec::new(),
         })
         .collect();
     let mut r = Run { plan, deps, stop, report, info, journal, seats, helpers: Vec::new(), placer: Placer::new(), last_maintain: Instant::now() };
@@ -243,18 +243,20 @@ impl Run {
             // On Linux every seat gets a sandbox of its own, with its copy layered over the install (copies_linux.rs).
             #[cfg(target_os = "linux")]
             {
-                // The copy plays with a virtual pad the seat's controller drives through its profile; without
-                // /dev/uinput it gets the real controller.
-                let mut pads = super::hook::pad_nodes(&self.seats[idx].plan.devices);
-                if let Some(dev) = super::padfeed::feed_device(&self.seats[idx].plan.devices) {
-                    match super::uipad_linux::create(dev, seat) {
+                // The copy plays with a virtual pad each player's controller drives through their profile (one player,
+                // or every player of a native game, in seat order); without /dev/uinput it gets the real controllers.
+                let owned: Vec<(String, usize)> = self.seats[idx].plan.player_pads().into_iter().map(|(d, s)| (d.to_string(), s)).collect();
+                let mut pads = if owned.is_empty() { super::hook::pad_nodes(&self.seats[idx].plan.devices) } else { Vec::new() };
+                for (dev, player) in owned {
+                    match super::uipad_linux::create_in(&dev, player, seat) {
                         Ok(g) => {
-                            pads = vec![g.node.display().to_string()];
-                            self.seats[idx].vpad = Some(g);
+                            pads.push(g.node.display().to_string());
+                            self.seats[idx].vpads.push(g);
                         }
                         Err(e) => {
-                            eprintln!("couchlinkd: seat {seat}: {e}; the copy gets the real controller, without pad remaps");
-                            self.seats[idx].vpad = Some(super::uipad_linux::keys_only(dev, seat));
+                            eprintln!("couchlinkd: seat {player}: {e}; the copy gets the real controller, without pad remaps");
+                            pads.extend(super::hook::pad_nodes(std::slice::from_ref(&dev)));
+                            self.seats[idx].vpads.push(super::uipad_linux::keys_only(&dev, player, seat));
                         }
                     }
                 }
