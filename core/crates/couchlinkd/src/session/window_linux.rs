@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::SystemTime;
 use x11rb::connection::Connection;
-use x11rb::protocol::xproto::{AtomEnum, ConfigureWindowAux, ConnectionExt as _, PropMode, Window};
+use x11rb::protocol::xproto::{AtomEnum, ClientMessageEvent, ConfigureWindowAux, ConnectionExt as _, EventMask, InputFocus, PropMode, StackMode, Window};
 use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
 
@@ -112,6 +112,9 @@ struct X {
     motif_atom: u32,
     name_atom: u32,
     utf8_atom: u32,
+    active_atom: u32,
+    change_state_atom: u32,
+    wm_check_atom: u32,
 }
 
 impl X {
@@ -125,7 +128,8 @@ impl X {
         let atom = |name: &[u8]| conn.intern_atom(false, name).ok()?.reply().ok().map(|r| r.atom);
         let (pid_atom, clients_atom, motif_atom) = (atom(b"_NET_WM_PID")?, atom(b"_NET_CLIENT_LIST")?, atom(b"_MOTIF_WM_HINTS")?);
         let (name_atom, utf8_atom) = (atom(b"_NET_WM_NAME")?, atom(b"UTF8_STRING")?);
-        Some(X { conn, root, pid_atom, clients_atom, motif_atom, name_atom, utf8_atom })
+        let (active_atom, change_state_atom, wm_check_atom) = (atom(b"_NET_ACTIVE_WINDOW")?, atom(b"WM_CHANGE_STATE")?, atom(b"_NET_SUPPORTING_WM_CHECK")?);
+        Some(X { conn, root, pid_atom, clients_atom, motif_atom, name_atom, utf8_atom, active_atom, change_state_atom, wm_check_atom })
     }
 
     /// The desktop's top-level windows: the window manager's client list, else the root's children.
@@ -167,6 +171,39 @@ impl X {
         let aux = ConfigureWindowAux::new().x(rect.x).y(rect.y).width(rect.w.max(1) as u32).height(rect.h.max(1) as u32);
         let _ = self.conn.configure_window(w, &aux);
         let _ = self.conn.flush();
+    }
+
+    /// True when a window manager runs (it says so on the root window).
+    fn has_wm(&self) -> bool {
+        let r = self.conn.get_property(false, self.root, self.wm_check_atom, AtomEnum::WINDOW, 0, 1).ok().and_then(|c| c.reply().ok());
+        r.is_some_and(|r| r.value32().is_some_and(|mut v| v.next().is_some()))
+    }
+
+    /// A message to the window manager about `w`, as a pager sends it.
+    fn ask_wm(&self, w: Window, kind: u32, data: [u32; 5]) {
+        let ev = ClientMessageEvent::new(32, w, kind, data);
+        let _ = self.conn.send_event(false, self.root, EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY, ev);
+    }
+
+    /// Back on screen and on top; `focus` also gives it the keyboard.
+    fn show(&self, w: Window, wm: bool, focus: bool) {
+        let _ = self.conn.map_window(w);
+        let _ = self.conn.configure_window(w, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
+        if wm {
+            // _NET_ACTIVE_WINDOW from a pager (source 2) also takes a window out of its minimised state.
+            self.ask_wm(w, self.active_atom, [2, 0, 0, 0, 0]);
+        } else if focus {
+            let _ = self.conn.set_input_focus(InputFocus::PARENT, w, x11rb::CURRENT_TIME);
+        }
+    }
+
+    /// Off the screen: minimised by the window manager (ICCCM IconicState), or unmapped where there is none.
+    fn hide(&self, w: Window, wm: bool) {
+        if wm {
+            self.ask_wm(w, self.change_state_atom, [3, 0, 0, 0, 0]);
+        } else {
+            let _ = self.conn.unmap_window(w);
+        }
     }
 }
 
@@ -216,6 +253,29 @@ pub fn maintain(p: &mut Placed, seat: usize, root_pid: u32, rect: Rect, borderle
         x.put(w, rect, borderless);
     }
     p.seats.insert(seat, w);
+}
+
+/// Every placed window to the front, player 1's last so it is on top with the keyboard (`front`), or all minimised
+/// so the desktop shows.
+pub fn show_all(p: &mut Placed, front: bool) {
+    let mut seats: Vec<(usize, Window)> = p.seats.iter().map(|(s, w)| (*s, *w)).collect();
+    seats.sort();
+    let Some(x) = p.x() else { return };
+    let wm = x.has_wm();
+    for (i, (_, w)) in seats.iter().enumerate().rev() {
+        if front {
+            x.show(*w, wm, i == 0);
+        } else {
+            x.hide(*w, wm);
+        }
+    }
+    let _ = x.conn.flush();
+}
+
+/// True when `w` is mapped and shown (not minimised).
+#[cfg(test)]
+fn viewable(conn: &RustConnection, w: Window) -> bool {
+    conn.get_window_attributes(w).ok().and_then(|c| c.reply().ok()).is_some_and(|a| a.map_state == x11rb::protocol::xproto::MapState::VIEWABLE)
 }
 
 pub fn restore_all(p: &mut Placed) {
@@ -268,6 +328,47 @@ mod tests {
         let status = c.wait().unwrap();
         assert!(!status.success());
         assert!(!alive(pid));
+    }
+
+    /// Hide and front on a bare X display (CI's Xvfb, no window manager): the windows are unmapped, then back with
+    /// player 1 on top and focused. Skipped without a display.
+    #[test]
+    fn the_windows_hide_and_come_back_to_the_front() {
+        use x11rb::protocol::xproto::{CreateWindowAux, WindowClass};
+        let Some(x) = X::connect() else {
+            eprintln!("skipped the_windows_hide_and_come_back_to_the_front: no X display");
+            return;
+        };
+        let mut p = Placed::default();
+        let mut wins = Vec::new();
+        for seat in 0..2 {
+            let w = x.conn.generate_id().unwrap();
+            x.conn.create_window(0, w, x.root, 0, 0, 200, 100, 0, WindowClass::INPUT_OUTPUT, 0, &CreateWindowAux::new()).unwrap();
+            x.conn.map_window(w).unwrap();
+            p.seats.insert(seat, w);
+            wins.push(w);
+        }
+        x.conn.flush().unwrap();
+        let wm = x.has_wm();
+        let settle = || std::thread::sleep(std::time::Duration::from_millis(300));
+        settle();
+        assert!(wins.iter().all(|w| viewable(&x.conn, *w)));
+        show_all(&mut p, false);
+        settle();
+        assert!(wins.iter().all(|w| !viewable(&x.conn, *w)), "hidden");
+        show_all(&mut p, true);
+        settle();
+        assert!(wins.iter().all(|w| viewable(&x.conn, *w)), "back");
+        let top = x.conn.query_tree(x.root).unwrap().reply().unwrap().children;
+        let pos = |w: Window| top.iter().position(|c| *c == w);
+        if !wm {
+            assert!(pos(wins[0]) > pos(wins[1]), "player 1 is on top");
+            assert_eq!(x.conn.get_input_focus().unwrap().reply().unwrap().focus, wins[0], "and has the keyboard");
+        }
+        for w in wins {
+            let _ = x.conn.destroy_window(w);
+        }
+        let _ = x.conn.flush();
     }
 
     #[test]

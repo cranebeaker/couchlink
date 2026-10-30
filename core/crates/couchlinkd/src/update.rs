@@ -158,10 +158,27 @@ pub fn copy_over(from: &Path, to: &Path) -> Result<(), String> {
         if e.file_type().map_err(|e| e.to_string())?.is_dir() {
             copy_over(&e.path(), &target)?;
         } else {
-            std::fs::copy(e.path(), &target).map_err(|err| format!("{}: {err}", target.display()))?;
+            copy_file(&e.path(), &target)?;
         }
     }
     Ok(())
+}
+
+/// One file into place. On Linux a program that still runs (a seat's sandbox holder, say) cannot be written over
+/// ("text file busy"), so the new file is written beside it and renamed over it; the mode (exec bits) comes along.
+fn copy_file(from: &Path, to: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        let name = to.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let tmp = to.with_file_name(format!(".{name}.couchlink-update"));
+        std::fs::copy(from, &tmp).map_err(|err| format!("{}: {err}", tmp.display()))?;
+        std::fs::rename(&tmp, to).map_err(|err| {
+            let _ = std::fs::remove_file(&tmp);
+            format!("{}: {err}", to.display())
+        })
+    }
+    #[cfg(not(unix))]
+    std::fs::copy(from, to).map(|_| ()).map_err(|err| format!("{}: {err}", to.display()))
 }
 
 #[cfg(test)]
@@ -193,6 +210,56 @@ mod tests {
             assert_eq!((a.version.as_str(), a.url.as_str(), a.sha256.as_str()), ("0.1.5", "https://dl/0.1.5", "ab"), "0.1.6 has no download yet");
             assert!(pick(&list, "0.1.5").is_none());
         }
+    }
+
+    /// The updater on a Linux install laid out like the tarball: it waits for the old processes, puts every file in
+    /// place (exec bits kept, the hidden Goldberg markers too, also over a program that still runs) and starts the app.
+    #[cfg(unix)]
+    #[test]
+    fn the_updater_swaps_a_linux_install_and_starts_the_app() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = std::env::temp_dir().join(format!("couchlink-apply-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let (new, install) = (tmp.join("new/Couchlink-9.9.9"), tmp.join("install"));
+        let exec = |p: &Path, text: &str| {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, text).unwrap();
+            std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        // The new release: an app that says it started, its daemon, Goldberg with its hidden marker, a library.
+        let started = tmp.join("started");
+        exec(&new.join("couchlink"), &format!("#!/bin/sh\necho 9.9.9 > '{}'\n", started.display()));
+        exec(&new.join("couchlinkd"), "#!/bin/sh\n# new\n");
+        std::fs::create_dir_all(new.join("goldberg/gbe_fork/release-x")).unwrap();
+        std::fs::write(new.join("goldberg/gbe_fork/release-x/.couchlink-installed"), "").unwrap();
+        exec(&new.join("lib/libapp.so"), "new");
+        // The old install: a couchlinkd that is still running, and a file of the player's own.
+        std::fs::create_dir_all(&install).unwrap();
+        std::fs::copy("/bin/sleep", install.join("couchlinkd")).unwrap();
+        std::fs::write(install.join("mine.txt"), "keep").unwrap();
+        let mut busy = std::process::Command::new(install.join("couchlinkd")).arg("30").spawn().unwrap();
+        // The app that asked for the update ends a moment later; the updater waits for it.
+        let mut asker = std::process::Command::new("sleep").arg("1").spawn().unwrap();
+        let args: Vec<String> = [new.display().to_string(), install.display().to_string(), install.join("couchlink").display().to_string(), asker.id().to_string()].to_vec();
+        let t = std::time::Instant::now();
+        assert_eq!(apply_main(&args), 0, "{}", std::fs::read_to_string(install.join("update.log")).unwrap_or_default());
+        assert!(t.elapsed() >= std::time::Duration::from_millis(500), "it waited for the app to end");
+        let _ = asker.wait();
+        assert_eq!(std::fs::read_to_string(install.join("couchlinkd")).unwrap(), "#!/bin/sh\n# new\n", "replaced while the old one ran");
+        for f in ["couchlink", "couchlinkd", "lib/libapp.so"] {
+            assert_eq!(std::fs::metadata(install.join(f)).unwrap().permissions().mode() & 0o777, 0o755, "{f} keeps its exec bits");
+        }
+        assert!(install.join("goldberg/gbe_fork/release-x/.couchlink-installed").is_file(), "hidden files come along");
+        assert_eq!(std::fs::read_to_string(install.join("mine.txt")).unwrap(), "keep");
+        let wait = std::time::Instant::now();
+        while std::fs::read_to_string(&started).map_or(true, |s| s.trim() != "9.9.9") {
+            assert!(wait.elapsed() < std::time::Duration::from_secs(10), "the new app was started");
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        let _ = busy.kill();
+        let _ = busy.wait();
+        assert!(std::fs::read_dir(&install).unwrap().flatten().all(|e| !e.file_name().to_string_lossy().ends_with(".couchlink-update")), "no temporary files left");
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
