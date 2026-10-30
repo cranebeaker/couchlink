@@ -257,7 +257,7 @@ mod tests {
             let _ = child.kill();
             let _ = child.wait();
         }
-        drop(conn);
+        // `active` reads through `conn`, which stays open: with KWin gone it finds no active window.
         drop(nested);
         assert!(active().is_none(), "the session is gone with KWin");
         let _ = std::fs::remove_dir_all(&dir);

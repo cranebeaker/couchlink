@@ -484,7 +484,7 @@ mod tests {
         let mut kbd = VirtualDevice::new(&format!("couchlink-test-stopkeys-{}", std::process::id()), &keys, &[]).unwrap();
         kbd.node(Duration::from_secs(10)).unwrap();
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        crate::hotkey::spawn(tx).set(couchlink_core::shortcut::parse_keys("Ctrl+Shift+Q").unwrap()).unwrap();
+        crate::hotkey::spawn(tx).set(crate::hotkey::Action::Stop, couchlink_core::shortcut::parse_keys("Ctrl+Shift+Q").unwrap()).unwrap();
         let mut w = Watcher::new(true);
         // udev makes the node readable a moment after it appears: wait until the watcher has it open.
         let t = Instant::now();
@@ -514,7 +514,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(100));
         w.poll();
         assert!(rx.try_recv().is_err(), "the modifiers are let go again");
-        crate::hotkey::spawn(tokio::sync::mpsc::unbounded_channel().0).set(None).unwrap();
+        crate::hotkey::spawn(tokio::sync::mpsc::unbounded_channel().0).set(crate::hotkey::Action::Stop, None).unwrap();
         assert!(!key_down(crate::hotkey::linux::CTRL | crate::hotkey::linux::SHIFT, Q));
         test_reset();
     }
