@@ -429,6 +429,40 @@ class _GameSheetState extends State<GameSheet> {
                                     ),
                                   Text('Only once: Couchlink remembers it for every game after this.', style: txt(context, size: 12, color: c.ink3)),
                                 ],
+                                if (g.tips.isNotEmpty) ...[
+                                  const SizedBox(height: 18),
+                                  Text(t('How to play'), key: const ValueKey('sheet-tips'), style: txt(context, size: 13, weight: FontWeight.w600)),
+                                  const SizedBox(height: 8),
+                                  for (final tip in g.tips)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 6),
+                                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                        Padding(padding: const EdgeInsets.only(top: 7), child: Container(width: 4, height: 4, decoration: BoxDecoration(color: c.ink3, shape: BoxShape.circle))),
+                                        const SizedBox(width: 9),
+                                        Expanded(child: Text(t(tip), style: txt(context, size: 13, color: c.ink2, height: 1.45))),
+                                      ]),
+                                    ),
+                                ],
+                                if (g.installs.isNotEmpty) ...[
+                                  const SizedBox(height: 12),
+                                  Text(t('Couchlink adds'), style: txt(context, size: 12, weight: FontWeight.w600, color: c.ink3)),
+                                  const SizedBox(height: 4),
+                                  for (final m in g.installs)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 4),
+                                      child: Wrap(spacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                                        Text('${m.name} (${m.license})', style: txt(context, size: 12, color: c.ink2)),
+                                        MouseRegion(
+                                          cursor: SystemMouseCursors.click,
+                                          child: GestureDetector(
+                                            key: ValueKey('install-source-${m.name}'),
+                                            onTap: () => scope.ui.openUrl(Uri.parse(m.source)),
+                                            child: Text(m.source.replaceFirst('https://', ''), style: txt(context, size: 12, color: c.accent).copyWith(decoration: TextDecoration.underline, decorationColor: c.accent)),
+                                          ),
+                                        ),
+                                      ]),
+                                    ),
+                                ],
                                 const SizedBox(height: 14),
                                 if (g.installed && !g.ready)
                                   CButton(key: const ValueKey('sheet-recheck'), label: t('I did it, check again'), primary: true, onTap: () => runCmd(context, scope.client.listGames))

@@ -309,13 +309,22 @@ mod tests {
 
     #[test]
     fn a_listening_tcp_port_is_seen() {
-        let l = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = l.local_addr().unwrap().port();
-        assert!(port_in_use(port));
-        let stop = AtomicBool::new(false);
-        assert_eq!(wait_for(&Wait::Port(port), &mut Fake(None), &stop, Duration::from_secs(5)), Ok(()));
-        drop(l);
-        assert!(!port_in_use(port));
+        // Windows reserves some port ranges for UDP (Hyper-V), and a random TCP port can fall in one; then the port
+        // still looks taken after the listener closes. Try a few ports: one must come free.
+        let mut freed = false;
+        for _ in 0..5 {
+            let l = TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = l.local_addr().unwrap().port();
+            assert!(port_in_use(port));
+            let stop = AtomicBool::new(false);
+            assert_eq!(wait_for(&Wait::Port(port), &mut Fake(None), &stop, Duration::from_secs(5)), Ok(()));
+            drop(l);
+            if !port_in_use(port) {
+                freed = true;
+                break;
+            }
+        }
+        assert!(freed, "a closed port should read as free");
     }
 
     #[test]

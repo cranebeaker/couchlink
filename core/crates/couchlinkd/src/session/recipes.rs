@@ -376,6 +376,7 @@ pub fn game_info(locators: &[Locator], r: &Recipe) -> GameInfo {
         steam_app_id: r.matching.steam_app_id,
         setup,
         controls: r.controls.is_some(),
+        mode: r.mode,
         tips: r.tips.clone(),
         installs: r.fetch.iter().map(|f| couchlink_core::session::InstallInfo { name: f.name.clone(), source: f.source.clone(), license: f.license.clone() }).collect(),
     }

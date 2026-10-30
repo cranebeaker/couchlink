@@ -33,6 +33,8 @@ class LibraryGame {
     this.steamAppId,
     this.setup = const [],
     this.controls = false,
+    this.tips = const [],
+    this.installs = const [],
   });
 
   final String id;
@@ -61,13 +63,17 @@ class LibraryGame {
   /// The recipe brings pad controls for a game without pad support.
   final bool controls;
 
+  /// How to play, and what Couchlink installs for the game.
+  final List<String> tips;
+  final List<InstallInfo> installs;
+
   /// Installed and every one-time step done: Play can start it.
   bool get ready => installed && setup.every((s) => s.done);
 
   /// The recipe id (the library id of a game is its recipe).
   String get recipe => id;
 
-  LibraryGame copyWith({String? name, bool? installed, int? minPlayers, int? maxPlayers, int? steamAppId, List<SetupStep>? setup, bool? controls}) => LibraryGame(
+  LibraryGame copyWith({String? name, bool? installed, int? minPlayers, int? maxPlayers, int? steamAppId, List<SetupStep>? setup, bool? controls, List<String>? tips, List<InstallInfo>? installs}) => LibraryGame(
         id: id,
         name: name ?? this.name,
         tier: tier,
@@ -83,6 +89,8 @@ class LibraryGame {
         steamAppId: steamAppId ?? this.steamAppId,
         setup: setup ?? this.setup,
         controls: controls ?? this.controls,
+        tips: tips ?? this.tips,
+        installs: installs ?? this.installs,
       );
 
   String get playersLabel => minPlayers == maxPlayers ? '$minPlayers' : '$minPlayers to $maxPlayers';
@@ -225,7 +233,7 @@ String _steamText(String steam) => switch (steam) {
 LibraryGame libraryGameOf(GameInfo g) {
   for (final s in sampleGames) {
     if (s.id == g.recipe) {
-      return s.copyWith(name: g.game, installed: g.installed, minPlayers: g.minPlayers, maxPlayers: g.maxPlayers, steamAppId: g.steamAppId, setup: g.setup, controls: g.controls);
+      return s.copyWith(name: g.game, installed: g.installed, minPlayers: g.minPlayers, maxPlayers: g.maxPlayers, steamAppId: g.steamAppId, setup: g.setup, controls: g.controls, tips: g.tips, installs: g.installs);
     }
   }
   var h = 0;
@@ -241,7 +249,7 @@ LibraryGame libraryGameOf(GameInfo g) {
     minPlayers: g.minPlayers,
     maxPlayers: g.maxPlayers,
     art: _artPalette[h % _artPalette.length],
-    mode: g.source == 'try' ? 'One copy per player, safe defaults' : 'One copy per player',
+    mode: g.native ? 'One copy for everyone; the game splits the screen' : g.source == 'try' ? 'One copy per player, safe defaults' : 'One copy per player',
     saves: '',
     net: _steamText(g.steam),
     coverTitle: plain == g.game ? null : plain,
@@ -249,5 +257,7 @@ LibraryGame libraryGameOf(GameInfo g) {
     steamAppId: g.steamAppId,
     setup: g.setup,
     controls: g.controls,
+    tips: g.tips,
+    installs: g.installs,
   );
 }

@@ -81,6 +81,9 @@ pub struct GameInfo {
     /// The recipe brings controls of its own (`controls`): a pad mapping for a game without pad support.
     #[serde(default)]
     pub controls: bool,
+    /// `instances` (a copy per player) or `native` (one copy, the game's own split-screen).
+    #[serde(default)]
+    pub mode: crate::recipe::Mode,
     /// How to play (the recipe's `tips`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tips: Vec<String>,

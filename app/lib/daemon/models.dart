@@ -451,6 +451,9 @@ class GameInfo {
     this.steamAppId,
     this.setup = const [],
     this.controls = false,
+    this.native = false,
+    this.tips = const [],
+    this.installs = const [],
   });
 
   final String recipe;
@@ -477,6 +480,15 @@ class GameInfo {
   /// The recipe brings pad controls for a game without pad support.
   final bool controls;
 
+  /// One copy for every player: the game splits the screen itself (`mode: native`).
+  final bool native;
+
+  /// How to play, in plain sentences.
+  final List<String> tips;
+
+  /// What Couchlink puts in place for each session, with where it comes from.
+  final List<InstallInfo> installs;
+
   factory GameInfo.fromJson(Map<String, dynamic> j) {
     final p = j['players'];
     var lo = 1;
@@ -502,8 +514,23 @@ class GameInfo {
             if (x is Map) SetupStep(_str(x['text']), done: x['done'] == true),
       ],
       controls: j['controls'] == true,
+      native: j['mode'] == 'native',
+      tips: [if (j['tips'] is List) for (final x in j['tips'] as List) if (x is String) x],
+      installs: [
+        if (j['installs'] is List)
+          for (final x in j['installs'] as List)
+            if (x is Map) InstallInfo(_str(x['name']), _str(x['source']), _str(x['license'])),
+      ],
     );
   }
+}
+
+/// A file Couchlink fetches for a game (a mod), named for the Library.
+class InstallInfo {
+  const InstallInfo(this.name, this.source, this.license);
+  final String name;
+  final String source;
+  final String license;
 }
 
 /// A one-time step before the first game (a recipe's `requires`).
