@@ -250,7 +250,10 @@ impl Run {
                             pads = vec![g.node.display().to_string()];
                             self.seats[idx].vpad = Some(g);
                         }
-                        Err(e) => eprintln!("couchlinkd: seat {seat}: {e}; the copy gets the real controller, without remaps"),
+                        Err(e) => {
+                            eprintln!("couchlinkd: seat {seat}: {e}; the copy gets the real controller, without pad remaps");
+                            self.seats[idx].vpad = Some(super::uipad_linux::keys_only(dev, seat));
+                        }
                     }
                 }
                 let layered = recipe.files.link != LinkMode::None;

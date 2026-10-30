@@ -117,7 +117,8 @@ struct Pad {
     /// The real pad that drives it (`pad:<sdl id>`).
     device: String,
     seat: usize,
-    file: File,
+    /// The uinput device; none for a seat that plays its real pad (no `/dev/uinput`) and only gets the profile's keys.
+    file: Option<File>,
     /// The event node games open.
     node: PathBuf,
     state: ProcState,
@@ -286,7 +287,7 @@ pub fn active() -> bool {
 /// True when `path` (a device node SDL found) is one of these pads, which couchlinkd itself must not take as a
 /// controller.
 pub fn is_ours(path: &str) -> bool {
-    registry().pads.iter().any(|p| p.node.as_os_str() == path)
+    registry().pads.iter().any(|p| p.file.is_some() && p.node.as_os_str() == path)
 }
 
 /// Keeps a seat's virtual pad; dropping it unplugs the pad.
@@ -303,8 +304,10 @@ impl Drop for PadGuard {
 
 impl Drop for Pad {
     fn drop(&mut self) {
-        // SAFETY: destroying the device made on this descriptor.
-        unsafe { libc::ioctl(self.file.as_raw_fd(), UI_DEV_DESTROY as _) };
+        if let Some(f) = &self.file {
+            // SAFETY: destroying the device made on this descriptor.
+            unsafe { libc::ioctl(f.as_raw_fd(), UI_DEV_DESTROY as _) };
+        }
     }
 }
 
@@ -345,6 +348,16 @@ pub fn create(device: &str, seat: usize) -> Result<PadGuard, String> {
         return Err(format!("cannot make a virtual pad: {}", std::io::Error::last_os_error()));
     }
     let node = event_node(&file).ok_or("the virtual pad has no event node")?;
+    Ok(register(device, seat, Some(file), node))
+}
+
+/// For a seat that plays its real pad (no virtual one could be made): the profile's keyboard and mouse bindings
+/// still reach its game.
+pub fn keys_only(device: &str, seat: usize) -> PadGuard {
+    register(device, seat, None, PathBuf::new())
+}
+
+fn register(device: &str, seat: usize, file: Option<File>, node: PathBuf) -> PadGuard {
     let mut reg = registry();
     reg.next += 1;
     let id = reg.next;
@@ -361,7 +374,7 @@ pub fn create(device: &str, seat: usize) -> Result<PadGuard, String> {
         rumble_changed: false,
         x: XOut::default(),
     });
-    Ok(PadGuard { id, node })
+    PadGuard { id, node }
 }
 
 /// The `/dev/input/eventN` of the device made on `f` (it can take udev a moment).
@@ -414,26 +427,33 @@ impl Pad {
         if next == self.shown {
             return;
         }
+        let Some(file) = self.file.as_mut() else { return };
         for (_, code) in BUTTONS {
             let (was, is) = (self.shown.buttons.contains(&code), next.buttons.contains(&code));
             if was != is {
-                write_event(&mut self.file, EV_KEY, code, is as i32);
+                write_event(file, EV_KEY, code, is as i32);
             }
         }
         let codes = [ABS_X, ABS_Y, ABS_RX, ABS_RY, ABS_Z, ABS_RZ, ABS_HAT0X, ABS_HAT0Y];
         for (i, code) in codes.iter().enumerate() {
             if self.shown.abs[i] != next.abs[i] {
-                write_event(&mut self.file, EV_ABS, *code, next.abs[i]);
+                write_event(file, EV_ABS, *code, next.abs[i]);
             }
         }
-        write_event(&mut self.file, EV_SYN, 0, 0);
+        write_event(file, EV_SYN, 0, 0);
         self.shown = next;
     }
 
     /// Answer the game's rumble requests (uploads, erases, play and stop).
     fn serve_rumble(&mut self) {
+        let Some(mut file) = self.file.take() else { return };
+        self.serve_rumble_on(&mut file);
+        self.file = Some(file);
+    }
+
+    fn serve_rumble_on(&mut self, file: &mut File) {
         let mut ev = [0u8; 24];
-        while let Ok(24) = self.file.read(&mut ev) {
+        while let Ok(24) = file.read(&mut ev) {
             let kind = u16::from_ne_bytes([ev[16], ev[17]]);
             let code = u16::from_ne_bytes([ev[18], ev[19]]);
             let value = i32::from_ne_bytes([ev[20], ev[21], ev[22], ev[23]]);
@@ -443,7 +463,7 @@ impl Pad {
                     let mut up = [0u8; 104];
                     up[0..4].copy_from_slice(&(value as u32).to_ne_bytes());
                     // SAFETY: the kernel fills the 104-byte struct for this request.
-                    if unsafe { libc::ioctl(self.file.as_raw_fd(), UI_BEGIN_FF_UPLOAD as _, up.as_mut_ptr()) } == 0 {
+                    if unsafe { libc::ioctl(file.as_raw_fd(), UI_BEGIN_FF_UPLOAD as _, up.as_mut_ptr()) } == 0 {
                         let kind = u16::from_ne_bytes([up[8], up[9]]);
                         let id = i16::from_ne_bytes([up[10], up[11]]);
                         let ok = kind == FF_RUMBLE && (0..16).contains(&id);
@@ -453,20 +473,20 @@ impl Pad {
                         let retval: i32 = if ok { 0 } else { -libc::EINVAL };
                         up[4..8].copy_from_slice(&retval.to_ne_bytes());
                         // SAFETY: handing the same struct back.
-                        unsafe { libc::ioctl(self.file.as_raw_fd(), UI_END_FF_UPLOAD as _, up.as_ptr()) };
+                        unsafe { libc::ioctl(file.as_raw_fd(), UI_END_FF_UPLOAD as _, up.as_ptr()) };
                     }
                 }
                 (EV_UINPUT, UI_FF_ERASE) => {
                     let mut er = [0u8; 12];
                     er[0..4].copy_from_slice(&(value as u32).to_ne_bytes());
                     // SAFETY: the kernel fills the 12-byte uinput_ff_erase for this request.
-                    if unsafe { libc::ioctl(self.file.as_raw_fd(), UI_BEGIN_FF_ERASE as _, er.as_mut_ptr()) } == 0 {
+                    if unsafe { libc::ioctl(file.as_raw_fd(), UI_BEGIN_FF_ERASE as _, er.as_mut_ptr()) } == 0 {
                         let id = u32::from_ne_bytes([er[8], er[9], er[10], er[11]]) as usize;
                         if id < 16 {
                             self.effects[id] = (0, 0);
                         }
                         // SAFETY: handing the same struct back (retval 0).
-                        unsafe { libc::ioctl(self.file.as_raw_fd(), UI_END_FF_ERASE as _, er.as_ptr()) };
+                        unsafe { libc::ioctl(file.as_raw_fd(), UI_END_FF_ERASE as _, er.as_ptr()) };
                     }
                 }
                 (EV_FF, id) if (id as usize) < 16 => {
