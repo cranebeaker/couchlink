@@ -130,28 +130,34 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      - name: A player account (umu-launcher refuses to run as root)
+        run: |
+          useradd -m player
+          # The host limits user namespaces for unprivileged users (Ubuntu's AppArmor rule); bwrap needs them.
+          echo 0 > /proc/sys/kernel/apparmor_restrict_unprivileged_userns || true
+          chown -R player: "$GITHUB_WORKSPACE"
+
       - name: umu's runtime and Proton (cached)
         uses: actions/cache@v4
         with:
           path: |
-            /github/home/.local/share/umu
-            /github/home/.local/share/Steam/compatibilitytools.d
-            /github/home/.cache/umu
+            /home/player/.local/share/umu
+            /home/player/.local/share/Steam/compatibilitytools.d
+            /home/player/.cache/umu
           key: umu-${{ runner.os }}-v1
 
       - name: Windows probe
-        run: x86_64-w64-mingw32-gcc -O2 -o /tmp/winprobe.exe core/crates/couchlinkd/tests/winprobe.c
+        run: |
+          x86_64-w64-mingw32-gcc -O2 -o /tmp/winprobe.exe core/crates/couchlinkd/tests/winprobe.c
+          chown -R player: /home/player
 
       - name: Integration test with Proton
-        working-directory: core
-        env:
-          COUCHLINK_REQUIRE_PROTON_TEST: "1"
-          COUCHLINK_TEST_WINPROBE: /tmp/winprobe.exe
-          COUCHLINK_TEST_GAMESCOPE_HEADLESS: "1"
-          XDG_RUNTIME_DIR: /tmp/xdg-runtime
         run: |
-          mkdir -p -m 0700 "$XDG_RUNTIME_DIR"
-          cargo test -p couchlinkd --test integration --locked -- --nocapture
+          install -d -m 0700 -o player /tmp/xdg-runtime
+          runuser -u player -- env HOME=/home/player USER=player XDG_RUNTIME_DIR=/tmp/xdg-runtime \
+            COUCHLINK_REQUIRE_PROTON_TEST=1 COUCHLINK_TEST_WINPROBE=/tmp/winprobe.exe COUCHLINK_TEST_GAMESCOPE_HEADLESS=1 \
+            CARGO_TERM_COLOR=never COUCHLINK_SKIP_INJECT_TESTS=1 \
+            sh -c 'cd core && cargo test -p couchlinkd --test integration --locked -- --nocapture'
 
   windows-check:
     # The Linux port edits shared session files; this keeps the Windows build compiling.
