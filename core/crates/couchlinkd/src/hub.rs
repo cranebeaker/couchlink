@@ -88,6 +88,10 @@ pub enum HubMsg {
     Kbm(RawKbmEvent),
     /// The close-the-games keys or pad buttons were pressed (`hotkey.rs`, `sdl.rs`).
     StopShortcut,
+    /// `check_update` finished.
+    UpdateChecked(Result<Option<crate::update::Available>, String>),
+    /// `install_update` finished staging (the updater runs) or failed.
+    UpdateStaged(Result<(), String>),
     /// A seat's own Steam account step finished (setup or removal), with its outcome for the log.
     SteamAccountDone { seat: usize, step: &'static str, result: Result<(), String> },
 }
@@ -116,6 +120,9 @@ pub struct Hub {
     self_tx: UnboundedSender<HubMsg>,
     /// The system-wide close-the-games keys.
     hotkey: crate::hotkey::Hotkey,
+    /// The newer Couchlink `check_update` found, and whether a check or an install is running.
+    update: Option<crate::update::Available>,
+    update_busy: (bool, bool),
     store: Store,
     /// The active profile of each seat (by seat index, kept even while the seat is empty).
     seat_profiles: [Profile; MAX_SEATS],
@@ -166,6 +173,8 @@ impl Hub {
                 m
             },
             hotkey: crate::hotkey::spawn(self_tx.clone()),
+            update: None,
+            update_busy: (false, false),
             sdl,
             clients: HashMap::new(),
             virtual_pads: HashSet::new(),
@@ -189,6 +198,18 @@ impl Hub {
             self.log(LogLevel::Warn, format!("The close-the-games keys could not be set ({e}); another program may use them"));
         }
         crate::sdl::set_stop_pad(couchlink_core::shortcut::pad_buttons(self.model.stop_pad()).ok().flatten());
+    }
+
+    fn update_event(&self, error: Option<String>, restarting: bool) {
+        self.broadcast(&Event::Update {
+            current: crate::update::current().to_string(),
+            latest: self.update.as_ref().map(|u| u.version.clone()),
+            page: self.update.as_ref().map(|u| u.page.clone()),
+            checking: self.update_busy.0,
+            installing: self.update_busy.1,
+            restarting,
+            error,
+        });
     }
 
     /// The shortcut was pressed: close the games and put the desktop back, when a session runs.
@@ -260,6 +281,32 @@ impl Hub {
                 HubMsg::Session(info) => self.session_changed(info),
                 HubMsg::Kbm(ev) => self.handle_kbm(ev),
                 HubMsg::StopShortcut => self.stop_shortcut(),
+                HubMsg::UpdateChecked(result) => {
+                    self.update_busy.0 = false;
+                    let error = result.as_ref().err().cloned();
+                    if let Ok(found) = result {
+                        self.update = found;
+                    }
+                    self.update_event(error, false);
+                }
+                HubMsg::UpdateStaged(result) => {
+                    self.update_busy.1 = false;
+                    match result {
+                        Ok(()) => {
+                            self.log(LogLevel::Info, "Updating Couchlink: it closes and starts again in a moment");
+                            self.update_event(None, true);
+                            // Let the event reach the app, then make way for the updater.
+                            tokio::spawn(async {
+                                tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+                                std::process::exit(0);
+                            });
+                        }
+                        Err(e) => {
+                            crate::logfile::write("error", &format!("update failed: {e}"));
+                            self.update_event(Some(e), false);
+                        }
+                    }
+                }
                 HubMsg::SteamAccountDone { seat, step, result } => match result {
                     Ok(()) if step == "setup" => self.log(
                         LogLevel::Info,
@@ -376,6 +423,35 @@ impl Hub {
             Command::GetState => {
                 self.sync_profile_refs();
                 Ok(json!({ "state": self.model.state() }))
+            }
+            Command::CheckUpdate => {
+                if !self.update_busy.0 {
+                    self.update_busy.0 = true;
+                    self.update_event(None, false);
+                    let tx = self.self_tx.clone();
+                    tokio::task::spawn_blocking(move || {
+                        let _ = tx.send(HubMsg::UpdateChecked(crate::update::check()));
+                    });
+                }
+                Ok(none)
+            }
+            Command::InstallUpdate { app_pid } => {
+                if self.session_info.active() {
+                    return Err("Close the games first, then update".to_string());
+                }
+                let Some(available) = self.update.clone() else {
+                    return Err("There is no newer Couchlink to install; check for updates first".to_string());
+                };
+                if !self.update_busy.1 {
+                    self.update_busy.1 = true;
+                    self.update_event(None, false);
+                    let tx = self.self_tx.clone();
+                    let state_dir = self.session.state_dir.clone();
+                    tokio::task::spawn_blocking(move || {
+                        let _ = tx.send(HubMsg::UpdateStaged(crate::update::stage(&available, &state_dir, app_pid)));
+                    });
+                }
+                Ok(none)
             }
             Command::GetLog => {
                 // Made here too, so "Open log folder" works before anything was logged.

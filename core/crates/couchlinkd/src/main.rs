@@ -5,6 +5,7 @@ mod catalog;
 mod displays;
 mod hotkey;
 mod hub;
+mod update;
 mod logfile;
 mod profiles;
 mod sdl;
@@ -150,6 +151,11 @@ fn main() {
     #[cfg(target_os = "linux")]
     if std::env::args().nth(1).as_deref() == Some(session::ns_linux::HOLDER_ARG) {
         std::process::exit(session::ns_linux::holder_main());
+    }
+    // The updater, started by a copy of couchlinkd outside the install (see update.rs).
+    let all: Vec<String> = std::env::args().collect();
+    if all.get(1).map(String::as_str) == Some(update::APPLY_ARG) {
+        std::process::exit(update::apply_main(&all[2..]));
     }
     // The elevated half of setting up or removing a seat's own Steam account (see accounts.rs).
     if let Some(code) = accounts::cli(&std::env::args().collect::<Vec<_>>()) {

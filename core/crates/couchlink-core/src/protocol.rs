@@ -27,6 +27,14 @@ pub enum Command {
     GetState,
     /// The log folder and the end of the logs, for "Copy log" after an error: `{"dir", "text"}`.
     GetLog,
+    /// Ask GitHub for a newer Couchlink; an `update` event answers.
+    CheckUpdate,
+    /// Download, check and install the newer version found by `check_update`, then restart. `app_pid` is the app's
+    /// process, which the updater waits for.
+    InstallUpdate {
+        #[serde(default)]
+        app_pid: Option<u32>,
+    },
     /// Writes one file with every log in full and this PC's details, for a bug report: `{"path"}`.
     SaveReport,
     GetCatalog,
@@ -258,6 +266,17 @@ pub enum Event {
     Catalog { catalog: Catalog },
     /// The game list changed (new live recipes arrived): ask `list_games` again.
     GamesChanged,
+    /// What `check_update` found, and how an install is going. `latest` is a newer version when there is one;
+    /// `restarting` means the updater has taken over and the app should close now.
+    Update {
+        current: String,
+        latest: Option<String>,
+        page: Option<String>,
+        checking: bool,
+        installing: bool,
+        restarting: bool,
+        error: Option<String>,
+    },
     /// The game session changed (see docs/launch.md).
     Session {
         state: crate::session::SessionState,

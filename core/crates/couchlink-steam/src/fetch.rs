@@ -7,6 +7,11 @@ use crate::goldberg::{download, sha256_hex};
 use crate::prepare::Undo;
 use std::path::{Path, PathBuf};
 
+/// A plain download (no hash to check against, such as a release list).
+pub fn get(url: &str) -> Result<Vec<u8>> {
+    download(url)
+}
+
 /// The cached copy of the file with this hash, downloading it from `url` if it is not there yet.
 pub fn fetch_cached(url: &str, sha256: &str, cache_dir: &Path) -> Result<PathBuf> {
     let sha = sha256.to_ascii_lowercase();
