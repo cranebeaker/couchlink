@@ -49,6 +49,7 @@ way the game already supports: LAN, a co-op mod's server, or Steam. Any game tha
   outside. Each copy sees only its own controller through XInput, DirectInput, Raw Input and HID.
 - Everything Couchlink changes on your PC is written to a journal first and put back when you stop, also after a
   crash.
+- In English and Russian: the app follows your Windows language, and the sidebar has an EN / RU switch.
 
 ## Get it
 
@@ -127,6 +128,7 @@ Couchlink запускает отдельную копию игры для ка�
 - Все остальные игры на вашем ПК появляются в разделе «Try it» с безопасными настройками.
 - Копии игры не занимают лишнего места на диске, сохранения у каждого игрока свои.
 - Новые кооп-рецепты сами подтягиваются в приложение, с подписью.
+- Приложение на русском: язык берётся из Windows, а в боковой панели есть переключатель EN / RU.
 
 **Скачать**
 - Windows 10 и 11 (64-бит): [Releases](https://github.com/cranebeaker/couchlink/releases), распакуйте и запустите
