@@ -115,6 +115,8 @@ struct X {
     active_atom: u32,
     change_state_atom: u32,
     wm_check_atom: u32,
+    state_atom: u32,
+    above_atom: u32,
 }
 
 impl X {
@@ -129,7 +131,8 @@ impl X {
         let (pid_atom, clients_atom, motif_atom) = (atom(b"_NET_WM_PID")?, atom(b"_NET_CLIENT_LIST")?, atom(b"_MOTIF_WM_HINTS")?);
         let (name_atom, utf8_atom) = (atom(b"_NET_WM_NAME")?, atom(b"UTF8_STRING")?);
         let (active_atom, change_state_atom, wm_check_atom) = (atom(b"_NET_ACTIVE_WINDOW")?, atom(b"WM_CHANGE_STATE")?, atom(b"_NET_SUPPORTING_WM_CHECK")?);
-        Some(X { conn, root, pid_atom, clients_atom, motif_atom, name_atom, utf8_atom, active_atom, change_state_atom, wm_check_atom })
+        let (state_atom, above_atom) = (atom(b"_NET_WM_STATE")?, atom(b"_NET_WM_STATE_ABOVE")?);
+        Some(X { conn, root, pid_atom, clients_atom, motif_atom, name_atom, utf8_atom, active_atom, change_state_atom, wm_check_atom, state_atom, above_atom })
     }
 
     /// The desktop's top-level windows: the window manager's client list, else the root's children.
@@ -197,6 +200,26 @@ impl X {
         }
     }
 
+    /// Kept above every other window (`_NET_WM_STATE_ABOVE`), or not. The window manager is asked, as a pager asks;
+    /// without one the state is only written on the window, where a window manager that starts later reads it.
+    fn set_above(&self, w: Window, on: bool, wm: bool) {
+        if wm {
+            // _NET_WM_STATE_ADD (1) or _REMOVE (0), from a pager (source 2).
+            self.ask_wm(w, self.state_atom, [on as u32, self.above_atom, 0, 2, 0]);
+        } else if on {
+            let _ = self.conn.change_property32(PropMode::REPLACE, w, self.state_atom, AtomEnum::ATOM, &[self.above_atom]);
+        } else {
+            let _ = self.conn.delete_property(w, self.state_atom);
+        }
+    }
+
+    /// Whether `w` says it is kept above the others.
+    #[cfg(test)]
+    fn is_above(&self, w: Window) -> bool {
+        let r = self.conn.get_property(false, w, self.state_atom, AtomEnum::ATOM, 0, 32).ok().and_then(|c| c.reply().ok());
+        r.is_some_and(|r| r.value32().is_some_and(|mut v| v.any(|a| a == self.above_atom)))
+    }
+
     /// Off the screen: minimised by the window manager (ICCCM IconicState), or unmapped where there is none.
     fn hide(&self, w: Window, wm: bool) {
         if wm {
@@ -255,16 +278,15 @@ pub fn maintain(p: &mut Placed, seat: usize, root_pid: u32, rect: Rect, borderle
     p.seats.insert(seat, w);
 }
 
-/// Every placed window to the front, player 1's last so it is on top with the keyboard (`front`), or all minimised
-/// so the desktop shows.
+/// Every placed window to the front, player 1's last so it is on top with the keyboard (`front`), kept above every
+/// other window while `on_top`; or all minimised so the desktop shows (and no longer kept above it).
 pub fn show_all(p: &mut Placed, front: bool, on_top: bool) {
-    let _ = on_top; // kept above other windows on Windows; on Linux the windows come up
-
     let mut seats: Vec<(usize, Window)> = p.seats.iter().map(|(s, w)| (*s, *w)).collect();
     seats.sort();
     let Some(x) = p.x() else { return };
     let wm = x.has_wm();
     for (i, (_, w)) in seats.iter().enumerate().rev() {
+        x.set_above(*w, front && on_top, wm);
         if front {
             x.show(*w, wm, i == 0);
         } else {
@@ -281,8 +303,15 @@ fn viewable(conn: &RustConnection, w: Window) -> bool {
 }
 
 pub fn restore_all(p: &mut Placed) {
-    // The copies' windows close with them; there is nothing of the desktop's to give back.
-    p.seats.clear();
+    // The copies' windows close with them; only the above-others state is taken back, for any that stays.
+    let seats: Vec<Window> = p.seats.drain().map(|(_, w)| w).collect();
+    if let Some(x) = p.x.as_ref() {
+        let wm = x.has_wm();
+        for w in seats {
+            x.set_above(w, false, wm);
+        }
+        let _ = x.conn.flush();
+    }
 }
 
 pub fn titled(text: &str) -> bool {
@@ -361,11 +390,21 @@ mod tests {
         show_all(&mut p, true, true);
         settle();
         assert!(wins.iter().all(|w| viewable(&x.conn, *w)), "back");
+        if !wm {
+            assert!(wins.iter().all(|w| x.is_above(*w)), "kept above the others");
+        }
         let top = x.conn.query_tree(x.root).unwrap().reply().unwrap().children;
         let pos = |w: Window| top.iter().position(|c| *c == w);
         if !wm {
             assert!(pos(wins[0]) > pos(wins[1]), "player 1 is on top");
             assert_eq!(x.conn.get_input_focus().unwrap().reply().unwrap().focus, wins[0], "and has the keyboard");
+            show_all(&mut p, true, false);
+            settle();
+            assert!(wins.iter().all(|w| !x.is_above(*w)), "the front keys take that back");
+            show_all(&mut p, true, true);
+            restore_all(&mut p);
+            settle();
+            assert!(wins.iter().all(|w| !x.is_above(*w)), "and so does the end of the session");
         }
         for w in wins {
             let _ = x.conn.destroy_window(w);

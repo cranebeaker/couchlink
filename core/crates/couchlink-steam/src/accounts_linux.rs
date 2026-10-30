@@ -120,20 +120,52 @@ pub fn start_steam_logged(cfg: &AccountsConfig, log: Option<&Path>) -> Result<u3
         Some((a, b)) => (Stdio::from(a), Stdio::from(b)),
         None => (Stdio::null(), Stdio::null()),
     };
-    let child = Command::new(&program)
-        .args(&args)
-        .env("HOME", &home)
-        // SteamOS's session sets these for its own Steam; they would put this one in Deck mode.
-        .env_remove("SteamDeck")
-        .env_remove("SteamGamepadUI")
+    let mut cmd = Command::new(&program);
+    cmd.args(&args).env("HOME", &home);
+    // Couchlink itself may run as a game of the desktop's Steam: none of that Steam's game environment (its overlay,
+    // its runtime's libraries, the game's ids, Deck mode) is for this one.
+    for (name, _) in std::env::vars_os() {
+        if foreign_steam_env(&name.to_string_lossy()) {
+            cmd.env_remove(&name);
+        }
+    }
+    // SAFETY: setsid is a plain system call in the child; the seat's Steam gets a session of its own, apart from the
+    // daemon's, so neither can signal the other's group.
+    unsafe {
+        cmd.pre_exec(|| {
+            libc::setsid();
+            Ok(())
+        });
+    }
+    let child = cmd
         .current_dir(&dir)
         .stdin(Stdio::null())
         .stdout(out)
         .stderr(err)
-        .process_group(0)
         .spawn()
         .map_err(|e| SteamError::io(format!("start {}", program.display()), e))?;
     Ok(child.id())
+}
+
+/// Environment a seat's Steam must not inherit: what a running Steam gives the games it starts (and Couchlink, when
+/// it is started from Steam), and what puts a Steam in Deck mode.
+fn foreign_steam_env(name: &str) -> bool {
+    const NAMES: [&str; 12] = [
+        "SteamAppId",
+        "SteamGameId",
+        "SteamOverlayGameId",
+        "SteamClientLaunch",
+        "SteamEnv",
+        "SteamDeck",
+        "SteamGamepadUI",
+        "SteamNoOverlayUIDrawing",
+        "LD_PRELOAD",
+        "LD_LIBRARY_PATH",
+        "STEAM_RUNTIME",
+        "STEAM_RUNTIME_LIBRARY_PATH",
+    ];
+    const PREFIXES: [&str; 3] = ["STEAM_COMPAT_", "PRESSURE_VESSEL_", "SRT_"];
+    NAMES.contains(&name) || PREFIXES.iter().any(|p| name.starts_with(p))
 }
 
 pub fn remove(cfg: &AccountsConfig) -> Result<()> {
@@ -193,6 +225,12 @@ mod tests {
         assert_ne!(program, cfg.steam_exe, "not the wrapper on PATH");
         assert_eq!(args, ["-master_ipc_name_override", "couchlink_seat2"]);
         assert!(!args.iter().any(|a| a == "-steamdeck" || a == "-gamepadui"));
+        for name in ["SteamAppId", "LD_PRELOAD", "LD_LIBRARY_PATH", "SteamDeck", "STEAM_COMPAT_DATA_PATH", "PRESSURE_VESSEL_FILESYSTEMS_RO"] {
+            assert!(foreign_steam_env(name), "{name} is the desktop Steam's");
+        }
+        for name in ["HOME", "DISPLAY", "XDG_RUNTIME_DIR", "PATH", "STEAM_FRAME_FORCE_CLOSE"] {
+            assert!(!foreign_steam_env(name), "{name} stays");
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 }

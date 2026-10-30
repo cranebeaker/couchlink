@@ -253,6 +253,28 @@ mod tests {
             assert!(t.elapsed() < Duration::from_secs(10), "the windows did not come back with player 1 active (active: {:?})", active_window());
             std::thread::sleep(Duration::from_millis(100));
         }
+        // Kept above other windows while `on_top`, as KWin records it on each window; the front keys and the end of the
+        // session take it back.
+        let state_atom = conn.intern_atom(false, b"_NET_WM_STATE").unwrap().reply().unwrap().atom;
+        let above_atom = conn.intern_atom(false, b"_NET_WM_STATE_ABOVE").unwrap().reply().unwrap().atom;
+        let above = |w: u32| {
+            let r = conn.get_property(false, w, state_atom, AtomEnum::ATOM, 0, 32).unwrap().reply().unwrap();
+            r.value32().is_some_and(|mut v| v.any(|a| a == above_atom))
+        };
+        let wait_above = |want: bool, what: &str| {
+            let t = Instant::now();
+            while !copies.iter().all(|(_, w)| above(*w) == want) {
+                assert!(t.elapsed() < Duration::from_secs(10), "{what}");
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        };
+        wait_above(true, "the windows are not kept above the others");
+        super::super::window::linux::show_all(&mut placed, true, false);
+        wait_above(false, "the front keys did not take the above state back");
+        super::super::window::linux::show_all(&mut placed, true, true);
+        wait_above(true, "the windows are not kept above the others again");
+        super::super::window::linux::restore_all(&mut placed);
+        wait_above(false, "the end of the session did not take the above state back");
         for (mut child, _) in copies {
             let _ = child.kill();
             let _ = child.wait();

@@ -2,6 +2,7 @@
 
 mod accounts;
 mod catalog;
+mod crash;
 mod displays;
 mod hotkey;
 mod hub;
@@ -173,6 +174,8 @@ fn main() {
         eprintln!("couchlinkd: already running");
         std::process::exit(EXIT_ALREADY_RUNNING);
     }
+    // From here on this is the daemon: a panic or a fatal signal leaves a line in couchlinkd.log.
+    crash::install();
     match run(args) {
         Ok(()) => {}
         Err(e) => {
