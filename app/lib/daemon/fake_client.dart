@@ -158,6 +158,29 @@ class FakeClient extends CouchClient {
   @override
   Future<String?> listGames() async => null;
 
+  /// Tests: the program paths the UI added with [addGame].
+  final List<String> addedGames = [];
+
+  @override
+  Future<({String? recipe, String? error})> addGame(String path) async {
+    final parts = path.split(RegExp(r'[\\/]'));
+    if (parts.length < 2 || parts.last.isEmpty) return (recipe: null, error: '$path does not exist');
+    addedGames.add(path);
+    final recipe = 'try-own-${addedGames.length}';
+    final name = parts.last.replaceFirst(RegExp(r'\.[^.]*$'), '');
+    _games = [..._games, GameInfo(recipe: recipe, game: name, installed: true, path: parts.sublist(0, parts.length - 1).join('/'), minPlayers: 2, maxPlayers: 8, source: 'try')];
+    notifyListeners();
+    return (recipe: recipe, error: null);
+  }
+
+  @override
+  Future<String?> removeGame(String recipe) async {
+    if (!recipe.startsWith('try-own-') || !_games.any((g) => g.recipe == recipe)) return '$recipe is not a game you added';
+    _games = [for (final g in _games) if (g.recipe != recipe) g];
+    notifyListeners();
+    return null;
+  }
+
   @override
   Future<String?> startSession(String recipe) async {
     startedRecipes.add(recipe);

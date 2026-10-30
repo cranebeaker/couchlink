@@ -106,6 +106,13 @@ abstract class CouchClient extends ChangeNotifier {
   /// Asks for the game list (`list_games`); [games] fills in. Returns null or an error text.
   Future<String?> listGames();
 
+  /// `add_game`: a game of the player's own, from any store or none, by its program (or folder). Returns the recipe
+  /// that now plays it, or the daemon's error text. The game list is asked for again.
+  Future<({String? recipe, String? error})> addGame(String path);
+
+  /// `remove_game`: forgets a game [addGame] added. Its files stay. Returns null or an error text.
+  Future<String?> removeGame(String recipe);
+
   /// `start_session`: replies at once, then `session` events show the progress. Returns the
   /// daemon's error text (already written for players), or null when the launch began.
   Future<String?> startSession(String recipe);

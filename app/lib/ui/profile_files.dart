@@ -32,6 +32,16 @@ Future<PickedFile?> importWithDialog() async {
   return PickedFile(file.name, await file.readAsString());
 }
 
+/// Lets the player pick a game's program; its path, or null when cancelled.
+typedef PickGame = Future<String?> Function();
+
+Future<String?> pickGameWithDialog() async {
+  // Windows games are .exe files; on Linux a game is any program (an ELF file, an AppImage, a script) or an .exe.
+  final type = Platform.isWindows ? XTypeGroup(label: t('Game program'), extensions: ['exe']) : XTypeGroup(label: t('Game program'));
+  final file = await openFile(acceptedTypeGroups: [type], confirmButtonText: t('Add'));
+  return file?.path;
+}
+
 /// A file name for an exported profile: "Fallout New Vegas.couchlink-profile".
 String profileFileName(String profileName) {
   final clean = profileName.replaceAll(RegExp(r'[\/:*?"<>|]+'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();

@@ -383,6 +383,21 @@ class DaemonClient extends CouchClient {
   }
 
   @override
+  Future<({String? recipe, String? error})> addGame(String path) async {
+    final r = await _request('add_game', {'path': path});
+    if (r['ok'] != true) return (recipe: null, error: _errorOf(r));
+    await listGames();
+    return (recipe: r['recipe'] as String?, error: null);
+  }
+
+  @override
+  Future<String?> removeGame(String recipe) async {
+    final err = await _cmd('remove_game', {'recipe': recipe});
+    if (err == null) await listGames();
+    return err;
+  }
+
+  @override
   Future<String?> startSession(String recipe) => _cmd('start_session', {'recipe': recipe});
 
   @override

@@ -246,6 +246,12 @@ const Map<String, String> ruStrings = {
   'Every game copy is held to it (on Windows, games that draw through DXVK or VKD3D).':
       'Её держит каждая копия игры (в Windows: игры, которые рисуют через DXVK или VKD3D).',
   'Pad controls': 'Управление с геймпада',
+  'Add a game': 'Добавить игру',
+  'Add': 'Добавить',
+  'Game program': 'Программа игры',
+  'Game added': 'Игра добавлена',
+  'Remove from Couchlink': 'Убрать из Couchlink',
+  'Removed from Couchlink. Its files stay where they are.': 'Игра убрана из Couchlink. Её файлы остались на месте.',
   'Small': 'Мало',
   '{other} and {name} swapped places': '{other} и {name} поменялись местами',
   'Take {name} off this screen': 'Убрать {name} с этого экрана',
