@@ -88,6 +88,18 @@ jobs:
           path: core/target/release/couchlinkd
           if-no-files-found: error
 
+      # gbe_fork, pinned and hash-checked, laid out the way the tarball ships it (goldberg/ next to couchlinkd).
+      - name: Goldberg bundle
+        working-directory: core
+        run: cargo run --release --locked -p couchlink-steam --example goldberg_bundle -- ../built-goldberg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: goldberg-bundle
+          path: built-goldberg
+          if-no-files-found: error
+          include-hidden-files: true
+
   gamescope:
     # Ubuntu does not package gamescope; Arch does. The integration test with the copies inside a real gamescope
     # (headless backend, software Vulkan), each player with a virtual keyboard of their own.
@@ -193,6 +205,11 @@ jobs:
           name: couchlink-app-linux-x64
           path: built/app
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: goldberg-bundle
+          path: built/goldberg
+
       - name: Pack
         env:
           # Extra words that must never ship (comma separated), kept as a repository secret when set.
@@ -200,10 +217,10 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
           version="${GITHUB_REF_NAME#v}"
-          case "$GITHUB_REF" in refs/tags/v*) ;; *) version="0.1.1-dev.${GITHUB_SHA::7}" ;; esac
+          case "$GITHUB_REF" in refs/tags/v*) ;; *) version="0.1.2-dev.${GITHUB_SHA::7}" ;; esac
           if [ -n "$INPUT_VERSION" ]; then version="$INPUT_VERSION"; fi
           python3 -I tools/release/package_linux.py --version "$version" \
-            --daemon built/couchlinkd/couchlinkd --app-bundle built/app
+            --daemon built/couchlinkd/couchlinkd --app-bundle built/app --goldberg built/goldberg
 
       - uses: actions/upload-artifact@v4
         with:

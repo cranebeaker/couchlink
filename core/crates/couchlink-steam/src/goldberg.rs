@@ -126,11 +126,43 @@ pub fn sha256_hex(data: &[u8]) -> String {
     h.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// Download the pinned gbe_fork release once into `cache_dir`, verify its SHA-256, extract the DLLs.
-/// Blocking: call from `spawn_blocking` inside an async runtime.
+/// Where a release ships gbe_fork ready to use: `goldberg/` next to couchlinkd, laid out like the cache
+/// (`gbe_fork/<tag>/...` with the install markers). The Linux tarball has one; `COUCHLINK_GOLDBERG_BUNDLE`
+/// points elsewhere (tests).
+fn bundle_dir() -> Option<PathBuf> {
+    std::env::var_os("COUCHLINK_GOLDBERG_BUNDLE")
+        .map(PathBuf::from)
+        .or_else(|| Some(std::env::current_exe().ok()?.parent()?.join("goldberg")))
+        .filter(|d| d.is_dir())
+}
+
+/// Copies the bundled `gbe_fork/<tag>/` into `cache_dir` when the bundle has `marker` (a path under that folder).
+/// True when it did, so the caller finds the files without a download.
+pub(crate) fn seed_from_bundle(cache_dir: &Path, marker: &str) -> bool {
+    fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(to)?;
+        for e in std::fs::read_dir(from)? {
+            let e = e?;
+            if e.file_type()?.is_dir() {
+                copy_tree(&e.path(), &to.join(e.file_name()))?;
+            } else {
+                std::fs::copy(e.path(), to.join(e.file_name()))?;
+            }
+        }
+        Ok(())
+    }
+    let Some(bundle) = bundle_dir() else { return false };
+    let src = bundle.join("gbe_fork").join(GOLDBERG.tag);
+    src.join(marker).is_file() && copy_tree(&src, &cache_dir.join("gbe_fork").join(GOLDBERG.tag)).is_ok()
+}
+
+/// Download the pinned gbe_fork release once into `cache_dir`, verify its SHA-256, extract the DLLs. A release
+/// that ships the files (`seed_from_bundle`) needs no download. Blocking: call from `spawn_blocking` inside an
+/// async runtime.
 pub fn ensure_goldberg(cache_dir: &Path) -> Result<GoldbergFiles> {
     let files = files_for(cache_dir);
-    if files.dir.join(MARKER).exists() {
+    if files.dir.join(MARKER).exists() || seed_from_bundle(cache_dir, MARKER) {
+        let files = files_for(cache_dir);
         verify_installed(&files)?;
         return Ok(files);
     }
@@ -143,7 +175,10 @@ pub fn ensure_goldberg(cache_dir: &Path) -> Result<GoldbergFiles> {
 /// removed a steamclient file or the loader, the error is `BlockedByAntivirus` naming that file.
 pub fn ensure_goldberg_steamclient(cache_dir: &Path) -> Result<GoldbergFiles> {
     let files = files_for(cache_dir);
-    if files.dir.join(MARKER).exists() && files.dir.join(SC_MARKER).exists() {
+    let cached = files.dir.join(MARKER).exists() && files.dir.join(SC_MARKER).exists();
+    // A bundle with the steamclient set has both markers; one copy brings both.
+    if cached || seed_from_bundle(cache_dir, SC_MARKER) {
+        let files = files_for(cache_dir);
         verify_installed(&files)?;
         verify_steamclient(&steamclient_files_for(&files.dir))?;
         return Ok(files);
@@ -290,6 +325,8 @@ pub fn install_archive_with(
                 _ => false,
             };
             if !wanted {
+                // Read it anyway: sevenz-rust2 0.20 fails the block checksum when entries of a block are skipped.
+                std::io::copy(data, &mut std::io::sink())?;
                 return Ok(true);
             }
             let mut buf = Vec::new();
@@ -463,6 +500,24 @@ mod tests {
     }
 
     #[test]
+    fn a_shipped_bundle_is_used_without_a_download() {
+        let tmp = std::env::temp_dir().join(format!("cl-gbe-bundle-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let arc = fake_archive(&tmp, true);
+        // A bundle is a cache another machine filled.
+        install_archive(&arc, &sha256_hex(&arc), &tmp.join("bundle")).unwrap();
+        // SAFETY: no other test reads or sets this variable.
+        unsafe { std::env::set_var("COUCHLINK_GOLDBERG_BUNDLE", tmp.join("bundle")) };
+        let got = ensure_goldberg(&tmp.join("cache"));
+        let sc_seeded = seed_from_bundle(&tmp.join("cache2"), SC_MARKER);
+        unsafe { std::env::remove_var("COUCHLINK_GOLDBERG_BUNDLE") };
+        let f = got.unwrap();
+        assert!(f.dir.starts_with(tmp.join("cache")) && f.dll_x64.is_file() && f.dll_x86.is_file());
+        assert!(!sc_seeded, "a bundle without the steamclient set does not stand in for it");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
     fn sha256_known_vector() {
         assert_eq!(sha256_hex(b"abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
     }
@@ -621,5 +676,21 @@ mod tests {
         let f = ensure_goldberg(&tmp).unwrap();
         assert!(f.dll_x86.exists() && f.dll_x64.exists());
         std::fs::remove_dir_all(&tmp).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod real_archive {
+    /// The pinned release itself (network): every DLL comes out of it, also with the steamclient set. Writes the
+    /// DLLs into a temp folder, which antivirus tools may flag, so it only runs on demand:
+    /// `cargo test -p couchlink-steam pinned_release_unpacks -- --ignored`.
+    #[test]
+    #[ignore]
+    fn pinned_release_unpacks() {
+        let bytes = super::download(super::GOLDBERG.url).unwrap();
+        let cache = std::env::temp_dir().join(format!("couchlink-gbe-{}", std::process::id()));
+        let f = super::install_archive_with(&bytes, super::GOLDBERG.sha256, &cache, true);
+        let _ = std::fs::remove_dir_all(&cache);
+        f.unwrap();
     }
 }
