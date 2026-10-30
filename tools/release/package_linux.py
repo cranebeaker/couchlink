@@ -41,7 +41,15 @@ that shows it only its own controller. Install these from your distribution firs
   fuse-overlayfs   copies of a game that take no extra disk
   umu-launcher     (umu-run) to start Windows games through Proton; native Linux games do not need it
 
+For a keyboard and mouse of their own per player, also:
+
+  gamescope-kbm    PartyDeck's gamescope build, which reads one player's keyboard and mouse only
+  the input group  so Couchlink can see keyboards and mice: sudo usermod -aG input $USER, then log in again
+
 Then run ./couchlink from this folder. couchlinkd, next to it, is started by the app.
+
+On Ubuntu 24.04 and later, AppArmor may stop Proton from starting inside Couchlink's sandbox. Couchlink checks this
+before a session and tells you what to do.
 """
 
 
