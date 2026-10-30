@@ -8,6 +8,10 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      version:
+        description: Version in the tarball's name (empty for a dev build)
+        required: false
 
 permissions:
   contents: read
@@ -135,9 +139,11 @@ jobs:
         env:
           # Extra words that must never ship (comma separated), kept as a repository secret when set.
           COUCHLINK_PRIVATE_WORDS: ${{ secrets.COUCHLINK_PRIVATE_WORDS }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           version="${GITHUB_REF_NAME#v}"
           case "$GITHUB_REF" in refs/tags/v*) ;; *) version="0.1.0-dev.${GITHUB_SHA::7}" ;; esac
+          if [ -n "$INPUT_VERSION" ]; then version="$INPUT_VERSION"; fi
           python3 -I tools/release/package_linux.py --version "$version" \
             --daemon built/couchlinkd/couchlinkd --app-bundle built/app
 
