@@ -15,7 +15,17 @@
 pub mod copies;
 pub mod edits;
 pub mod launch;
+#[cfg(not(target_os = "linux"))]
 pub mod hook;
+#[cfg(target_os = "linux")]
+#[path = "hook_linux.rs"]
+pub mod hook;
+#[cfg(target_os = "linux")]
+pub mod copies_linux;
+#[cfg(target_os = "linux")]
+pub mod launch_linux;
+#[cfg(target_os = "linux")]
+pub mod sandbox_linux;
 pub mod padfeed;
 pub mod rawkbm;
 pub mod recipes;

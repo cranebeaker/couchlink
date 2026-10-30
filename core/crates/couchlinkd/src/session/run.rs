@@ -3,7 +3,7 @@
 
 use super::copies;
 use super::edits::{save_redirects, SeatFiles};
-use super::launch::{job::Job, wait_for, LaunchSpec, PORT_WAIT};
+use super::launch::{job::Job, wait_for, LaunchSpec, LinuxSeat, PORT_WAIT};
 use super::window::{close_windows, find_window_process, kill_process, process_alive, Placer};
 use super::{Deps, PrepareCtx};
 use couchlink_core::recipe::{expand, split_args, LinkMode, SteamMode, Wait};
@@ -231,6 +231,15 @@ impl Run {
                 continue;
             }
             let seat = self.seats[idx].plan.seat;
+            // On Linux a copy is a layer over the install when fuse-overlayfs is there (copies_linux.rs).
+            #[cfg(target_os = "linux")]
+            if super::copies_linux::fuse_overlayfs().is_some() {
+                match super::copies_linux::mount(&self.plan.game_dir, &instances, seat, &exclude, &mut self.journal) {
+                    Ok(dir) => self.seats[idx].dir = dir,
+                    Err(e) => return Err(self.seat_failed(idx, Step::Copy, e)),
+                }
+                continue;
+            }
             match copies::sync(&self.plan.game_dir, &instances, seat, &copy, &exclude, &self.stop) {
                 Ok(_) => self.seats[idx].dir = copies::seat_dir(&instances, seat),
                 Err(e) if self.stopped() => {
@@ -392,6 +401,7 @@ impl Run {
             saves,
             hook_children: false,
             run_as: None,
+            linux: None,
         })
     }
 
@@ -457,6 +467,7 @@ impl Run {
             saves: Vec::new(),
             hook_children: false,
             run_as: None,
+            linux: None,
         };
         let launched = self.deps.launcher.launch(&spec)?;
         self.helpers.push(launched.child);
@@ -479,7 +490,9 @@ impl Run {
         self.set_step(idx, Step::Launch, None);
         let vars = self.vars(idx).map_err(|e| self.seat_failed(idx, Step::Launch, e))?;
         let dir = self.seats[idx].dir.clone();
-        let mut spec = self.spec(Some(idx), &recipe.launch.exe, &recipe.launch.args, &dir, &vars).map_err(|e| self.seat_failed(idx, Step::Launch, e))?;
+        let (exe, args) = launch_line(recipe);
+        let mut spec = self.spec(Some(idx), exe, args, &dir, &vars).map_err(|e| self.seat_failed(idx, Step::Launch, e))?;
+        spec.linux = self.linux_seat(idx, &vars).map_err(|e| self.seat_failed(idx, Step::Launch, format!("linux: {e}")))?;
         let prep = &self.seats[idx].prep;
         spec.env.extend(prep.env.clone());
         // A recipe whose window belongs to another exe, or a loader that starts the game, runs through a launcher.
@@ -542,6 +555,25 @@ impl Run {
         }
         self.set_step(idx, Step::Running, None);
         Ok(())
+    }
+
+    /// What the copy needs on Linux (none elsewhere): the recipe's `linux` settings expanded for this seat.
+    fn linux_seat(&self, idx: usize, vars: &BTreeMap<String, String>) -> Result<Option<LinuxSeat>, String> {
+        if !cfg!(target_os = "linux") {
+            return Ok(None);
+        }
+        let recipe = &self.plan.recipe;
+        let mut opts = recipe.linux.clone().unwrap_or_default();
+        opts.env = opts.env.iter().map(|(k, v)| Ok((k.clone(), expand(v, vars)?))).collect::<Result<_, String>>()?;
+        opts.gamescope_args = expand(&opts.gamescope_args, vars)?;
+        let s = &self.seats[idx];
+        Ok(Some(LinuxSeat {
+            game_id: opts.game_id(recipe.matching.steam_app_id),
+            opts,
+            rect: s.plan.rect,
+            borderless: recipe.window.borderless,
+            data_dir: self.plan.state_dir.join("instances").join(&recipe.id).join(".seats").join(s.plan.seat.to_string()),
+        }))
     }
 
     /// For `window.exe`: find the process that owns the seat's window and take it into a job of its own, so
@@ -712,6 +744,17 @@ impl Run {
         self.seats.clear();
         self.helpers.clear();
     }
+}
+
+/// The program and arguments a seat's copy starts: the recipe's `linux.exe` (and `linux.args`) on Linux when it has one.
+fn launch_line(recipe: &Recipe) -> (&str, &str) {
+    if cfg!(target_os = "linux")
+        && let Some(l) = &recipe.linux
+        && let Some(exe) = &l.exe
+    {
+        return (exe, l.args.as_deref().unwrap_or(&recipe.launch.args));
+    }
+    (&recipe.launch.exe, &recipe.launch.args)
 }
 
 /// A path from a recipe: absolute as it is, relative to `dir` otherwise.

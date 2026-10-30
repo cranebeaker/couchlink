@@ -41,6 +41,10 @@ windows-sys = { version = "0.61", features = [
     "Win32_Storage_FileSystem",
 ] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+x11rb = "0.13"
+
 [build-dependencies]
 embed-resource = "3"
 

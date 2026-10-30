@@ -33,6 +33,22 @@ pub struct LaunchSpec {
     pub hook_children: bool,
     /// The seat plays on its own Steam account: the copy runs as that seat's helper Windows user.
     pub run_as: Option<couchlink_steam::AccountsConfig>,
+    /// What a game copy needs on Linux (`launch_linux.rs`); none for helpers.
+    pub linux: Option<LinuxSeat>,
+}
+
+/// A copy on Linux starts in a window of its seat's size and keeps its own data next to its copy.
+#[derive(Debug, Clone)]
+pub struct LinuxSeat {
+    /// The recipe's `linux` settings with templates expanded for this seat (defaults when it has none).
+    pub opts: couchlink_core::recipe_linux::LinuxOpts,
+    /// umu-launcher's GAMEID.
+    pub game_id: String,
+    /// The seat's region in desktop pixels.
+    pub rect: couchlink_core::session::Rect,
+    pub borderless: bool,
+    /// A folder of the seat's own that outlives the session: its Proton prefix and its home.
+    pub data_dir: PathBuf,
 }
 
 /// A started process. Dropping it must not leave processes behind unless they were stopped by `kill`.
@@ -346,6 +362,7 @@ mod tests {
             saves: vec![],
             hook_children: false,
             run_as: None,
+            linux: None,
         };
         let mut l = CommandLauncher.launch(&spec).unwrap();
         assert!(!l.hooked);

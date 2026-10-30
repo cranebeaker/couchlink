@@ -483,6 +483,7 @@ mod tests {
             saves: vec![],
             hook_children: false,
             run_as: None,
+            linux: None,
         };
         let undoers = Undoers::new();
         register_undoers(&undoers);

@@ -295,6 +295,9 @@ pub struct Recipe {
     /// Changes to settings files, made for the session and undone (shared files) or kept in the seat's copy.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub edits: Vec<Edit>,
+    /// How copies run on Linux (Proton choice, a native build, gamescope); `recipe_linux.rs`. Ignored elsewhere.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linux: Option<crate::recipe_linux::LinuxOpts>,
     /// `builtin`, `imported` or `user`. Set by the loader from where the file was found.
     #[serde(default = "default_source")]
     pub source: String,

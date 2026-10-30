@@ -70,6 +70,20 @@ jobs:
           path: core/target/release/couchlinkd
           if-no-files-found: error
 
+  windows-check:
+    # The Linux port edits shared session files; this keeps the Windows build compiling.
+    name: Windows still compiles
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - name: Check
+        working-directory: core
+        run: cargo check --workspace --all-targets --locked
+
   app:
     name: Flutter app
     runs-on: ubuntu-24.04
