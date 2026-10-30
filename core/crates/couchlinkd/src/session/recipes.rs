@@ -140,47 +140,103 @@ fn is_tool(name: &str) -> bool {
         .any(|t| n.contains(t))
 }
 
-/// Exe names that are never the game.
+/// Exe names that are never the game. Couchlink's own programs count: a player may unzip Couchlink into a game folder.
 fn not_the_game(file: &str) -> bool {
     let n = file.to_lowercase();
     ["unins", "setup", "crash", "report", "redist", "vcredist", "dxsetup", "dotnet", "prereq", "easyanticheat", "battleye",
-     "helper", "cefprocess", "webhelper", "updater", "installer", "touchup", "server"]
+     "helper", "cefprocess", "webhelper", "updater", "installer", "touchup", "server", "couchlink", "clprobe"]
         .iter()
         .any(|t| n.contains(t))
 }
 
-/// Folders inside a game that hold installers and runtimes, never the game.
+/// Folders inside a game that hold installers and runtimes, never the game. Couchlink's own folders (an unzipped
+/// download, a drive's copies) too.
 fn skip_dir(name: &str) -> bool {
     let n = name.to_lowercase();
     ["_commonredist", "redist", "directx", "vcredist", "support", "installers", "easyanticheat", "battleye", "thirdparty", "engine"]
         .iter()
         .any(|t| n == *t || n.starts_with(t))
+        || n.starts_with("couchlink")
+        || n.starts_with(".couchlink")
 }
 
-/// The game's exe inside its install folder, relative with forward slashes: an Unreal `*-Shipping.exe` first, then
-/// the biggest exe near the top that is not an installer or helper.
-pub fn guess_exe(install_dir: &Path) -> Option<String> {
-    fn walk(dir: &Path, rel: &str, depth: u8, out: &mut Vec<(i64, String)>) {
+/// Letters and digits only, lower case: "Dying Light" and "DyingLightGame" become comparable.
+fn squash(s: &str) -> String {
+    s.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
+}
+
+/// Whether an exe's name looks like the game's: "DyingLightGame.exe" for "Dying Light".
+fn named_like(file: &str, game: &str) -> bool {
+    let stem = squash(file.rsplit('/').next().unwrap_or(file).trim_end_matches(".exe").trim_end_matches(".EXE"));
+    let game = squash(game);
+    stem.len() >= 3 && game.len() >= 3 && (stem.contains(&game) || game.contains(&stem))
+}
+
+/// Every exe of a game folder that could be the game, best first: an Unreal `*-Shipping.exe`, then one named like
+/// the game, then the biggest near the top. Installers and helpers come last, and only when `all` is set.
+fn ranked_exes(install_dir: &Path, game: &str, all: bool) -> Vec<String> {
+    fn walk(dir: &Path, rel: &str, depth: u8, game: &str, all: bool, out: &mut Vec<(i64, String)>) {
         let Ok(rd) = std::fs::read_dir(dir) else { return };
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
             let Ok(meta) = e.metadata() else { continue };
             let path = if rel.is_empty() { name.clone() } else { format!("{rel}/{name}") };
+            let lower = name.to_lowercase();
             if meta.is_dir() {
-                if depth < 3 && !skip_dir(&name) {
-                    walk(&e.path(), &path, depth + 1, out);
+                if depth < 4 && !(lower.starts_with("couchlink") || lower.starts_with(".couchlink")) && (all || !skip_dir(&name)) {
+                    walk(&e.path(), &path, depth + 1, game, all, out);
                 }
-            } else if name.to_lowercase().ends_with(".exe") && !not_the_game(&name) {
+            } else if lower.ends_with(".exe") && !lower.contains("couchlink") && !lower.contains("clprobe") {
+                let helper = not_the_game(&name) || skip_dir(rel.split('/').next().unwrap_or(""));
+                if helper && !all {
+                    continue;
+                }
                 let mb = (meta.len() / (1 << 20)) as i64;
-                let shipping = if name.to_lowercase().contains("shipping") { 10_000 } else { 0 };
-                out.push((shipping + mb - depth as i64 * 5, path));
+                let shipping = if lower.contains("shipping") { 10_000 } else { 0 };
+                let named = if named_like(&name, game) { 1_000 } else { 0 };
+                let helper = if helper { -100_000 } else { 0 };
+                out.push((helper + shipping + named + mb - depth as i64 * 5, path));
             }
         }
     }
     let mut found = Vec::new();
-    walk(install_dir, "", 0, &mut found);
+    walk(install_dir, "", 0, game, all, &mut found);
     found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
-    found.into_iter().next().map(|(_, p)| p)
+    found.into_iter().map(|(_, p)| p).collect()
+}
+
+/// The game's exe inside its install folder, relative with forward slashes: an Unreal `*-Shipping.exe` first, then
+/// one named like `game`, then the biggest exe near the top that is not an installer or helper.
+pub fn guess_exe_named(install_dir: &Path, game: &str) -> Option<String> {
+    ranked_exes(install_dir, game, false).into_iter().next()
+}
+
+/// Every program in a game folder the player can pick for it (Windows exes and, on Linux, native programs), best
+/// guess first. Installers and helpers are listed last.
+pub fn program_choices(install_dir: &Path, game: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    if cfg!(target_os = "linux") {
+        out.extend(guess_native(install_dir));
+    }
+    for e in ranked_exes(install_dir, game, true) {
+        if !out.contains(&e) {
+            out.push(e);
+        }
+    }
+    out.truncate(60);
+    out
+}
+
+/// The program for a Steam game's "Try it": the one Steam itself starts (its `appinfo.vdf`), unless that is a
+/// launcher and the folder has a likelier game; otherwise Couchlink's guess.
+pub fn steam_program(install_dir: &Path, game: &str, from_steam: Option<&str>) -> Option<String> {
+    let steam = from_steam.filter(|e| install_dir.join(e).is_file()).map(str::to_string);
+    let guess = guess_exe_named(install_dir, game);
+    match (steam, guess) {
+        (Some(s), Some(g)) if s.to_lowercase().contains("launcher") && g != s => Some(g),
+        (Some(s), _) => Some(s),
+        (None, g) => g,
+    }
 }
 
 /// A native Linux game's program inside its install folder (relative, forward slashes): the biggest executable ELF
@@ -254,16 +310,60 @@ pub fn try_recipe_with(id: &str, name: &str, exe: &str, app_id: Option<u32>) -> 
     Recipe::parse(&v.to_string()).ok()
 }
 
+/// The programs the player picked for "Try it" games (`<state>/programs.json`: recipe id to program, relative to the
+/// game folder).
+pub fn picked_programs(state_dir: &Path) -> std::collections::BTreeMap<String, String> {
+    std::fs::read(state_dir.join("programs.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+/// Save or (with `None`) forget the program picked for a "Try it" game.
+pub fn pick_program(state_dir: &Path, recipe: &str, exe: Option<&str>) -> Result<(), String> {
+    let mut all = picked_programs(state_dir);
+    match exe {
+        Some(e) => all.insert(recipe.to_string(), e.to_string()),
+        None => all.remove(recipe),
+    };
+    std::fs::create_dir_all(state_dir).map_err(|e| e.to_string())?;
+    let tmp = state_dir.join("programs.json.tmp");
+    std::fs::write(&tmp, serde_json::to_string_pretty(&all).expect("serialises")).map_err(|e| format!("cannot save programs.json: {e}"))?;
+    std::fs::rename(&tmp, state_dir.join("programs.json")).map_err(|e| format!("cannot save programs.json: {e}"))
+}
+
+/// A program path the player picked, made relative to the game folder: `None` when it is not a file inside it.
+pub fn program_in(game_dir: &Path, exe: &str) -> Option<String> {
+    let exe = exe.trim().replace('\\', "/");
+    let p = Path::new(&exe);
+    let rel = if p.is_absolute() {
+        let canon = |x: &Path| std::fs::canonicalize(x).ok();
+        canon(p)?.strip_prefix(canon(game_dir)?).ok()?.to_string_lossy().replace('\\', "/")
+    } else {
+        exe.trim_start_matches("./").to_string()
+    };
+    let safe = !rel.is_empty() && Path::new(&rel).components().all(|c| matches!(c, std::path::Component::Normal(_)));
+    (safe && game_dir.join(&rel).is_file()).then_some(rel)
+}
+
 /// "Try it" recipes for every installed Steam game no recipe covers.
 pub fn try_recipes(known: &[Recipe]) -> Vec<Recipe> {
     let covered: std::collections::HashSet<u32> = known.iter().filter_map(|r| r.matching.steam_app_id).collect();
-    let mut out: Vec<Recipe> = couchlink_steam::installed_apps()
+    let apps: Vec<_> = couchlink_steam::installed_apps().into_iter().filter(|a| !covered.contains(&a.app_id) && !is_tool(&a.name)).collect();
+    // What Steam itself starts for each game, read once for all of them.
+    let ids: Vec<u32> = apps.iter().map(|a| a.app_id).collect();
+    let root = couchlink_steam::steam_root();
+    let launch = |os: &str| root.as_deref().map(|r| couchlink_steam::appinfo::launch_exes(r, &ids, os)).unwrap_or_default();
+    let windows = launch("windows");
+    let linux = if cfg!(target_os = "linux") { launch("linux") } else { Default::default() };
+    let mut out: Vec<Recipe> = apps
         .into_iter()
-        .filter(|a| !covered.contains(&a.app_id) && !is_tool(&a.name))
         .filter_map(|a| {
             // On Linux a native build runs as it is; a Windows one runs through Proton.
-            let native = if cfg!(target_os = "linux") { guess_native(&a.install_dir) } else { None };
-            try_recipe(a.app_id, &a.name, &native.or_else(|| guess_exe(&a.install_dir))?)
+            let native = if cfg!(target_os = "linux") {
+                linux.get(&a.app_id).filter(|e| a.install_dir.join(e).is_file()).cloned().or_else(|| guess_native(&a.install_dir))
+            } else {
+                None
+            };
+            let exe = native.or_else(|| steam_program(&a.install_dir, &a.name, windows.get(&a.app_id).map(String::as_str)))?;
+            try_recipe(a.app_id, &a.name, &exe)
         })
         .collect();
     out.sort_by(|a, b| a.game.to_lowercase().cmp(&b.game.to_lowercase()));
@@ -422,6 +522,29 @@ mod tests {
     }
 
     #[test]
+    fn try_it_never_picks_couchlink_unzipped_into_the_game() {
+        // A player unzipped Couchlink into Dying Light's folder: our 12 MB service outweighed the game's small exe.
+        let g = temp("own-couchlink");
+        std::fs::create_dir_all(g.join("Couchlink-0.1.6-windows-x64/Couchlink-0.1.6")).unwrap();
+        std::fs::write(g.join("Couchlink-0.1.6-windows-x64/Couchlink-0.1.6/couchlinkd.exe"), vec![0u8; 3 << 20]).unwrap();
+        std::fs::write(g.join("DyingLightGame.exe"), vec![0u8; 1024]).unwrap();
+        std::fs::write(g.join("DevTools.exe"), vec![0u8; 2 << 20]).unwrap();
+        assert_eq!(guess_exe_named(&g, "Dying Light").as_deref(), Some("DyingLightGame.exe"), "named like the game wins");
+        assert!(program_choices(&g, "Dying Light").iter().all(|e| !e.contains("couchlink")));
+        assert_eq!(steam_program(&g, "Dying Light", Some("DyingLightGame.exe")).as_deref(), Some("DyingLightGame.exe"));
+        assert_eq!(steam_program(&g, "Dying Light", Some("gone.exe")).as_deref(), Some("DyingLightGame.exe"), "a missing Steam exe falls back");
+        assert_eq!(program_in(&g, "DevTools.exe").as_deref(), Some("DevTools.exe"));
+        assert_eq!(program_in(&g, &g.join("DevTools.exe").display().to_string()).as_deref(), Some("DevTools.exe"), "a full path inside the folder");
+        assert_eq!(program_in(&g, "../outside.exe"), None);
+        assert_eq!(program_in(&g, "nothere.exe"), None);
+        let state = temp("own-couchlink-state");
+        pick_program(&state, "try-steam-239140", Some("DevTools.exe")).unwrap();
+        assert_eq!(picked_programs(&state).get("try-steam-239140").map(String::as_str), Some("DevTools.exe"));
+        pick_program(&state, "try-steam-239140", None).unwrap();
+        assert!(picked_programs(&state).is_empty());
+    }
+
+    #[test]
     fn try_it_picks_the_game_exe_and_makes_a_valid_recipe() {
         let g = temp("try");
         std::fs::create_dir_all(g.join("Binaries/Win64")).unwrap();
@@ -430,9 +553,9 @@ mod tests {
         std::fs::write(g.join("unins000.exe"), vec![0u8; 4096]).unwrap();
         std::fs::write(g.join("_CommonRedist/vcredist/vc_redist.x64.exe"), vec![0u8; 8192]).unwrap();
         std::fs::write(g.join("Binaries/Win64/Game-Win64-Shipping.exe"), vec![0u8; 512]).unwrap();
-        assert_eq!(guess_exe(&g).as_deref(), Some("Binaries/Win64/Game-Win64-Shipping.exe"));
+        assert_eq!(guess_exe_named(&g, "").as_deref(), Some("Binaries/Win64/Game-Win64-Shipping.exe"));
         std::fs::remove_file(g.join("Binaries/Win64/Game-Win64-Shipping.exe")).unwrap();
-        assert_eq!(guess_exe(&g).as_deref(), Some("Game.exe"));
+        assert_eq!(guess_exe_named(&g, "").as_deref(), Some("Game.exe"));
         let r = try_recipe(4000, "Garry's Mod", "Game.exe").expect("valid recipe");
         assert_eq!(r.id, "try-steam-4000");
         assert_eq!(r.source, "try");
@@ -521,7 +644,7 @@ mod tests {
         elf(&g.join("Game.x86_64"), 1 << 20, true);
         std::fs::write(g.join("start.sh"), "#!/bin/sh\n").unwrap();
         assert_eq!(guess_native(&g).as_deref(), Some("Game.x86_64"));
-        assert_eq!(guess_exe(&g), None, "no Windows build here");
+        assert_eq!(guess_exe_named(&g, ""), None, "no Windows build here");
         let _ = std::fs::remove_dir_all(&g);
     }
 }

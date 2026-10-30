@@ -9,7 +9,7 @@ import 'locate.dart';
 import 'models.dart';
 import 'profile.dart';
 
-const String appVersion = '0.1.6';
+const String appVersion = '0.1.7';
 
 /// Start of the `log` warning couchlinkd sends when a catalog download fails.
 const String catalogFailurePrefix = 'Game catalog could not be refreshed';
@@ -434,6 +434,20 @@ class DaemonClient extends CouchClient {
   @override
   Future<String?> removeGame(String recipe) async {
     final err = await _cmd('remove_game', {'recipe': recipe});
+    if (err == null) await listGames();
+    return err;
+  }
+
+  @override
+  Future<({GamePrograms? programs, String? error})> gamePrograms(String recipe) async {
+    final r = await _request('game_programs', {'recipe': recipe});
+    if (r['ok'] != true) return (programs: null, error: _errorOf(r));
+    return (programs: GamePrograms.fromJson(r), error: null);
+  }
+
+  @override
+  Future<String?> setGameProgram(String recipe, String? exe) async {
+    final err = await _cmd('set_game_program', {'recipe': recipe, 'exe': exe});
     if (err == null) await listGames();
     return err;
   }

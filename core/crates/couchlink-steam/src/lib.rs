@@ -12,6 +12,7 @@
 //! * `vdf`, `pe`: the small parsers behind them.
 
 pub mod accounts;
+pub mod appinfo;
 pub mod dlc;
 pub mod error;
 pub mod fetch;

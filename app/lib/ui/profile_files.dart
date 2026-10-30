@@ -35,10 +35,10 @@ Future<PickedFile?> importWithDialog() async {
 /// Lets the player pick a game's program; its path, or null when cancelled.
 typedef PickGame = Future<String?> Function();
 
-Future<String?> pickGameWithDialog() async {
+Future<String?> pickGameWithDialog({String? folder, String? confirm}) async {
   // Windows games are .exe files; on Linux a game is any program (an ELF file, an AppImage, a script) or an .exe.
   final type = Platform.isWindows ? XTypeGroup(label: t('Game program'), extensions: ['exe']) : XTypeGroup(label: t('Game program'));
-  final file = await openFile(acceptedTypeGroups: [type], confirmButtonText: t('Add'));
+  final file = await openFile(acceptedTypeGroups: [type], initialDirectory: folder, confirmButtonText: confirm ?? t('Add'));
   return file?.path;
 }
 

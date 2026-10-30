@@ -453,6 +453,24 @@ class Catalog {
 
 // ---------------------------------------------------------------- games and sessions
 
+/// `game_programs`: the program a "Try it" game starts, whether the player picked it, and the others in its folder.
+class GamePrograms {
+  const GamePrograms({required this.current, this.picked = false, this.folder = '', this.choices = const []});
+
+  /// Relative to the game folder, forward slashes.
+  final String current;
+  final bool picked;
+  final String folder;
+  final List<String> choices;
+
+  factory GamePrograms.fromJson(Map<String, dynamic> j) => GamePrograms(
+        current: j['current'] as String? ?? '',
+        picked: j['picked'] as bool? ?? false,
+        folder: j['folder'] as String? ?? '',
+        choices: [for (final c in (j['choices'] as List? ?? const [])) c as String],
+      );
+}
+
 /// One row of `list_games` (docs/protocol.md, "Game sessions").
 class GameInfo {
   const GameInfo({

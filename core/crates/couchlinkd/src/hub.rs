@@ -672,6 +672,8 @@ impl Hub {
                 Ok(json!({ "recipe": recipe }))
             }
             Command::RemoveGame { recipe } => self.session.remove_game(&recipe).map(|_| none),
+            Command::GamePrograms { recipe } => self.session.game_programs(&recipe),
+            Command::SetGameProgram { recipe, exe } => self.session.set_game_program(&recipe, exe.as_deref()).map(|_| none),
             Command::StartSession { recipe, options } => self.start_session(&recipe, &options),
             Command::StopSession => self.stop_session(),
             Command::SteamAccounts => Ok(crate::accounts::list()),

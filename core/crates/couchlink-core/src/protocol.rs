@@ -126,6 +126,17 @@ pub enum Command {
     RemoveGame {
         recipe: String,
     },
+    /// A "Try it" game's program and the others in its folder that could be the game.
+    GamePrograms {
+        recipe: String,
+    },
+    /// Start this program (relative to the game folder, or a full path inside it) for a "Try it" game; `null` goes
+    /// back to the one Couchlink finds.
+    SetGameProgram {
+        recipe: String,
+        #[serde(default)]
+        exe: Option<String>,
+    },
     StartSession {
         recipe: String,
         /// The player's choices for the recipe's `options`: name to chosen value. Left out: the defaults.
@@ -374,6 +385,11 @@ mod tests {
             Command::AddGame { path: "D:/Games/Old Game/game.exe".into(), name: None }
         );
         assert_eq!(parse(json!({"id": 22, "cmd": "remove_game", "recipe": "try-own-1a2b3c4d"})).cmd, Command::RemoveGame { recipe: "try-own-1a2b3c4d".into() });
+        assert_eq!(
+            parse(json!({"id": 23, "cmd": "set_game_program", "recipe": "try-steam-239140", "exe": "DyingLightGame.exe"})).cmd,
+            Command::SetGameProgram { recipe: "try-steam-239140".into(), exe: Some("DyingLightGame.exe".into()) }
+        );
+        assert_eq!(parse(json!({"id": 24, "cmd": "set_game_program", "recipe": "try-steam-239140"})).cmd, Command::SetGameProgram { recipe: "try-steam-239140".into(), exe: None });
         assert_eq!(parse(json!({"id": 21, "cmd": "start_session", "recipe": "testgame"})).cmd, Command::StartSession { recipe: "testgame".into(), options: BTreeMap::new() });
         assert_eq!(
             parse(json!({"id": 23, "cmd": "start_session", "recipe": "g", "options": {"FPS": "Yes"}})).cmd,

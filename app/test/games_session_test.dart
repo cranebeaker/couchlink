@@ -139,6 +139,39 @@ void main() {
     expect(find.textContaining('own Steam account'), findsWidgets);
   });
 
+  testWidgets('a Try it game shows its program and the player can pick another', (tester) async {
+    final fake = fastFake(games: const [
+      GameInfo(recipe: 'try-steam-239140', game: 'Old Arena', installed: true, path: 'C:/oa', minPlayers: 2, maxPlayers: 8, steam: 'shared', source: 'try', steamAppId: 239140),
+    ]);
+    fake.programChoices['try-steam-239140'] = ['DyingLightGame.exe', 'DevTools.exe'];
+    await pumpApp(tester, fake, view: AppView.library, size: const Size(1400, 1300));
+    await tester.ensureVisible(byKey('game-try-steam-239140'));
+    await settle(tester);
+    await tester.tap(byKey('game-try-steam-239140'));
+    await settle(tester);
+    expect(find.descendant(of: byKey('program-current'), matching: find.text('DyingLightGame.exe'), matchRoot: true), findsOneWidget);
+    expect(byKey('program-auto'), findsNothing);
+
+    await tester.ensureVisible(byKey('program-change'));
+    await tester.tap(byKey('program-change'));
+    await settle(tester);
+    await tester.ensureVisible(byKey('program-choice-1'));
+    await tester.tap(byKey('program-choice-1'));
+    await settle(tester);
+    expect(fake.pickedPrograms['try-steam-239140'], 'DevTools.exe');
+    expect(find.descendant(of: byKey('program-current'), matching: find.text('DevTools.exe'), matchRoot: true), findsOneWidget);
+    expect(find.descendant(of: byKey('toast'), matching: find.text('This game now starts DevTools.exe.')), findsOneWidget);
+
+    await tester.ensureVisible(byKey('program-change'));
+    await tester.tap(byKey('program-change'));
+    await settle(tester);
+    await tester.ensureVisible(byKey('program-auto'));
+    await tester.tap(byKey('program-auto'));
+    await settle(tester);
+    expect(fake.pickedPrograms, isEmpty);
+    expect(find.descendant(of: byKey('program-current'), matching: find.text('DyingLightGame.exe'), matchRoot: true), findsOneWidget);
+  });
+
   testWidgets('Add a game takes any program, shows it under Try it, and Remove forgets it', (tester) async {
     final fake = fastFake(games: const []);
     await pumpApp(tester, fake, view: AppView.library, size: const Size(1400, 1300));

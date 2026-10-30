@@ -142,9 +142,49 @@ impl Config {
         if stores {
             more.extend(recipes::try_recipes(&loaded.recipes));
         }
+        // The program the player picked for a game wins over the one Couchlink found.
+        let picked = recipes::picked_programs(&self.state_dir);
+        for r in more.iter_mut() {
+            if let Some(n) = picked.get(&r.id).and_then(|exe| recipes::try_recipe_with(&r.id, &r.game, exe, r.matching.steam_app_id)) {
+                *r = n;
+            }
+        }
         let have: std::collections::HashSet<String> = loaded.recipes.iter().map(|r| r.id.clone()).collect();
         loaded.recipes.extend(more.into_iter().filter(|r| !have.contains(&r.id)));
         loaded
+    }
+
+    /// `game_programs`: for a "Try it" game, the program it starts, whether the player picked it, and every program
+    /// in its folder they can pick instead.
+    pub fn game_programs(&self, recipe: &str) -> Result<serde_json::Value, String> {
+        let (r, dir) = self.try_game(recipe)?;
+        let picked = recipes::picked_programs(&self.state_dir).contains_key(recipe);
+        Ok(serde_json::json!({
+            "current": r.launch.exe,
+            "picked": picked,
+            "folder": dir.display().to_string(),
+            "choices": recipes::program_choices(&dir, &r.game),
+        }))
+    }
+
+    /// `set_game_program`: start this program for a "Try it" game (relative to its folder, or a full path inside
+    /// it), or with `None` go back to the one Couchlink finds.
+    pub fn set_game_program(&self, recipe: &str, exe: Option<&str>) -> Result<(), String> {
+        let (r, dir) = self.try_game(recipe)?;
+        let exe = match exe {
+            None => None,
+            Some(e) => Some(recipes::program_in(&dir, e).ok_or_else(|| format!("{e} is not a program in the folder of {} ({})", r.game, dir.display()))?),
+        };
+        recipes::pick_program(&self.state_dir, recipe, exe.as_deref())
+    }
+
+    fn try_game(&self, recipe: &str) -> Result<(couchlink_core::Recipe, PathBuf), String> {
+        if !recipe.starts_with("try-") {
+            return Err(format!("{recipe} has a recipe of its own, which names its program"));
+        }
+        let r = self.load().recipes.into_iter().find(|r| r.id == recipe).ok_or_else(|| format!("no game {recipe}"))?;
+        let dir = recipes::locate(&self.deps.locators, &r).ok_or_else(|| format!("{} is not installed", r.game))?;
+        Ok((r, dir))
     }
 
     /// `add_game`: a game of the player's own, by its program or folder. Returns the recipe that now plays it: a

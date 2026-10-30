@@ -132,6 +132,13 @@ abstract class CouchClient extends ChangeNotifier {
   /// `remove_game`: forgets a game [addGame] added. Its files stay. Returns null or an error text.
   Future<String?> removeGame(String recipe);
 
+  /// `game_programs`: the program a "Try it" game starts and the others in its folder the player can pick.
+  Future<({GamePrograms? programs, String? error})> gamePrograms(String recipe);
+
+  /// `set_game_program`: start [exe] (relative to the game folder, or a full path inside it) for a "Try it" game;
+  /// null goes back to the one Couchlink finds. The game list is asked for again. Returns null or an error text.
+  Future<String?> setGameProgram(String recipe, String? exe);
+
   /// `get_log`: the log folder and the end of the logs (Couchlink's own and each game copy's), for "Copy log"
   /// and "Open log folder" after an error. [error] is set when the service could not be asked.
   Future<({String text, String dir, String? error})> getLog();

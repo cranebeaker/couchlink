@@ -188,6 +188,34 @@ class FakeClient extends CouchClient {
     return null;
   }
 
+  /// Programs per "Try it" game for [gamePrograms]; the first is what Couchlink finds by itself.
+  final Map<String, List<String>> programChoices = {};
+
+  /// What [setGameProgram] picked, per recipe.
+  final Map<String, String> pickedPrograms = {};
+
+  @override
+  Future<({GamePrograms? programs, String? error})> gamePrograms(String recipe) async {
+    final choices = programChoices[recipe];
+    if (choices == null || choices.isEmpty) return (programs: null, error: '$recipe has a recipe of its own, which names its program');
+    final picked = pickedPrograms[recipe];
+    return (programs: GamePrograms(current: picked ?? choices.first, picked: picked != null, folder: 'D:/Games/$recipe', choices: choices), error: null);
+  }
+
+  @override
+  Future<String?> setGameProgram(String recipe, String? exe) async {
+    final choices = programChoices[recipe] ?? const [];
+    if (exe == null) {
+      pickedPrograms.remove(recipe);
+    } else if (!choices.contains(exe)) {
+      return '$exe is not a program in the game folder';
+    } else {
+      pickedPrograms[recipe] = exe;
+    }
+    notifyListeners();
+    return null;
+  }
+
   @override
   Future<String?> startSession(String recipe) async {
     startedRecipes.add(recipe);

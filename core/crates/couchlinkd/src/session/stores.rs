@@ -3,7 +3,7 @@
 //! where a game came from: a recipe finds its game in any of these by its exe (`match.exe`), and every game no recipe
 //! covers shows up under "Try it", as installed Steam games do.
 
-use super::recipes::{guess_exe, guess_native, Locator};
+use super::recipes::{guess_exe_named, guess_native, Locator};
 use couchlink_core::Recipe;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -197,7 +197,8 @@ fn save_own(state_dir: &Path, games: &[OtherGame]) -> Result<(), String> {
 /// Returns the game, whose "Try it" recipe is `recipe_id()`. Adding the same folder again replaces it.
 pub fn add_own(state_dir: &Path, path: &Path, name: Option<&str>) -> Result<OtherGame, String> {
     let (dir, exe) = if path.is_dir() {
-        let exe = if cfg!(target_os = "linux") { guess_native(path).or_else(|| guess_exe(path)) } else { guess_exe(path) };
+        let hint = name.map(str::to_string).or_else(|| path.file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_default();
+        let exe = if cfg!(target_os = "linux") { guess_native(path) } else { None }.or_else(|| guess_exe_named(path, &hint));
         (path.to_path_buf(), Some(exe.ok_or_else(|| format!("no game program was found in {}", path.display()))?))
     } else if path.is_file() {
         let dir = path.parent().ok_or("the file has no folder")?.to_path_buf();
@@ -305,7 +306,7 @@ pub fn try_recipes_for(games: &[OtherGame], known: &[Recipe]) -> Vec<Recipe> {
             continue;
         }
         let native = if cfg!(target_os = "linux") { guess_native(&g.dir) } else { None };
-        let exe = g.exe.clone().filter(|e| g.dir.join(e).is_file()).or(native).or_else(|| guess_exe(&g.dir));
+        let exe = g.exe.clone().filter(|e| g.dir.join(e).is_file()).or(native).or_else(|| guess_exe_named(&g.dir, &g.name));
         let Some(exe) = exe else { continue };
         out.extend(super::recipes::try_recipe_with(&g.recipe_id(), &g.name, &exe, None));
     }

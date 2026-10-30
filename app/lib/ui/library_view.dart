@@ -10,6 +10,7 @@ import 'icons.dart';
 import 'kit.dart';
 import 'launch_card.dart';
 import 'library_games.dart';
+import 'profile_files.dart';
 import 'sample_data.dart';
 import 'shell.dart';
 
@@ -402,6 +403,7 @@ class _GameSheetState extends State<GameSheet> {
                                     if (!g.installed) _Fact('On this PC', t('Not installed')),
                                   ]),
                                 ),
+                                if (g.tier == Tier.tryIt && g.installed) _ProgramPicker(key: ValueKey('program-${g.id}'), recipe: g.id),
                                 if (g.setup.isNotEmpty) ...[
                                   const SizedBox(height: 18),
                                   Text('Before your first game', key: const ValueKey('sheet-setup'), style: txt(context, size: 13, weight: FontWeight.w600)),
@@ -494,6 +496,108 @@ class _GameSheetState extends State<GameSheet> {
           ]);
         });
       },
+    );
+  }
+}
+
+/// Which program a "Try it" game starts, with a way to pick another when Couchlink found the wrong one.
+class _ProgramPicker extends StatefulWidget {
+  const _ProgramPicker({super.key, required this.recipe});
+
+  final String recipe;
+
+  @override
+  State<_ProgramPicker> createState() => _ProgramPickerState();
+}
+
+class _ProgramPickerState extends State<_ProgramPicker> {
+  GamePrograms? _p;
+  bool _open = false;
+  bool _busy = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_p == null) _load();
+  }
+
+  Future<void> _load() async {
+    final r = await Scope.of(context).client.gamePrograms(widget.recipe);
+    if (!mounted) return;
+    setState(() => _p = r.programs);
+  }
+
+  Future<void> _use(String? exe) async {
+    final scope = Scope.of(context);
+    setState(() => _busy = true);
+    final err = await scope.client.setGameProgram(widget.recipe, exe);
+    if (!mounted) return;
+    _busy = false;
+    _open = false;
+    if (err != null) {
+      scope.toaster.show(err, error: true);
+      setState(() {});
+      return;
+    }
+    await _load();
+    if (!mounted) return;
+    scope.toaster.show(exe == null ? t('Couchlink picks the program again.') : t('This game now starts {exe}.', {'exe': _p?.current ?? exe}));
+  }
+
+  Future<void> _browse() async {
+    final path = await pickGameWithDialog(folder: _p?.folder, confirm: t('Use'));
+    if (path != null) await _use(path);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final p = _p;
+    if (p == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(t('Program'), key: const ValueKey('sheet-program'), style: txt(context, size: 13, weight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        Row(children: [
+          Expanded(child: Text(p.current, key: const ValueKey('program-current'), style: txt(context, size: 13, color: c.ink2))),
+          const SizedBox(width: 10),
+          CButton(key: const ValueKey('program-change'), label: _open ? t('Close') : t('Change'), small: true, onTap: _busy ? null : () => setState(() => _open = !_open)),
+        ]),
+        const SizedBox(height: 4),
+        Text(
+          p.picked ? t('You picked this one.') : t('Couchlink found this one. Wrong program? Pick the game\u2019s own.'),
+          style: txt(context, size: 12, color: c.ink3),
+        ),
+        if (_open) ...[
+          const SizedBox(height: 10),
+          Container(
+            decoration: BoxDecoration(color: c.pane, borderRadius: BorderRadius.circular(12), border: Border.all(color: c.hair)),
+            child: Column(children: [
+              for (final (i, exe) in p.choices.indexed)
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    key: ValueKey('program-choice-$i'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _busy || exe == p.current ? null : () => _use(exe),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                      decoration: BoxDecoration(border: i == 0 ? null : Border(top: BorderSide(color: c.hair))),
+                      child: Text(exe, style: txt(context, size: 13, weight: exe == p.current ? FontWeight.w600 : FontWeight.w400, color: exe == p.current ? c.accent : c.ink2)),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+          const SizedBox(height: 10),
+          Wrap(spacing: 10, runSpacing: 8, children: [
+            CButton(key: const ValueKey('program-browse'), label: t('Pick a file'), small: true, onTap: _busy ? null : _browse),
+            if (p.picked) CButton(key: const ValueKey('program-auto'), label: t('Let Couchlink pick'), small: true, onTap: _busy ? null : () => _use(null)),
+          ]),
+        ],
+      ]),
     );
   }
 }

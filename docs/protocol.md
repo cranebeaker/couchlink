@@ -42,6 +42,8 @@ Daemon to client (events, no id): `{"event": "<name>", ...}`
 | `list_games` | | `{"games": [Game], "errors": [{"file", "error"}]}`. See [Game sessions](#game-sessions). |
 | `add_game` | `path`: the game's program or its folder; `name` (optional) | `{"recipe": id}`: the recipe that now plays it. Saved in `<state>/my_games.json`. |
 | `remove_game` | `recipe`: an id `add_game` gave | Forgets the game; its files stay. |
+| `game_programs` | `recipe`: a `try-` id | `current` (the program it starts, relative to the game folder), `picked` (the player chose it), `folder`, `choices` (every program in the folder, best guess first). |
+| `set_game_program` | `recipe`: a `try-` id; `exe`: a program in the game folder (relative, or a full path inside it), or `null` | Starts that program for the game from now on; `null` goes back to the one Couchlink finds (for a Steam game, the one Steam itself starts). |
 | `start_session` | `recipe` (recipe id), optional `options` (`{NAME: value}`) | Checks, replies at once, then runs the launch pipeline in the background; progress comes as `session` events. Error text if the recipe or game is missing or the seats on screens do not fit. |
 | `stop_session` | | Ends the session and undoes everything. Replies at once; `session` events follow. Fine when nothing runs (and undoes a journal an earlier crash left behind). |
 | `steam_accounts` | | `{"accounts": [{"seat", "ready", "running", "plan": [{"id", "title", "detail", "needs_admin"}]}], "steam": bool}` for seats 1 and up (seat 0 always plays on the PC owner's Steam). A seat that is `ready` plays on its own Steam account in every game whose recipe uses real Steam (`shared` or `accounts`). |
