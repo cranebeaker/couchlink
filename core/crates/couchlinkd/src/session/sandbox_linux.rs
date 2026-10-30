@@ -257,6 +257,7 @@ mod tests {
     const UI_DEV_CREATE: libc::c_ulong = 0x5501;
     const UI_DEV_DESTROY: libc::c_ulong = 0x5502;
     const EVIOCGNAME_256: libc::c_ulong = 0x8100_4506;
+    const HIDIOCGRAWINFO: libc::c_ulong = 0x8008_4803;
 
     #[repr(C)]
     struct UinputSetup {
@@ -359,7 +360,7 @@ mod tests {
             let raw_ok = node.starts_with("/dev/hidraw") && {
                 let mut info = [0u8; 8];
                 // SAFETY: HIDIOCGRAWINFO fills an 8 byte struct.
-                unsafe { libc::ioctl(f.as_raw_fd(), 0x8008_4803 as _, info.as_mut_ptr()) == 0 }
+                unsafe { libc::ioctl(f.as_raw_fd(), HIDIOCGRAWINFO as _, info.as_mut_ptr()) == 0 }
             };
             if let Some(n) = name.clone() {
                 devices.push(n);
