@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "id": "zelda-oot-anchor",
+  "game": "Zelda: Ocarina of Time (Ship of Harkinian, Anchor co-op)",
+  "match": { "exe": "soh.exe" },
+  "players": [2, 4],
+  "mode": "instances",
+  "steam": "none",
+  "present": "window",
+  "launch": {
+    "exe": "soh.exe",
+    "args": "",
+    "env": { "SHIP_HOME": "$GAMEDIR" }
+  },
+  "files": { "copy": [], "link": "all", "saves": [] },
+  "edits": [
+    {
+      "file": "shipofharkinian.json",
+      "format": "json",
+      "per_seat": true,
+      "create": true,
+      "set": [
+        { "pointer": "/Window/Fullscreen/Enabled", "value": false },
+        { "pointer": "/Window/Width", "value": "$WIDTH", "as": "number" },
+        { "pointer": "/Window/Height", "value": "$HEIGHT", "as": "number" },
+        { "pointer": "/Window/PositionX", "value": "$X", "as": "number" },
+        { "pointer": "/Window/PositionY", "value": "$Y", "as": "number" },
+        { "pointer": "/CVars/gRemote/Anchor/Host", "value": "$SERVER" },
+        { "pointer": "/CVars/gRemote/Anchor/Port", "value": "$PORT", "as": "number" },
+        { "pointer": "/CVars/gRemote/Anchor/RoomId", "value": "$ROOM" },
+        { "pointer": "/CVars/gRemote/Anchor/TeamId", "value": "default" },
+        { "pointer": "/CVars/gRemote/Anchor/Name", "value": "$PLAYER" },
+        { "pointer": "/CVars/gRemote/Anchor/Enabled", "value": 1 },
+        { "pointer": "/CVars/gAllowBackgroundInputs", "value": 1 }
+      ]
+    }
+  ],
+  "locks": [],
+  "input": { "xinput": true, "dinput": false, "rawinput": false },
+  "window": { "borderless": true, "settle_ms": 6000, "wait_ms": 120000 },
+  "options": {
+    "SERVER": {
+      "label": "Anchor server (anchor.hm64.org, or 127.0.0.1 when you run your own)",
+      "default": "anchor.hm64.org"
+    },
+    "PORT": {
+      "label": "Anchor port",
+      "default": "43383"
+    },
+    "ROOM": {
+      "label": "Room name (pick your own, everyone in it plays together)",
+      "default": "couchlink-couch"
+    }
+  },
+  "requires": [
+    {
+      "file": "oot.o2r",
+      "hint": "open Ship of Harkinian once and give it your own Ocarina of Time ROM; it makes oot.o2r next to soh.exe. Then load the same randomizer seed (or the same file) in every copy: Anchor shares items and progress between players on the same seed."
+    }
+  ],
+  "linux": {
+    "runner": "native",
+    "exe": "soh.appimage",
+    "env": { "SHIP_HOME": "$GAMEDIR", "APPIMAGE_EXTRACT_AND_RUN": "1" }
+  }
+}

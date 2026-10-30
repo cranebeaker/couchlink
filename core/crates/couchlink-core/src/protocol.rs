@@ -51,6 +51,10 @@ pub enum Command {
     SetLayout {
         layout: Layout,
     },
+    /// Frames per second every game copy is held to; 0 for no limit.
+    SetFpsLimit {
+        fps: u32,
+    },
     SetDisplayUsed {
         display: String,
         used: bool,
@@ -81,6 +85,16 @@ pub enum Command {
         button: Button,
     },
     ListGames,
+    /// A game of the player's own (any store, or none): its program or its folder.
+    AddGame {
+        path: String,
+        #[serde(default)]
+        name: Option<String>,
+    },
+    /// Forget a game added with `add_game`, by its recipe id.
+    RemoveGame {
+        recipe: String,
+    },
     StartSession {
         recipe: String,
         /// The player's choices for the recipe's `options`: name to chosen value. Left out: the defaults.
@@ -294,6 +308,7 @@ mod tests {
         ] {
             assert_eq!(parse(json!({"id": 9, "cmd": "set_layout", "layout": s})).cmd, Command::SetLayout { layout: l });
         }
+        assert_eq!(parse(json!({"id": 9, "cmd": "set_fps_limit", "fps": 30})).cmd, Command::SetFpsLimit { fps: 30 });
         assert_eq!(
             parse(json!({"id": 10, "cmd": "set_display_used", "display": "disp:1", "used": false})).cmd,
             Command::SetDisplayUsed { display: "disp:1".into(), used: false }
@@ -308,6 +323,11 @@ mod tests {
         }
         assert_eq!(parse(json!({"id": 11, "cmd": "subscribe_input", "on": true})).cmd, Command::SubscribeInput { on: true });
         assert_eq!(parse(json!({"id": 20, "cmd": "list_games"})).cmd, Command::ListGames);
+        assert_eq!(
+            parse(json!({"id": 21, "cmd": "add_game", "path": "D:/Games/Old Game/game.exe"})).cmd,
+            Command::AddGame { path: "D:/Games/Old Game/game.exe".into(), name: None }
+        );
+        assert_eq!(parse(json!({"id": 22, "cmd": "remove_game", "recipe": "try-own-1a2b3c4d"})).cmd, Command::RemoveGame { recipe: "try-own-1a2b3c4d".into() });
         assert_eq!(parse(json!({"id": 21, "cmd": "start_session", "recipe": "testgame"})).cmd, Command::StartSession { recipe: "testgame".into(), options: BTreeMap::new() });
         assert_eq!(
             parse(json!({"id": 23, "cmd": "start_session", "recipe": "g", "options": {"FPS": "Yes"}})).cmd,
@@ -413,8 +433,9 @@ mod tests {
         let s = &v["state"];
         let mut keys: Vec<_> = s.as_object().unwrap().keys().cloned().collect();
         keys.sort();
-        assert_eq!(keys, ["dev", "devices", "displays", "layout", "screens", "seats"]);
+        assert_eq!(keys, ["dev", "devices", "displays", "fps_limit", "layout", "screens", "seats"]);
         assert_eq!(s["layout"], "auto");
+        assert_eq!(s["fps_limit"], 0);
         assert_eq!(s["dev"], false);
         assert_eq!(s["seats"], json!(vec![serde_json::Value::Null; crate::MAX_SEATS]));
         let kbm = &s["devices"][0];
@@ -439,6 +460,7 @@ mod tests {
                         "scale": 1.5, "hz": 144.0, "primary": true, "used": true}],
           "screens": [{"display": "disp:1", "on": true, "seats": [0], "regions": [[0.0, 0.0, 1.0, 1.0]], "shape": "full"}],
           "layout": "auto",
+          "fps_limit": 30,
           "dev": false
         }"##;
         let state: State = serde_json::from_str(text).unwrap();

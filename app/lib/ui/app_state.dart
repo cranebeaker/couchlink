@@ -38,6 +38,9 @@ class UiState extends ChangeNotifier {
   ExportFile exportFile = exportWithDialog;
   ImportFile importFile = importWithDialog;
 
+  /// Picking a game's program for Add a game; tests replace it.
+  PickGame pickGame = pickGameWithDialog;
+
   void go(AppView v) {
     if (v == view && sheetGameId == null && controlsSeat == null) return;
     controlsSeat = null;

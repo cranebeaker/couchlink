@@ -13,7 +13,13 @@ pub struct Model {
     used_overrides: HashMap<String, bool>,
     layout: Layout,
     screens: Vec<crate::screens::Screen>,
+    fps_limit: u32,
     dev: bool,
+}
+
+/// The FPS limits a player may choose: 0 (none) or 10 to 360.
+pub fn fps_limit_ok(fps: u32) -> bool {
+    fps == 0 || (10..=360).contains(&fps)
 }
 
 impl Model {
@@ -30,7 +36,7 @@ impl Model {
             charging: false,
             seat: None,
         });
-        Model { seats, displays: Vec::new(), used_overrides: HashMap::new(), layout: Layout::Auto, screens: Vec::new(), dev }
+        Model { seats, displays: Vec::new(), used_overrides: HashMap::new(), layout: Layout::Auto, screens: Vec::new(), fps_limit: 0, dev }
     }
 
     pub fn dev(&self) -> bool {
@@ -43,6 +49,20 @@ impl Model {
 
     pub fn displays(&self) -> &[Display] {
         &self.displays
+    }
+
+    pub fn fps_limit(&self) -> u32 {
+        self.fps_limit
+    }
+
+    /// Set the session FPS limit (0: none). True when it changed.
+    pub fn set_fps_limit(&mut self, fps: u32) -> Result<bool, String> {
+        if !fps_limit_ok(fps) {
+            return Err(format!("{fps} fps is not a limit Couchlink takes (0 for none, or 10 to 360)"));
+        }
+        let changed = self.fps_limit != fps;
+        self.fps_limit = fps;
+        Ok(changed)
     }
 
     pub fn set_layout(&mut self, layout: Layout) -> bool {
@@ -123,6 +143,7 @@ impl Model {
             displays: self.displays.clone(),
             screens: self.screens.clone(),
             layout: self.layout,
+            fps_limit: self.fps_limit,
             dev: self.dev,
         }
     }
@@ -179,6 +200,18 @@ mod tests {
         assert!(!m.displays()[0].used);
         assert!(m.displays()[1].used);
         assert!(m.set_display_used("disp:9", true).is_err());
+    }
+
+    #[test]
+    fn the_fps_limit_is_checked_and_reported() {
+        let mut m = Model::new(false);
+        assert_eq!(m.state().fps_limit, 0);
+        assert_eq!(m.set_fps_limit(30), Ok(true));
+        assert_eq!(m.set_fps_limit(30), Ok(false));
+        assert_eq!(m.state().fps_limit, 30);
+        assert!(m.set_fps_limit(5).is_err());
+        assert!(m.set_fps_limit(1000).is_err());
+        assert_eq!(m.set_fps_limit(0), Ok(true));
     }
 
     #[test]

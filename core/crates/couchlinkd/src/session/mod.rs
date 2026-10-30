@@ -35,6 +35,7 @@ pub mod rawkbm;
 pub mod recipes;
 pub mod remote;
 mod steam;
+pub mod stores;
 mod run;
 pub mod window;
 
@@ -100,7 +101,11 @@ impl Deps {
     pub fn standard(state_dir: &Path) -> Deps {
         Deps {
             launcher: hook::launcher(),
-            locators: vec![recipes::games_json_locator(state_dir.to_path_buf()), recipes::steam_locator()],
+            locators: vec![
+                recipes::games_json_locator(state_dir.to_path_buf()),
+                stores::locator(state_dir.to_path_buf()),
+                recipes::steam_locator(),
+            ],
             undoers: {
                 let undoers = steam::undoers();
                 hook::register_undoers(&undoers);
@@ -128,12 +133,38 @@ impl Config {
     fn load(&self) -> recipes::Loaded {
         let builtin = recipes::builtin_dir(self.recipes_dir.as_deref());
         let mut loaded = recipes::load_all(builtin.as_deref(), &self.state_dir.join("recipes"));
-        // Every other installed Steam game, as a "Try it" recipe. Tests switch this off with COUCHLINK_TRY_GAMES=0.
-        if std::env::var("COUCHLINK_TRY_GAMES").map_or(true, |v| v != "0") {
-            let more = recipes::try_recipes(&loaded.recipes);
-            loaded.recipes.extend(more);
+        // Every other installed game (Steam, GOG, Epic), as a "Try it" recipe. Tests switch this off with
+        // COUCHLINK_TRY_GAMES=0. The player's own game folders always come.
+        let stores = std::env::var("COUCHLINK_TRY_GAMES").map_or(true, |v| v != "0");
+        let mut more = stores::try_recipes(&self.state_dir, &loaded.recipes, stores);
+        if stores {
+            more.extend(recipes::try_recipes(&loaded.recipes));
         }
+        let have: std::collections::HashSet<String> = loaded.recipes.iter().map(|r| r.id.clone()).collect();
+        loaded.recipes.extend(more.into_iter().filter(|r| !have.contains(&r.id)));
         loaded
+    }
+
+    /// `add_game`: a game of the player's own, by its program or folder. Returns the recipe that now plays it: a
+    /// recipe made for the game when one fits, otherwise its "Try it" recipe.
+    pub fn add_game(&self, path: &str, name: Option<&str>) -> Result<String, String> {
+        let path = path.trim();
+        if path.is_empty() {
+            return Err("add_game needs the game's program or folder".to_string());
+        }
+        let game = stores::add_own(&self.state_dir, Path::new(path), name)?;
+        let id = game.recipe_id();
+        let loaded = self.load();
+        if loaded.recipes.iter().any(|r| r.id == id) {
+            return Ok(id);
+        }
+        let fits = loaded.recipes.iter().find(|r| !r.id.starts_with("try-") && recipes::locate(&self.deps.locators, r).as_deref() == Some(game.dir.as_path()));
+        fits.map(|r| r.id.clone()).ok_or_else(|| format!("{} was added, but no game program was found in it", game.dir.display()))
+    }
+
+    /// `remove_game`: forget a game the player added (by its recipe id). Its files stay where they are.
+    pub fn remove_game(&self, recipe: &str) -> Result<(), String> {
+        if stores::remove_own(&self.state_dir, recipe)? { Ok(()) } else { Err(format!("{recipe} is not a game you added")) }
     }
 
     /// `list_games`: every recipe with whether and where the game is installed, plus recipe files that did not load.
@@ -174,7 +205,8 @@ impl Config {
         if matches!(recipe.steam, couchlink_core::recipe::SteamMode::Goldberg | couchlink_core::recipe::SteamMode::Accounts) && self.deps.prepare.is_none() {
             return Err(format!("{} needs Steam mode {:?}, which this build of Couchlink cannot set up yet", recipe.game, recipe.steam));
         }
-        Ok(Plan { recipe, game_dir, seats, state_dir: self.state_dir.clone(), options })
+        let fps_limit = (state.fps_limit > 0).then_some(state.fps_limit).or(recipe.window.fps_limit);
+        Ok(Plan { recipe, game_dir, seats, state_dir: self.state_dir.clone(), options, fps_limit })
     }
 
     /// Undo whatever an earlier run left in the journal. Blocks while it works.

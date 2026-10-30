@@ -9,7 +9,7 @@ import 'locate.dart';
 import 'models.dart';
 import 'profile.dart';
 
-const String appVersion = '0.1.1';
+const String appVersion = '0.1.2';
 
 /// Start of the `log` warning couchlinkd sends when a catalog download fails.
 const String catalogFailurePrefix = 'Game catalog could not be refreshed';
@@ -324,6 +324,8 @@ class DaemonClient extends CouchClient {
   @override
   Future<String?> setLayout(String layout) => _cmd('set_layout', {'layout': layout});
   @override
+  Future<String?> setFpsLimit(int fps) => _cmd('set_fps_limit', {'fps': fps});
+  @override
   Future<String?> setDisplayUsed(String display, bool used) => _cmd('set_display_used', {'display': display, 'used': used});
   @override
   Future<String?> setScreens(List<ScreenArrangement> screens) => _cmd('set_screens', {'screens': [for (final s in screens) s.toJson()]});
@@ -378,6 +380,21 @@ class DaemonClient extends CouchClient {
     _gameProblems = list.errors;
     notifyListeners();
     return null;
+  }
+
+  @override
+  Future<({String? recipe, String? error})> addGame(String path) async {
+    final r = await _request('add_game', {'path': path});
+    if (r['ok'] != true) return (recipe: null, error: _errorOf(r));
+    await listGames();
+    return (recipe: r['recipe'] as String?, error: null);
+  }
+
+  @override
+  Future<String?> removeGame(String recipe) async {
+    final err = await _cmd('remove_game', {'recipe': recipe});
+    if (err == null) await listGames();
+    return err;
   }
 
   @override

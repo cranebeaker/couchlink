@@ -22,6 +22,30 @@ use tokio::time::Instant;
 
 pub const IDLE_EXIT: Duration = Duration::from_secs(10);
 
+fn settings_file() -> std::path::PathBuf {
+    couchlink_core::paths::state_dir().join("settings.json")
+}
+
+/// The saved FPS limit (0: none, also when the file is missing or broken).
+fn load_fps_limit() -> u32 {
+    std::fs::read_to_string(settings_file())
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .and_then(|v| v["fps_limit"].as_u64())
+        .map_or(0, |f| f as u32)
+}
+
+fn save_fps_limit(fps: u32) {
+    let path = settings_file();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let tmp = path.with_extension("json.tmp");
+    if std::fs::write(&tmp, serde_json::json!({ "fps_limit": fps }).to_string()).is_ok() {
+        let _ = std::fs::rename(&tmp, &path);
+    }
+}
+
 fn screens_file() -> std::path::PathBuf {
     couchlink_core::paths::state_dir().join("screens.json")
 }
@@ -95,6 +119,8 @@ pub struct Hub {
     session: session::Config,
     session_info: SessionInfo,
     session_handle: Option<session::Handle>,
+    /// The running game's own controls (recipe `controls`), played by seats that keep the default profile.
+    recipe_controls: Option<Profile>,
 }
 
 impl Hub {
@@ -123,9 +149,11 @@ impl Hub {
             session,
             session_info: SessionInfo::idle(),
             session_handle: None,
+            recipe_controls: None,
             model: {
                 let mut m = Model::new(dev);
                 m.restore_screens(load_screens());
+                let _ = m.set_fps_limit(load_fps_limit());
                 m
             },
             sdl,
@@ -365,6 +393,13 @@ impl Hub {
                 }
                 Ok(none)
             }
+            Command::SetFpsLimit { fps } => {
+                if self.model.set_fps_limit(fps)? {
+                    save_fps_limit(fps);
+                    self.changed();
+                }
+                Ok(none)
+            }
             Command::SetLayout { layout } => {
                 if self.model.set_layout(layout) {
                     self.changed();
@@ -445,6 +480,11 @@ impl Hub {
                 let errors: Vec<_> = errors.into_iter().map(|(file, error)| json!({ "file": file, "error": error })).collect();
                 Ok(json!({ "games": games, "errors": errors }))
             }
+            Command::AddGame { path, name } => {
+                let recipe = self.session.add_game(&path, name.as_deref())?;
+                Ok(json!({ "recipe": recipe }))
+            }
+            Command::RemoveGame { recipe } => self.session.remove_game(&recipe).map(|_| none),
             Command::StartSession { recipe, options } => self.start_session(&recipe, &options),
             Command::StopSession => self.stop_session(),
             Command::SteamAccounts => Ok(crate::accounts::list()),
@@ -467,10 +507,28 @@ impl Hub {
 
     // ---- profiles -------------------------------------------------------
 
-    fn save_seat_profiles(&self) {
-        crate::session::padfeed::set_profiles(&self.seat_profiles);
+    /// The profiles the game copies play: each seat's own, or the running game's controls for a seat that keeps the
+    /// default profile.
+    fn played_profiles(&self) -> Vec<Profile> {
+        self.seat_profiles
+            .iter()
+            .map(|p| match &self.recipe_controls {
+                Some(c) if p.id == DEFAULT_PROFILE_ID => c.clone(),
+                _ => p.clone(),
+            })
+            .collect()
+    }
+
+    /// Hand the played profiles to the pad feeds (Windows) and virtual pads (Linux).
+    fn push_profiles(&self) {
+        let played = self.played_profiles();
+        crate::session::padfeed::set_profiles(&played);
         #[cfg(target_os = "linux")]
-        crate::session::uipad_linux::set_profiles(&self.seat_profiles);
+        crate::session::uipad_linux::set_profiles(&played);
+    }
+
+    fn save_seat_profiles(&self) {
+        self.push_profiles();
         let ids: [String; MAX_SEATS] = std::array::from_fn(|i| self.seat_profiles[i].id.clone());
         if let Err(e) = self.store.save_seats(&ids) {
             self.log(LogLevel::Warn, format!("Cannot remember the seat profiles: {e}"));
@@ -496,8 +554,12 @@ impl Hub {
         let report: session::Report = std::sync::Arc::new(move |info| {
             let _ = tx.send(HubMsg::Session(info));
         });
+        // The game's own controls, for seats that keep the default profile, while the session runs.
+        let controls = plan.recipe.controls.as_ref().and_then(|c| Profile::from_value(c).ok());
         let handle = session::spawn(plan, self.session.deps.clone(), report)?;
         self.session_handle = Some(handle);
+        self.recipe_controls = controls;
+        self.push_profiles();
         // Until the worker reports, the session is starting.
         self.session_changed(SessionInfo { state: SessionState::Starting, recipe: Some(recipe.to_string()), seats: Vec::new(), error: None });
         Ok(json!({}))
@@ -523,6 +585,9 @@ impl Hub {
     fn session_changed(&mut self, info: SessionInfo) {
         if !info.active() {
             self.session_handle = None;
+            if self.recipe_controls.take().is_some() {
+                self.push_profiles();
+            }
         }
         if info != self.session_info {
             self.session_info = info;

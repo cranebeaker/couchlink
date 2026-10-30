@@ -32,6 +32,7 @@ class LibraryGame {
     this.installed = true,
     this.steamAppId,
     this.setup = const [],
+    this.controls = false,
   });
 
   final String id;
@@ -57,13 +58,16 @@ class LibraryGame {
   /// One-time steps before the first game.
   final List<SetupStep> setup;
 
+  /// The recipe brings pad controls for a game without pad support.
+  final bool controls;
+
   /// Installed and every one-time step done: Play can start it.
   bool get ready => installed && setup.every((s) => s.done);
 
   /// The recipe id (the library id of a game is its recipe).
   String get recipe => id;
 
-  LibraryGame copyWith({String? name, bool? installed, int? minPlayers, int? maxPlayers, int? steamAppId, List<SetupStep>? setup}) => LibraryGame(
+  LibraryGame copyWith({String? name, bool? installed, int? minPlayers, int? maxPlayers, int? steamAppId, List<SetupStep>? setup, bool? controls}) => LibraryGame(
         id: id,
         name: name ?? this.name,
         tier: tier,
@@ -78,6 +82,7 @@ class LibraryGame {
         installed: installed ?? this.installed,
         steamAppId: steamAppId ?? this.steamAppId,
         setup: setup ?? this.setup,
+        controls: controls ?? this.controls,
       );
 
   String get playersLabel => minPlayers == maxPlayers ? '$minPlayers' : '$minPlayers to $maxPlayers';
@@ -220,7 +225,7 @@ String _steamText(String steam) => switch (steam) {
 LibraryGame libraryGameOf(GameInfo g) {
   for (final s in sampleGames) {
     if (s.id == g.recipe) {
-      return s.copyWith(name: g.game, installed: g.installed, minPlayers: g.minPlayers, maxPlayers: g.maxPlayers, steamAppId: g.steamAppId, setup: g.setup);
+      return s.copyWith(name: g.game, installed: g.installed, minPlayers: g.minPlayers, maxPlayers: g.maxPlayers, steamAppId: g.steamAppId, setup: g.setup, controls: g.controls);
     }
   }
   var h = 0;
@@ -243,5 +248,6 @@ LibraryGame libraryGameOf(GameInfo g) {
     installed: g.installed,
     steamAppId: g.steamAppId,
     setup: g.setup,
+    controls: g.controls,
   );
 }

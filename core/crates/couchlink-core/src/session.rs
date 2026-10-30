@@ -78,6 +78,9 @@ pub struct GameInfo {
     /// One-time steps the player does before the first game (the recipe's `requires`), each with whether it is done.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub setup: Vec<SetupStep>,
+    /// The recipe brings controls of its own (`controls`): a pad mapping for a game without pad support.
+    #[serde(default)]
+    pub controls: bool,
 }
 
 /// A one-time step before the first game, as `list_games` shows it.
@@ -214,6 +217,7 @@ mod tests {
             displays: vec![display(100, -50, 1921, 1081)],
             screens,
             layout: Layout::Auto,
+            fps_limit: 0,
             dev: false,
         }
     }

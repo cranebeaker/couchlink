@@ -122,6 +122,39 @@ void main() {
     expect(find.textContaining('own Steam account'), findsWidgets);
   });
 
+  testWidgets('Add a game takes any program, shows it under Try it, and Remove forgets it', (tester) async {
+    final fake = fastFake(games: const []);
+    await pumpApp(tester, fake, view: AppView.library, size: const Size(1400, 1300));
+    final ui = scopeOf(tester).ui;
+    String? next;
+    ui.pickGame = () async => next;
+
+    // Cancelled: nothing happens.
+    await tester.tap(byKey('add-game'));
+    await settle(tester);
+    expect(fake.addedGames, isEmpty);
+
+    next = 'D:/Games/Old Game/OldGame.exe';
+    await tester.tap(byKey('add-game'));
+    await settle(tester);
+    expect(fake.addedGames, ['D:/Games/Old Game/OldGame.exe']);
+    expect(find.descendant(of: byKey('toast'), matching: find.text('Game added')), findsOneWidget);
+    expect(find.descendant(of: byKey('section-try'), matching: find.text('1 game')), findsOneWidget);
+    expect(byKey('game-try-own-1'), findsOneWidget);
+    expect(find.text('OldGame'), findsWidgets, reason: 'the added game is the one picked');
+
+    await tester.tap(byKey('remove-game'));
+    await settle(tester);
+    expect(byKey('game-try-own-1'), findsNothing);
+    expect(find.descendant(of: byKey('toast'), matching: find.text('Removed from Couchlink. Its files stay where they are.')), findsOneWidget);
+
+    // A daemon error shows in its own words.
+    next = 'nowhere';
+    await tester.tap(byKey('add-game'));
+    await settle(tester);
+    expect(find.descendant(of: byKey('toast'), matching: find.text('nowhere does not exist')), findsOneWidget);
+  });
+
   group('missing Steam games', () {
     testWidgets('a missing Steam game offers Install on Steam, and a click outside closes the sheet', (tester) async {
       final fake = fastFake(games: const [

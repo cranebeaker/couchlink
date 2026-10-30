@@ -185,6 +185,8 @@ pub fn guess_native(install_dir: &Path) -> Option<String> {
                 return false;
             }
         }
+        #[cfg(not(unix))]
+        let _ = meta; // no execute bit off Unix
         let mut magic = [0u8; 4];
         std::fs::File::open(path).and_then(|mut f| f.read_exact(&mut magic)).is_ok() && magic == *b"\x7fELF"
     }
@@ -215,14 +217,23 @@ pub fn guess_native(install_dir: &Path) -> Option<String> {
 /// A "Try it" recipe for an installed Steam game: one copy per player, every named single-instance lock renamed,
 /// your Steam for every copy (a player with their own Steam account plays on it), borderless windows.
 pub fn try_recipe(app_id: u32, name: &str, exe: &str) -> Option<Recipe> {
-    let file = exe.rsplit('/').next().unwrap_or(exe);
+    try_recipe_with(&format!("try-steam-{app_id}"), name, exe, Some(app_id))
+}
+
+/// A "Try it" recipe called `id` for the game whose program is `exe` (relative to its folder). Without a Steam app id
+/// it is a game from another store or the player's own files, and Steam stays out of it.
+pub fn try_recipe_with(id: &str, name: &str, exe: &str, app_id: Option<u32>) -> Option<Recipe> {
+    let matching = match app_id {
+        Some(app_id) => serde_json::json!({ "steamAppId": app_id, "exe": exe.rsplit('/').next().unwrap_or(exe) }),
+        None => serde_json::json!({ "exe": exe }),
+    };
     let v = serde_json::json!({
         "schema": 1,
-        "id": format!("try-steam-{app_id}"),
+        "id": id,
         "game": name,
-        "match": { "steamAppId": app_id, "exe": file },
+        "match": matching,
         "players": [2, couchlink_core::MAX_SEATS],
-        "steam": "shared",
+        "steam": if app_id.is_some() { "shared" } else { "none" },
         "launch": { "exe": exe, "args": "" },
         "files": { "copy": [], "link": "all", "saves": [] },
         "locks": ["*"],
@@ -364,6 +375,7 @@ pub fn game_info(locators: &[Locator], r: &Recipe) -> GameInfo {
         options: couchlink_core::OptionInfo::list(r),
         steam_app_id: r.matching.steam_app_id,
         setup,
+        controls: r.controls.is_some(),
     }
 }
 

@@ -209,6 +209,9 @@ pub fn copy_line(spec: &LaunchSpec, seat: &LinuxSeat, tools: &Tools, pad_paths: 
             if seat.borderless {
                 g.push("-b".into());
             }
+            if let Some(fps) = seat.fps_limit {
+                g.extend(["--framerate-limit".into(), fps.to_string()]);
+            }
             g.extend(couchlink_core::recipe::split_args(&opts.gamescope_args));
             // The game first tells the daemon which display gamescope gave it, for the seat's keyboard and mouse.
             let file = seat.data_dir.join("display");
@@ -391,6 +394,7 @@ mod tests {
             game_id: "umu-264710".into(),
             rect: Rect { x: 960, y: 0, w: 960, h: 1080 },
             borderless: true,
+            fps_limit: None,
             data_dir: "/state/instances/x/.seats/1".into(),
             sandbox_pid: None,
         }
@@ -424,6 +428,15 @@ mod tests {
         assert_eq!(l.env["ENABLE_GAMESCOPE_WSI"], "0");
         assert_eq!(l.env["SteamAppId"], "264710", "the recipe's environment is kept");
         assert!(!l.env.contains_key("PROTONPATH") && !l.env.contains_key("HOME"));
+    }
+
+    #[test]
+    fn gamescope_holds_the_copy_to_the_fps_limit() {
+        let s = LinuxSeat { fps_limit: Some(30), ..seat(LinuxOpts::default()) };
+        let l = copy_line(&spec("/g/Game.exe"), &s, &tools(), &[], Sandbox::Bwrap).unwrap();
+        assert!(after_sandbox(&l).windows(2).any(|w| w == ["--framerate-limit", "30"]), "{:?}", l.args);
+        let l = copy_line(&spec("/g/Game.exe"), &seat(LinuxOpts::default()), &tools(), &[], Sandbox::Bwrap).unwrap();
+        assert!(!l.args.iter().any(|a| a == "--framerate-limit"));
     }
 
     #[test]

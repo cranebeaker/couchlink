@@ -186,16 +186,23 @@ class DaemonState {
     this.displays = const [],
     this.screens = const [],
     this.layout = 'auto',
+    this.fpsLimit = 0,
     this.dev = false,
   });
 
   static const empty = DaemonState();
+
+  /// The daemon's MAX_SEATS.
+  static const maxSeats = 8;
 
   final List<Device> devices;
   final List<Seat?> seats;
   final List<DisplayInfo> displays;
   final List<ScreenArrangement> screens;
   final String layout;
+
+  /// Frames per second every game copy is held to; 0 for no limit.
+  final int fpsLimit;
   final bool dev;
 
   Device? device(String id) {
@@ -229,9 +236,9 @@ class DaemonState {
   factory DaemonState.fromJson(Map<String, dynamic> j) {
     final seatsRaw = j['seats'];
     final seats = <Seat?>[
-      if (seatsRaw is List) ...seatsRaw.take(4).map(Seat.fromJson),
+      if (seatsRaw is List) ...seatsRaw.take(maxSeats).map(Seat.fromJson),
     ];
-    while (seats.length < 4) {
+    while (seats.length < maxSeats) {
       seats.add(null);
     }
     final devs = j['devices'];
@@ -242,6 +249,7 @@ class DaemonState {
       displays: disp is List ? disp.whereType<Map>().map((m) => DisplayInfo.fromJson(m.cast<String, dynamic>())).toList() : const [],
       screens: j['screens'] is List ? (j['screens'] as List).whereType<Map>().map((m) => ScreenArrangement.fromJson(m.cast<String, dynamic>())).toList() : const [],
       layout: _str(j['layout'], 'auto'),
+      fpsLimit: j['fps_limit'] is num ? (j['fps_limit'] as num).toInt() : 0,
       dev: j['dev'] == true,
     );
   }
@@ -438,6 +446,7 @@ class GameInfo {
     this.source = 'builtin',
     this.steamAppId,
     this.setup = const [],
+    this.controls = false,
   });
 
   final String recipe;
@@ -460,6 +469,9 @@ class GameInfo {
 
   /// One-time steps before the first game, each with whether it is done.
   final List<SetupStep> setup;
+
+  /// The recipe brings pad controls for a game without pad support.
+  final bool controls;
 
   factory GameInfo.fromJson(Map<String, dynamic> j) {
     final p = j['players'];
@@ -485,6 +497,7 @@ class GameInfo {
           for (final x in j['setup'] as List)
             if (x is Map) SetupStep(_str(x['text']), done: x['done'] == true),
       ],
+      controls: j['controls'] == true,
     );
   }
 }

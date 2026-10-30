@@ -34,6 +34,8 @@ pub struct Plan {
     pub state_dir: PathBuf,
     /// The value of every option of the recipe: what the player chose, else the default.
     pub options: BTreeMap<String, String>,
+    /// Frames per second the copies are held to: the player's limit, else the recipe's (`window.fps_limit`).
+    pub fps_limit: Option<u32>,
 }
 
 /// Called with the new picture every time something changes.
@@ -522,11 +524,18 @@ impl Run {
         self.set_step(idx, Step::Launch, None);
         let vars = self.vars(idx).map_err(|e| self.seat_failed(idx, Step::Launch, e))?;
         let dir = self.seats[idx].dir.clone();
-        let (exe, args) = launch_line(recipe);
+        let (exe, args) = launch_line(recipe, self.seats[idx].plan.seat);
         let mut spec = self.spec(Some(idx), exe, args, &dir, &vars).map_err(|e| self.seat_failed(idx, Step::Launch, e))?;
         spec.linux = self.linux_seat(idx, &vars).map_err(|e| self.seat_failed(idx, Step::Launch, format!("linux: {e}")))?;
         let prep = &self.seats[idx].prep;
         spec.env.extend(prep.env.clone());
+        // The FPS limit for games that render through DXVK or VKD3D (Proton, and those builds on Windows); on Linux
+        // gamescope holds every game to it as well (launch_linux.rs). The recipe's own value wins.
+        if let Some(fps) = self.plan.fps_limit {
+            for var in ["DXVK_FRAME_RATE", "VKD3D_FRAME_RATE"] {
+                spec.env.entry(var.to_string()).or_insert_with(|| fps.to_string());
+            }
+        }
         // A recipe whose window belongs to another exe, or a loader that starts the game, runs through a launcher.
         spec.hook_children = recipe.window.exe.is_some() || prep.follow.is_some();
         spec.run_as = prep.run_as.clone();
@@ -604,6 +613,7 @@ impl Run {
             opts,
             rect: s.plan.rect,
             borderless: recipe.window.borderless,
+            fps_limit: self.plan.fps_limit,
             data_dir: self.plan.state_dir.join("instances").join(&recipe.id).join(".seats").join(s.plan.seat.to_string()),
             #[cfg(target_os = "linux")]
             sandbox_pid: s.ns.as_ref().map(|n| n.pid),
@@ -782,15 +792,17 @@ impl Run {
     }
 }
 
-/// The program and arguments a seat's copy starts: the recipe's `linux.exe` (and `linux.args`) on Linux when it has one.
-fn launch_line(recipe: &Recipe) -> (&str, &str) {
+/// The program and arguments seat `seat`'s copy starts: the recipe's `linux.exe` (and `linux.args`) on Linux when it
+/// has one, and the seat's own `launch.seat_args` when the recipe has some for it.
+fn launch_line(recipe: &Recipe, seat: usize) -> (&str, &str) {
+    let args = recipe.launch.args_for(seat);
     if cfg!(target_os = "linux")
         && let Some(l) = &recipe.linux
         && let Some(exe) = &l.exe
     {
-        return (exe, l.args.as_deref().unwrap_or(&recipe.launch.args));
+        return (exe, l.args.as_deref().unwrap_or(args));
     }
-    (&recipe.launch.exe, &recipe.launch.args)
+    (&recipe.launch.exe, args)
 }
 
 /// A path from a recipe: absolute as it is, relative to `dir` otherwise.

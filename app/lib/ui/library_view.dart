@@ -31,6 +31,32 @@ class LibraryView extends StatefulWidget {
 class _LibraryViewState extends State<LibraryView> {
   bool _asked = false;
 
+  /// Add a game of the player's own: any program, from any store or none. Couchlink does not ask where it came from.
+  Future<void> _addGame(Scope scope) async {
+    String? path;
+    try {
+      path = await scope.ui.pickGame();
+    } catch (e) {
+      scope.toaster.show(t('Could not open the file: {e}', {'e': e}));
+      return;
+    }
+    if (path == null || !mounted) return;
+    final added = await scope.client.addGame(path);
+    if (!mounted) return;
+    if (added.error != null) {
+      scope.toaster.show(added.error!, long: true);
+      return;
+    }
+    scope.ui.selectGame(added.recipe!);
+    scope.toaster.show(t('Game added'));
+  }
+
+  Future<void> _removeGame(Scope scope, String recipe) async {
+    final err = await scope.client.removeGame(recipe);
+    if (!mounted) return;
+    scope.toaster.show(err ?? t('Removed from Couchlink. Its files stay where they are.'), long: err != null);
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -65,8 +91,9 @@ class _LibraryViewState extends State<LibraryView> {
               PageHead(
                 title: t('Library'),
                 subtitle: t('Every game Couchlink can split, yours first. Pick one, then bring in your players.'),
-                trailing: Wrap(spacing: 8, runSpacing: 8, children: [
+                trailing: Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
                   for (final (k, l) in _filters) CChip(key: ValueKey('filter-$k'), label: l, selected: ui.libraryFilter == k, onTap: () => ui.setLibraryFilter(k)),
+                  CButton(key: const ValueKey('add-game'), label: t('Add a game'), small: true, onTap: () => _addGame(scope)),
                 ]),
               ),
               if (r != null)
@@ -107,6 +134,8 @@ class _LibraryViewState extends State<LibraryView> {
                                     },
                                   ),
                                   Tag(r.tier.label, kind: tagKind(r.tier)),
+                                  if (r.id.startsWith('try-own-'))
+                                    CButton(key: const ValueKey('remove-game'), label: t('Remove from Couchlink'), small: true, onTap: () => _removeGame(scope, r.id)),
                                 ]),
                               ],
                             ),
@@ -226,6 +255,7 @@ class _GameCard extends StatelessWidget {
             const SizedBox(height: 6),
             Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
               Tag(game.tier.label, kind: tagKind(game.tier)),
+              if (game.controls) const Tag('Pad controls'),
               Text(game.installed ? '${game.playersLabel} players' : t('Not installed'), style: txt(context, size: 12, color: c.ink2, height: 1.3)),
             ]),
           ],

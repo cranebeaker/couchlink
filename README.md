@@ -40,7 +40,8 @@ way the game already supports: LAN, a co-op mod's server, or Steam. Any game tha
 - One Steam account is enough: every copy runs under yours, and Steam-only co-op games get a stand-in profile per
   copy (Goldberg emulator).
 - Want each player on their own Steam account? One click on their seat, sign in once.
-- Every other game on your PC shows up under "Try it", with safe defaults.
+- Every other game on your PC shows up under "Try it", with safe defaults: Steam, GOG, Epic (and Heroic on Linux), or
+  any game folder of your own you add in the Library.
 - Game copies take no extra disk space, and saves stay per player.
 - New co-op recipes sync into the app on their own, signed.
 
@@ -125,7 +126,8 @@ Couchlink запускает отдельную копию игры для ка�
 - Хватит одного аккаунта Steam: все копии работают под вашим, а игры с кооперативом только через Steam получают
   отдельный профиль на каждую копию (эмулятор Goldberg).
 - Хотите, чтобы у каждого игрока был свой аккаунт Steam? Один клик по его месту и один вход.
-- Все остальные игры на вашем ПК появляются в разделе «Try it» с безопасными настройками.
+- Все остальные игры на вашем ПК появляются в разделе «Try it» с безопасными настройками: Steam, GOG, Epic (и Heroic
+  на Linux) или любая папка с игрой, которую вы добавите в библиотеке.
 - Копии игры не занимают лишнего места на диске, сохранения у каждого игрока свои.
 - Новые кооп-рецепты сами подтягиваются в приложение, с подписью.
 - Приложение на русском: язык берётся из Windows, а в боковой панели есть переключатель EN / RU.
