@@ -460,7 +460,7 @@ async fn run() -> u32 {
         seat_devices(s, 0) == [p2.clone()] && seat_devices(s, 1) == [p1.clone()] && s["seats"][0]["color"] == "#0A84FF" && s["seats"][1]["color"] == "#FF6B5B",
     );
     c.check("custom name travelled with its player", s["seats"][1]["name"] == "Ada" && s["seats"][0]["name"] == "Player 1");
-    let r = cl.request(json!({"cmd": "swap", "a": 0, "b": 4})).await;
+    let r = cl.request(json!({"cmd": "swap", "a": 0, "b": 8})).await;
     c.check("swap with a bad seat is an error", r["ok"] == false);
 
     // Assign.
