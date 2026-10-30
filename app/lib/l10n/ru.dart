@@ -250,6 +250,8 @@ const Map<String, String> ruStrings = {
   'Pad controls': 'Управление с геймпада',
   'Add a game': 'Добавить игру',
   'Copy log': 'Скопировать лог',
+  'Search {count}': 'Поиск: {count}',
+  'No game matches “{query}”.': 'Нет игр по запросу «{query}».',
   'Settings': 'Настройки',
   'Back': 'Назад',
   'Logs': 'Логи',
