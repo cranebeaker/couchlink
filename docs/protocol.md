@@ -58,6 +58,7 @@ Daemon to client (events, no id): `{"event": "<name>", ...}`
 | `joined` | `{"seat": n, "device": id}` | Right after a press-to-join, so the UI can animate it. A `state` event follows. |
 | `catalog` | `{"catalog": Catalog}` | After a successful catalog refresh (the daemon's own 6 hour refresh or `refresh_catalog`). Broadcast to every client. |
 | `log` | `{"level": "info"\|"warn"\|"error", "text": "..."}` | Things the UI may show as a toast (for example "Controller disconnected"). |
+| `games_changed` | | New live recipes arrived (a first start gets most of them a few seconds after the app connects). Ask `list_games` again. |
 | `session` | `{"state", "recipe", "seats", "error"}` | Every time the game session changes. Also sent right after `hello` while a session exists. See [Game sessions](#game-sessions). |
 
 ## State

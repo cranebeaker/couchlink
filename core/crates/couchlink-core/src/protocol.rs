@@ -247,6 +247,8 @@ pub enum Event {
     Joined { seat: usize, device: String },
     Log { level: LogLevel, text: String },
     Catalog { catalog: Catalog },
+    /// The game list changed (new live recipes arrived): ask `list_games` again.
+    GamesChanged,
     /// The game session changed (see docs/launch.md).
     Session {
         state: crate::session::SessionState,

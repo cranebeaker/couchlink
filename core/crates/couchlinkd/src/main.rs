@@ -179,10 +179,13 @@ fn run(args: Args) -> Result<(), String> {
     // Undo whatever a crashed session left behind before anything else starts.
     let session_cfg = {
         let state_dir = paths::state_dir();
+        logfile::write("info", &format!("couchlinkd {} started on {}", env!("CARGO_PKG_VERSION"), std::env::consts::OS));
         let cfg = session::Config::new(args.recipes.clone(), state_dir.clone(), session::Deps::standard(&state_dir));
         let report = cfg.recover();
         if report.undone > 0 || !report.failed.is_empty() {
-            eprintln!("couchlinkd: undid {} change(s) left by an earlier session; {} could not be undone {:?}", report.undone, report.failed.len(), report.failed);
+            let text = format!("undid {} change(s) left by an earlier session; {} could not be undone {:?}", report.undone, report.failed.len(), report.failed);
+            eprintln!("couchlinkd: {text}");
+            logfile::write("warn", &text);
         }
         cfg
     };

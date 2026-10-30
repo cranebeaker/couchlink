@@ -222,7 +222,11 @@ impl Hub {
                     }
                 }
                 HubMsg::CatalogFetched(result) => self.catalog_fetched(result),
-                HubMsg::RecipesFetched(Ok(summary)) => self.log(LogLevel::Info, format!("Live recipes updated: {summary}")),
+                HubMsg::RecipesFetched(Ok(summary)) => {
+                    self.log(LogLevel::Info, format!("Live recipes updated: {summary}"));
+                    // The app listed the games when it connected, often before the new recipes were in.
+                    self.broadcast(&Event::GamesChanged);
+                }
                 HubMsg::RecipesFetched(Err(e)) => self.log(LogLevel::Warn, format!("Live recipes could not be refreshed ({e}); using the ones already on this PC")),
                 HubMsg::Session(info) => self.session_changed(info),
                 HubMsg::Kbm(ev) => self.handle_kbm(ev),

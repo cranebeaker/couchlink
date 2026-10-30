@@ -53,6 +53,9 @@ Optional, each for something more:
 
 Ubuntu 24.04 and later stop programs from making sandboxes unless allowed (AppArmor). Couchlink then uses bubblewrap
 if it is installed, and tells you what to do if Proton cannot start inside the sandbox.
+
+Something wrong? Couchlink keeps its logs in ~/.local/state/couchlink/logs ($XDG_STATE_HOME/couchlink/logs
+when that is set): couchlinkd.log and one per game copy. Copy log in the app puts their ends on the clipboard.
 """
 
 

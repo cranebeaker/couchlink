@@ -273,6 +273,9 @@ class DaemonClient extends CouchClient {
         notifyListeners();
         // Game folders can change while a session runs (a first run installs a mod), so look again at the end.
         if (_session.state == 'idle') unawaited(listGames());
+      case 'games_changed':
+        // New live recipes arrived after the list this client already has.
+        unawaited(listGames());
       case 'log':
         final text = j['text'];
         if (text is String) {
