@@ -4,6 +4,9 @@
 //! same processor the app shows. Rumble the game asks for goes back to the real pad. Any controller SDL knows thus
 //! reaches the game as one kind of pad, as on Windows.
 //!
+//! A profile's keyboard and mouse bindings (a button that types a key, a stick that moves the mouse) go into the
+//! seat's gamescope display with XTEST, like the seat's own keyboard (`rawkbm_linux.rs`).
+//!
 //! The seat's sandbox (`ns_linux.rs`) shows the copy only the virtual pad's node. Where `/dev/uinput` cannot be
 //! opened, the copy gets the real pad's nodes instead (no remaps), and the log says why. couchlinkd's own SDL thread
 //! leaves these pads alone ([`is_ours`]).
@@ -123,6 +126,136 @@ struct Pad {
     effects: [(u16, u16); 16],
     rumble: Option<(u16, u16)>,
     rumble_changed: bool,
+    /// Where the profile's keys and mouse go: the seat's gamescope display.
+    x: XOut,
+}
+
+/// The seat's gamescope X display, for what a profile turns into keys and mouse input.
+#[derive(Default)]
+struct XOut {
+    /// Where the copy wrote its display name.
+    file: Option<PathBuf>,
+    conn: Option<x11rb::rust_connection::RustConnection>,
+    keys: Vec<String>,
+    mouse: Vec<String>,
+    last_ms: u64,
+    /// Mouse movement not sent yet (less than a pixel).
+    rest: (f32, f32),
+}
+
+/// Pixels per second a fully pushed stick moves the mouse.
+const MOUSE_SPEED: f32 = 1500.0;
+
+/// The Linux key code for a profile key name (`profile::is_key_name`).
+pub fn key_code(name: &str) -> Option<u16> {
+    const LETTERS: &[u8; 26] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const LETTER_CODES: [u16; 26] = [30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38, 50, 49, 24, 25, 16, 19, 31, 20, 22, 47, 17, 45, 21, 44];
+    let mut cs = name.chars();
+    if let (Some(c), None) = (cs.next(), cs.next()) {
+        if let Some(i) = LETTERS.iter().position(|l| *l as char == c) {
+            return Some(LETTER_CODES[i]);
+        }
+        if let Some(d) = c.to_digit(10) {
+            return Some(if d == 0 { 11 } else { 1 + d as u16 });
+        }
+        return None;
+    }
+    let named = [
+        ("Space", 57), ("Enter", 28), ("Esc", 1), ("Tab", 15), ("Shift", 42), ("Ctrl", 29), ("Alt", 56), ("Backspace", 14),
+        ("Up", 103), ("Down", 108), ("Left", 105), ("Right", 106), ("F11", 87), ("F12", 88),
+    ];
+    if let Some((_, c)) = named.iter().find(|(n, _)| *n == name) {
+        return Some(*c);
+    }
+    let f: u16 = name.strip_prefix('F')?.parse().ok()?;
+    (1..=10).contains(&f).then_some(58 + f)
+}
+
+/// The X button for a profile mouse action, and whether it is a click (press and release at once: the wheel).
+fn mouse_button(action: &str) -> Option<(u8, bool)> {
+    Some(match action {
+        "left" => (1, false),
+        "middle" => (2, false),
+        "right" => (3, false),
+        "wheel_up" => (4, true),
+        "wheel_down" => (5, true),
+        "back" => (8, false),
+        "forward" => (9, false),
+        _ => return None,
+    })
+}
+
+impl XOut {
+    fn connection(&mut self) -> Option<&x11rb::rust_connection::RustConnection> {
+        if self.conn.is_none() {
+            let name = std::fs::read_to_string(self.file.as_ref()?).ok()?;
+            let name = name.trim();
+            if name.is_empty() {
+                return None;
+            }
+            self.conn = x11rb::connect(Some(name)).ok().map(|(c, _)| c);
+        }
+        self.conn.as_ref()
+    }
+
+    /// Send what changed in the profile's keys and mouse since the last sample.
+    fn send(&mut self, o: &couchlink_core::Output, now_ms: u64) {
+        use x11rb::connection::Connection;
+        use x11rb::protocol::xproto::{BUTTON_PRESS_EVENT, BUTTON_RELEASE_EVENT, KEY_PRESS_EVENT, KEY_RELEASE_EVENT, MOTION_NOTIFY_EVENT};
+        use x11rb::protocol::xtest::ConnectionExt as _;
+        let dt = (now_ms.saturating_sub(self.last_ms)).min(100) as f32 / 1000.0;
+        self.last_ms = now_ms;
+        let nothing = o.keys.is_empty() && o.mouse.is_empty() && self.keys.is_empty() && self.mouse.is_empty() && o.mx == 0.0 && o.my == 0.0;
+        if self.file.is_none() || nothing {
+            return;
+        }
+        let (old_keys, old_mouse) = (std::mem::take(&mut self.keys), std::mem::take(&mut self.mouse));
+        self.rest.0 += o.mx * MOUSE_SPEED * dt;
+        self.rest.1 += o.my * MOUSE_SPEED * dt;
+        let (dx, dy) = (self.rest.0.trunc(), self.rest.1.trunc());
+        self.rest = (self.rest.0 - dx, self.rest.1 - dy);
+        let Some(x) = self.connection() else { return };
+        let fake = |kind: u8, detail: u8, rx: i16, ry: i16| {
+            let _ = x.xtest_fake_input(kind, detail, 0, x11rb::NONE, rx, ry, 0);
+        };
+        for k in o.keys.iter().filter(|k| !old_keys.contains(k)) {
+            if let Some(c) = key_code(k) {
+                fake(KEY_PRESS_EVENT, (c + 8) as u8, 0, 0);
+            }
+        }
+        for k in old_keys.iter().filter(|k| !o.keys.contains(k)) {
+            if let Some(c) = key_code(k) {
+                fake(KEY_RELEASE_EVENT, (c + 8) as u8, 0, 0);
+            }
+        }
+        for m in o.mouse.iter().filter(|m| !old_mouse.contains(m)) {
+            if let Some((b, click)) = mouse_button(m) {
+                fake(BUTTON_PRESS_EVENT, b, 0, 0);
+                if click {
+                    fake(BUTTON_RELEASE_EVENT, b, 0, 0);
+                }
+            }
+        }
+        for m in old_mouse.iter().filter(|m| !o.mouse.contains(m)) {
+            if let Some((b, false)) = mouse_button(m) {
+                fake(BUTTON_RELEASE_EVENT, b, 0, 0);
+            }
+        }
+        if dx != 0.0 || dy != 0.0 {
+            // detail 1: relative motion.
+            fake(MOTION_NOTIFY_EVENT, 1, dx as i16, dy as i16);
+        }
+        let _ = x.flush();
+        self.keys = o.keys.clone();
+        self.mouse = o.mouse.clone();
+    }
+}
+
+/// The seat's game runs in gamescope, which tells its display name in `file`: the profile's keys and mouse go there.
+pub fn set_display(seat: usize, file: PathBuf) {
+    for p in registry().pads.iter_mut().filter(|p| p.seat == seat) {
+        p.x = XOut { file: Some(file.clone()), ..XOut::default() };
+    }
 }
 
 #[derive(Default)]
@@ -226,6 +359,7 @@ pub fn create(device: &str, seat: usize) -> Result<PadGuard, String> {
         effects: [(0, 0); 16],
         rumble: None,
         rumble_changed: false,
+        x: XOut::default(),
     });
     Ok(PadGuard { id, node })
 }
@@ -357,6 +491,7 @@ pub fn publish(device: &str, sample: &InputSample) {
         let profile = profiles.get(p.seat).cloned().unwrap_or_else(|| couchlink_core::profile::builtin("default").expect("the default profile"));
         let out = process(&profile, &mut p.state, now, sample);
         p.show(shown(&out));
+        p.x.send(&out, now);
         p.serve_rumble();
     }
 }
@@ -381,6 +516,28 @@ mod tests {
 
     fn sample(buttons: &[Button], lx: f32, lt: f32) -> InputSample {
         InputSample { lx, ly: 0.0, rx: 0.0, ry: 0.0, lt, rt: 0.0, buttons: buttons.to_vec(), out: None }
+    }
+
+    #[test]
+    fn every_profile_key_has_a_code() {
+        for c in 'A'..='Z' {
+            assert!(key_code(&c.to_string()).is_some(), "{c}");
+        }
+        for d in '0'..='9' {
+            assert!(key_code(&d.to_string()).is_some(), "{d}");
+        }
+        for k in couchlink_core::profile::NAMED_KEYS.iter().chain(["F11", "F12"].iter()) {
+            assert!(key_code(k).is_some(), "{k}");
+        }
+        assert_eq!(key_code("A"), Some(30));
+        assert_eq!(key_code("Q"), Some(16));
+        assert_eq!(key_code("1"), Some(2));
+        assert_eq!(key_code("0"), Some(11));
+        assert_eq!(key_code("F10"), Some(68));
+        assert_eq!(key_code("Banana"), None);
+        for m in couchlink_core::profile::MOUSE_ACTIONS {
+            assert!(mouse_button(m).is_some(), "{m}");
+        }
     }
 
     #[test]

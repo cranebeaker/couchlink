@@ -111,7 +111,8 @@ impl Hub {
                 .and_then(|id| builtin(id).or_else(|| store.load(id)))
                 .unwrap_or_else(default_profile)
         });
-        // Linux games play through a virtual pad per seat, driven through the seat's profile.
+        // Games play the seat's profile: the pad feeds (Windows) and the virtual pads (Linux) get them.
+        crate::session::padfeed::set_profiles(&seat_profiles);
         #[cfg(target_os = "linux")]
         crate::session::uipad_linux::set_profiles(&seat_profiles);
         Hub {
@@ -467,6 +468,7 @@ impl Hub {
     // ---- profiles -------------------------------------------------------
 
     fn save_seat_profiles(&self) {
+        crate::session::padfeed::set_profiles(&self.seat_profiles);
         #[cfg(target_os = "linux")]
         crate::session::uipad_linux::set_profiles(&self.seat_profiles);
         let ids: [String; MAX_SEATS] = std::array::from_fn(|i| self.seat_profiles[i].id.clone());
