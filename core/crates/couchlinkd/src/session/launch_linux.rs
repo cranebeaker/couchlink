@@ -28,7 +28,11 @@ impl Launcher for LinuxLauncher {
             Some(seat) => {
                 let home = seat.data_dir.join("home");
                 std::fs::create_dir_all(&home).map_err(|e| format!("cannot create {}: {e}", home.display()))?;
-                copy_line(spec, seat, &tools, &super::hook::pad_nodes(&spec.devices))?
+                let kbm = super::rawkbm::linux::nodes(&spec.devices);
+                if !kbm.is_empty() && tools.gamescope_kbm.is_none() {
+                    eprintln!("couchlinkd: seat {:?} has a keyboard or mouse of its own, but gamescope-kbm is not installed; it gets the desktop's", spec.seat);
+                }
+                copy_line(spec, seat, &tools, &super::hook::pad_nodes(&spec.devices), &kbm)?
             }
             None => helper_line(spec, &tools)?,
         };
@@ -45,12 +49,15 @@ impl Launcher for LinuxLauncher {
 pub struct Tools {
     pub bwrap: Option<PathBuf>,
     pub gamescope: Option<PathBuf>,
+    /// PartyDeck's gamescope fork, which reads keyboards and mice of its own instead of the desktop's.
+    pub gamescope_kbm: Option<PathBuf>,
     pub umu: Option<PathBuf>,
 }
 
 impl Tools {
     pub fn find() -> Tools {
-        Tools { bwrap: which("bwrap"), gamescope: which("gamescope"), umu: which("umu-run") }
+        let kbm = std::env::var_os("COUCHLINK_GAMESCOPE_KBM").map(PathBuf::from).filter(|p| p.is_file()).or_else(|| which("gamescope-kbm"));
+        Tools { bwrap: which("bwrap"), gamescope: which("gamescope"), gamescope_kbm: kbm, umu: which("umu-run") }
     }
 }
 
@@ -81,7 +88,8 @@ fn helper_line(spec: &LaunchSpec, tools: &Tools) -> Result<Line, String> {
 const NO_UMU: &str = "this is a Windows game, and starting it on Linux needs umu-launcher (umu-run), which is not installed";
 
 /// The full command line of one game copy.
-pub fn copy_line(spec: &LaunchSpec, seat: &LinuxSeat, tools: &Tools, pad_paths: &[String]) -> Result<Line, String> {
+/// `pad_paths` are the device paths of the seat's controllers, `kbm` the event nodes of its own keyboards and mice.
+pub fn copy_line(spec: &LaunchSpec, seat: &LinuxSeat, tools: &Tools, pad_paths: &[String], kbm: &[String]) -> Result<Line, String> {
     let opts = &seat.opts;
     let exe = spec.exe.display().to_string();
     let proton = opts.uses_proton(&exe);
@@ -121,12 +129,21 @@ pub fn copy_line(spec: &LaunchSpec, seat: &LinuxSeat, tools: &Tools, pad_paths: 
     // Around it: the seat's own window.
     let mut line = inner;
     if opts.gamescope {
-        let gamescope = tools.gamescope.clone().ok_or("gamescope is not installed; Couchlink needs it to give each player a window of their own on Linux")?;
+        // A seat with keyboards or mice of its own needs gamescope-kbm to read them; any other seat takes the plain one.
+        let own_kbm = !kbm.is_empty() && tools.gamescope_kbm.is_some();
+        let gamescope = if own_kbm { tools.gamescope_kbm.clone() } else { tools.gamescope.clone().or_else(|| tools.gamescope_kbm.clone()) }
+            .ok_or("gamescope is not installed; Couchlink needs it to give each player a window of their own on Linux")?;
         let (w, h) = (seat.rect.w.max(1).to_string(), seat.rect.h.max(1).to_string());
         // A nested gamescope (SDL backend) in a window of the seat's size, the game rendered at that size.
         let mut g = vec![gamescope.display().to_string(), "--backend".into(), "sdl".into(), "-W".into(), w.clone(), "-H".into(), h.clone(), "-w".into(), w, "-h".into(), h];
         if seat.borderless {
             g.push("-b".into());
+        }
+        if own_kbm {
+            // Only the seat's own keyboards and mice, taken for this window alone (PartyDeck's flags).
+            g.extend(["--backend-disable-keyboard".into(), "--backend-disable-mouse".into()]);
+            g.push(format!("--libinput-hold-dev={}", kbm.iter().map(|n| format!("{n},")).collect::<String>()));
+            g.push("--grab".into());
         }
         g.extend(couchlink_core::recipe::split_args(&opts.gamescope_args));
         g.push("--".into());
@@ -142,7 +159,10 @@ pub fn copy_line(spec: &LaunchSpec, seat: &LinuxSeat, tools: &Tools, pad_paths: 
 
     // Outermost: the input sandbox.
     let bwrap = tools.bwrap.clone().ok_or("bubblewrap (bwrap) is not installed; without it every copy would see every controller")?;
-    let mut args = seat_args(pad_paths, &[]);
+    // The seat's keyboards and mice are its own nodes too, so gamescope-kbm (inside the sandbox) can open them.
+    let mut own: Vec<String> = pad_paths.to_vec();
+    own.extend(kbm.iter().cloned());
+    let mut args = seat_args(&own, &[]);
     args.extend(line);
     Ok(Line { program: bwrap, args, env })
 }
@@ -234,7 +254,7 @@ mod tests {
     }
 
     fn tools() -> Tools {
-        Tools { bwrap: Some("/usr/bin/bwrap".into()), gamescope: Some("/usr/bin/gamescope".into()), umu: Some("/usr/bin/umu-run".into()) }
+        Tools { bwrap: Some("/usr/bin/bwrap".into()), gamescope: Some("/usr/bin/gamescope".into()), gamescope_kbm: None, umu: Some("/usr/bin/umu-run".into()) }
     }
 
     /// The part of the line after bwrap's own options.
@@ -245,7 +265,7 @@ mod tests {
 
     #[test]
     fn a_windows_game_runs_through_proton_in_gamescope_in_the_sandbox() {
-        let l = copy_line(&spec("/state/instances/x/1/Game.exe"), &seat(LinuxOpts::default()), &tools(), &[]).unwrap();
+        let l = copy_line(&spec("/state/instances/x/1/Game.exe"), &seat(LinuxOpts::default()), &tools(), &[], &[]).unwrap();
         assert_eq!(l.program, PathBuf::from("/usr/bin/bwrap"));
         assert_eq!(
             after_sandbox(&l),
@@ -262,7 +282,7 @@ mod tests {
     #[test]
     fn a_native_game_gets_a_home_of_its_own() {
         let opts = LinuxOpts { gamescope_args: "--force-grab-cursor".into(), env: BTreeMap::from([("A".to_string(), "1".to_string())]), ..LinuxOpts::default() };
-        let l = copy_line(&spec("/state/instances/x/1/game.x86_64"), &seat(opts), &tools(), &[]).unwrap();
+        let l = copy_line(&spec("/state/instances/x/1/game.x86_64"), &seat(opts), &tools(), &[], &[]).unwrap();
         let rest = after_sandbox(&l);
         assert_eq!(rest[rest.len() - 4..], ["--force-grab-cursor", "--", "/state/instances/x/1/game.x86_64", "-windowed"]);
         assert_eq!(l.env["HOME"], "/state/instances/x/.seats/1/home");
@@ -274,20 +294,42 @@ mod tests {
     #[test]
     fn without_gamescope_the_game_runs_straight_in_the_sandbox() {
         let opts = LinuxOpts { gamescope: false, runner: Runner::Native, ..LinuxOpts::default() };
-        let l = copy_line(&spec("/g/run.sh"), &seat(opts), &Tools { gamescope: None, ..tools() }, &[]).unwrap();
+        let l = copy_line(&spec("/g/run.sh"), &seat(opts), &Tools { gamescope: None, ..tools() }, &[], &[]).unwrap();
         assert_eq!(after_sandbox(&l), ["/g/run.sh", "-windowed"]);
     }
 
     #[test]
     fn missing_tools_are_named() {
         let s = seat(LinuxOpts::default());
-        let e = copy_line(&spec("/g/Game.exe"), &s, &Tools { bwrap: None, ..tools() }, &[]).unwrap_err();
+        let e = copy_line(&spec("/g/Game.exe"), &s, &Tools { bwrap: None, ..tools() }, &[], &[]).unwrap_err();
         assert!(e.contains("bwrap"), "{e}");
-        let e = copy_line(&spec("/g/Game.exe"), &s, &Tools { gamescope: None, ..tools() }, &[]).unwrap_err();
+        let e = copy_line(&spec("/g/Game.exe"), &s, &Tools { gamescope: None, ..tools() }, &[], &[]).unwrap_err();
         assert!(e.contains("gamescope"), "{e}");
-        let e = copy_line(&spec("/g/Game.exe"), &s, &Tools { umu: None, ..tools() }, &[]).unwrap_err();
+        let e = copy_line(&spec("/g/Game.exe"), &s, &Tools { umu: None, ..tools() }, &[], &[]).unwrap_err();
         assert!(e.contains("umu-launcher"), "{e}");
-        assert!(copy_line(&spec("/g/game.x86_64"), &s, &Tools { umu: None, ..tools() }, &[]).is_ok(), "native games do not need umu");
+        assert!(copy_line(&spec("/g/game.x86_64"), &s, &Tools { umu: None, ..tools() }, &[], &[]).is_ok(), "native games do not need umu");
+    }
+
+    #[test]
+    fn a_seat_with_its_own_keyboard_gets_gamescope_kbm() {
+        let t = Tools { gamescope_kbm: Some("/opt/gamescope-kbm".into()), ..tools() };
+        let kbm = ["/dev/input/event7".to_string(), "/dev/input/event9".to_string()];
+        let l = copy_line(&spec("/g/Game.exe"), &seat(LinuxOpts::default()), &t, &[], &kbm).unwrap();
+        let rest = after_sandbox(&l);
+        assert_eq!(rest[0], "/opt/gamescope-kbm");
+        let joined = rest.join(" ");
+        assert!(joined.contains("--backend-disable-keyboard --backend-disable-mouse --libinput-hold-dev=/dev/input/event7,/dev/input/event9, --grab"), "{joined}");
+        let sandbox = l.args.join(" ");
+        assert!(sandbox.contains("--dev-bind /dev/input/event7 /dev/input/event7") || !std::path::Path::new("/dev/input").is_dir(), "the nodes are in the sandbox");
+        // Without its own keyboard a seat takes plain gamescope; without plain gamescope, the fork.
+        let l = copy_line(&spec("/g/Game.exe"), &seat(LinuxOpts::default()), &t, &[], &[]).unwrap();
+        assert_eq!(after_sandbox(&l)[0], "/usr/bin/gamescope");
+        let l = copy_line(&spec("/g/Game.exe"), &seat(LinuxOpts::default()), &Tools { gamescope: None, ..t.clone() }, &[], &[]).unwrap();
+        assert_eq!(after_sandbox(&l)[0], "/opt/gamescope-kbm");
+        assert!(!after_sandbox(&l).join(" ").contains("--grab"));
+        // The plain gamescope cannot read them: the seat still gets a window, with the desktop's keyboard.
+        let l = copy_line(&spec("/g/Game.exe"), &seat(LinuxOpts::default()), &tools(), &[], &kbm).unwrap();
+        assert_eq!(after_sandbox(&l)[0], "/usr/bin/gamescope");
     }
 
     #[test]

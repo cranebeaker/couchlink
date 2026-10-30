@@ -34,7 +34,17 @@ jobs:
           sudo apt-get install -y -q --no-install-recommends \
             bubblewrap fuse-overlayfs cmake ninja-build pkg-config \
             libudev-dev libx11-dev libxext-dev libxrandr-dev libxi-dev libxfixes-dev libxcursor-dev \
-            libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev libdbus-1-dev libasound2-dev libpulse-dev
+            libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev libdbus-1-dev libasound2-dev libpulse-dev             xvfb mesa-vulkan-drivers
+
+      - name: gamescope (when the distribution has it)
+        run: |
+          # The gamescope checks need it; with it installed they are required, so they cannot pass by skipping.
+          if sudo apt-get install -y -q --no-install-recommends gamescope; then
+            gamescope --version || true
+            echo "COUCHLINK_REQUIRE_GAMESCOPE_TEST=1" >> "$GITHUB_ENV"
+          else
+            echo "::warning::gamescope is not packaged for this runner; the gamescope checks are skipped"
+          fi
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -60,7 +70,8 @@ jobs:
         env:
           # The sandbox test must run here, never skip.
           COUCHLINK_REQUIRE_SANDBOX_TEST: "1"
-        run: cargo test --workspace --locked --no-fail-fast -- --nocapture
+        # A virtual X display, so gamescope windows can be placed and checked.
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" cargo test --workspace --locked --no-fail-fast -- --nocapture
 
       - name: Build couchlinkd
         working-directory: core

@@ -61,7 +61,12 @@ pub async fn run(c: &mut Checks, fx: &Fixture) {
         }
     });
     std::fs::write(state.join("recipes").join("testgame-linux.json"), recipe.to_string()).unwrap();
-    std::fs::write(state.join("games.json"), json!({"testgame-linux": game.display().to_string()}).to_string()).unwrap();
+    let mut in_gamescope = recipe.clone();
+    in_gamescope["id"] = json!("testgame-gamescope");
+    in_gamescope["linux"]["gamescope"] = json!(true);
+    std::fs::write(state.join("recipes").join("testgame-gamescope.json"), in_gamescope.to_string()).unwrap();
+    let games = json!({"testgame-linux": game.display().to_string(), "testgame-gamescope": game.display().to_string()});
+    std::fs::write(state.join("games.json"), games.to_string()).unwrap();
 
     let recipes = recipes_dir();
     let args = ["--dev", "--stay", "--virtual-pads", "2", "--recipes", recipes.to_str().unwrap()];
@@ -142,7 +147,100 @@ pub async fn run(c: &mut Checks, fx: &Fixture) {
         );
     }
     c.check("linux: the install is untouched", snapshot(&game) == before);
+    gamescope(c, cl, &state, &table.display).await;
     drop(table);
     drop(daemon);
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The parent of a process, from `/proc`.
+fn parent(pid: u64) -> Option<u64> {
+    let s = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    s[s.rfind(')')? + 2..].split(' ').nth(1)?.parse().ok()
+}
+
+/// Where the X window of process `pid` (`_NET_WM_PID`) is: x, y, width, height on the root window.
+fn x_window_rect(pid: u64) -> Option<[i64; 4]> {
+    use x11rb::connection::Connection;
+    use x11rb::protocol::xproto::{AtomEnum, ConnectionExt as _};
+    let (conn, screen) = x11rb::connect(None).ok()?;
+    let root = conn.setup().roots.get(screen)?.root;
+    let atom = conn.intern_atom(false, b"_NET_WM_PID").ok()?.reply().ok()?.atom;
+    let mut todo = vec![root];
+    while let Some(w) = todo.pop() {
+        let owner = conn.get_property(false, w, atom, AtomEnum::CARDINAL, 0, 1).ok()?.reply().ok().and_then(|r| r.value32().and_then(|mut v| v.next()));
+        if owner == Some(pid as u32) {
+            let g = conn.get_geometry(w).ok()?.reply().ok()?;
+            let t = conn.translate_coordinates(w, root, 0, 0).ok()?.reply().ok()?;
+            return Some([t.dst_x as i64, t.dst_y as i64, g.width as i64, g.height as i64]);
+        }
+        todo.extend(conn.query_tree(w).ok()?.reply().ok()?.children);
+    }
+    None
+}
+
+/// The same two copies in gamescope windows of their own, each moved onto its player's half of the display. Needs
+/// gamescope and an X display (CI: Xvfb with software Vulkan); COUCHLINK_REQUIRE_GAMESCOPE_TEST=1 makes it required.
+async fn gamescope(c: &mut Checks, cl: &mut Client, state: &Path, display: &Value) {
+    let required = std::env::var("COUCHLINK_REQUIRE_GAMESCOPE_TEST").is_ok_and(|v| v == "1");
+    if !installed("gamescope") || std::env::var_os("DISPLAY").is_none() {
+        if required {
+            c.check("linux: gamescope and an X display are there", false);
+        } else {
+            println!("SKIP gamescope checks (no gamescope or no X display)");
+        }
+        return;
+    }
+    cl.backlog.clear();
+    let r = cl.request(json!({"cmd": "start_session", "recipe": "testgame-gamescope"})).await;
+    if !c.check("gamescope: start_session accepted", r["ok"] == true) {
+        println!("  start_session: {}", r["error"]);
+    }
+    let events = session_until(cl, Duration::from_secs(90), |e| e["state"] == "running" || e["state"] == "failed").await;
+    let last = events.last().cloned().unwrap_or(Value::Null);
+    c.check("gamescope: the session reaches running", last["state"] == "running");
+    if last["state"] == "failed" {
+        println!("  session failed: {}", last["error"]);
+    }
+    let inst = state.join("instances").join("testgame-gamescope");
+    for (seat, region) in [[0.0, 0.0, 0.5, 1.0], [0.5, 0.0, 0.5, 1.0]].into_iter().enumerate() {
+        let status = inst.join(seat.to_string()).join("status.json");
+        let Some(s) = wait_status(&status, Duration::from_secs(30), |s| s["alive"] == true).await else {
+            c.check(&format!("gamescope: seat {seat}'s copy runs"), false);
+            continue;
+        };
+        let pid = s["pid"].as_u64().unwrap_or(0);
+        let scope = parent(pid).unwrap_or(0);
+        let name = std::fs::read_to_string(format!("/proc/{scope}/comm")).unwrap_or_default();
+        c.check(&format!("gamescope: seat {seat}'s copy runs inside gamescope"), name.trim().starts_with("gamescope"));
+        c.check(&format!("gamescope: seat {seat}'s copy still sees no other input device"), s["input_nodes"].as_array().is_some_and(Vec::is_empty));
+        let want = expected_rect(display, region);
+        let mut got = None;
+        let end = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < end {
+            // gamescope may start the game through a helper of its own (gamescopereaper): the window is an ancestor's.
+            let mut up = Some(pid);
+            got = None;
+            for _ in 0..5 {
+                let Some(p) = up.and_then(parent) else { break };
+                got = x_window_rect(p);
+                if got.is_some() {
+                    break;
+                }
+                up = Some(p);
+            }
+            if got.is_some_and(|g| near(g, want, 2)) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        if !c.check(&format!("gamescope: seat {seat}'s window is on its region"), got.is_some_and(|g| near(g, want, 2))) {
+            println!("  seat {seat}: window {got:?}, region {want:?}");
+        }
+    }
+    let r = cl.request(json!({"cmd": "stop_session"})).await;
+    c.check("gamescope: stop_session accepted", r["ok"] == true);
+    let events = session_until(cl, Duration::from_secs(30), |e| e["state"] == "idle" || e["state"] == "failed").await;
+    let last = events.last().cloned().unwrap_or(Value::Null);
+    c.check("gamescope: the session ends idle", last["state"] == "idle");
 }

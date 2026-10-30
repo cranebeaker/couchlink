@@ -462,11 +462,19 @@ pub fn start() -> Result<(), String> {
     {
         win::start()
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
     {
-        Err("own keyboards and mice per seat are only available on Windows".to_string())
+        linux::start()
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    {
+        Err("own keyboards and mice per seat are only available on Windows and Linux".to_string())
     }
 }
+
+#[cfg(target_os = "linux")]
+#[path = "rawkbm_linux.rs"]
+pub mod linux;
 
 // ---------------------------------------------------------------------------------------------- windows
 

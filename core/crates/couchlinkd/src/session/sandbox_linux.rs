@@ -61,7 +61,7 @@ fn sys_dir(sys: &Path, node: &Path) -> Option<PathBuf> {
 
 /// The folder that holds every node of the physical device `dir` belongs to: the nearest HID or USB device above
 /// it, or (a virtual device such as uinput) the input device itself.
-fn device_root(dir: &Path) -> PathBuf {
+pub(crate) fn device_root(dir: &Path) -> PathBuf {
     for a in dir.ancestors().skip(1) {
         let sub = std::fs::read_link(a.join("subsystem")).ok();
         let sub = sub.as_deref().and_then(Path::file_name).and_then(|s| s.to_str()).unwrap_or("");
@@ -152,12 +152,132 @@ pub fn seat_args(paths: &[String], binds: &[(PathBuf, PathBuf)]) -> Vec<String> 
     bwrap_args(&own_nodes(paths), &input_nodes(), binds, Path::new("/dev/input").is_dir())
 }
 
+const EVIOCGNAME_256: libc::c_ulong = 0x8100_4506;
+
+/// The name an evdev device gives itself (EVIOCGNAME).
+pub fn device_name(f: &std::fs::File) -> Option<String> {
+    use std::os::unix::io::AsRawFd;
+    let mut buf = [0u8; 256];
+    // SAFETY: EVIOCGNAME writes at most 256 bytes into buf.
+    let n = unsafe { libc::ioctl(f.as_raw_fd(), EVIOCGNAME_256 as _, buf.as_mut_ptr()) };
+    (n > 0).then(|| String::from_utf8_lossy(&buf[..n as usize]).trim_end_matches('\0').to_string())
+}
+
+/// Virtual input devices for tests, made through /dev/uinput.
+#[cfg(test)]
+pub(crate) mod uinput {
+    use std::fs::{File, OpenOptions};
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    use std::os::unix::io::AsRawFd;
+    use std::path::{Path, PathBuf};
+    use std::time::{Duration, Instant};
+
+    pub const EV_SYN: u16 = 0;
+    pub const EV_KEY: u16 = 1;
+    pub const EV_REL: u16 = 2;
+    pub const BTN_SOUTH: u16 = 0x130;
+    pub const BTN_EAST: u16 = 0x131;
+    const UI_SET_EVBIT: libc::c_ulong = 0x4004_5564;
+    const UI_SET_KEYBIT: libc::c_ulong = 0x4004_5565;
+    const UI_SET_RELBIT: libc::c_ulong = 0x4004_5566;
+    const UI_DEV_SETUP: libc::c_ulong = 0x405c_5503;
+    const UI_DEV_CREATE: libc::c_ulong = 0x5501;
+    const UI_DEV_DESTROY: libc::c_ulong = 0x5502;
+
+    #[repr(C)]
+    struct UinputSetup {
+        bustype: u16,
+        vendor: u16,
+        product: u16,
+        version: u16,
+        name: [u8; 80],
+        ff_effects_max: u32,
+    }
+
+    /// A virtual device with the given keys (and relative axes, for a mouse); gone when dropped.
+    pub struct VirtualDevice {
+        file: File,
+        pub name: String,
+    }
+
+    impl VirtualDevice {
+        pub fn new(name: &str, keys: &[u16], rels: &[u16]) -> Result<VirtualDevice, String> {
+            let file = OpenOptions::new().write(true).custom_flags(libc::O_NONBLOCK).open("/dev/uinput").map_err(|e| format!("/dev/uinput: {e}"))?;
+            let fd = file.as_raw_fd();
+            let mut setup = UinputSetup { bustype: 0x06, vendor: 0x1209, product: 0x0001, version: 1, name: [0; 80], ff_effects_max: 0 };
+            setup.name[..name.len()].copy_from_slice(name.as_bytes());
+            // SAFETY: uinput ioctls on our own descriptor with the argument types the kernel expects.
+            let ok = unsafe {
+                libc::ioctl(fd, UI_SET_EVBIT as _, EV_KEY as libc::c_int) == 0
+                    && keys.iter().all(|k| libc::ioctl(fd, UI_SET_KEYBIT as _, *k as libc::c_int) == 0)
+                    && (rels.is_empty() || libc::ioctl(fd, UI_SET_EVBIT as _, EV_REL as libc::c_int) == 0)
+                    && rels.iter().all(|r| libc::ioctl(fd, UI_SET_RELBIT as _, *r as libc::c_int) == 0)
+                    && libc::ioctl(fd, UI_DEV_SETUP as _, &setup as *const UinputSetup) == 0
+                    && libc::ioctl(fd, UI_DEV_CREATE as _) == 0
+            };
+            if !ok {
+                return Err(format!("uinput setup failed: {}", std::io::Error::last_os_error()));
+            }
+            Ok(VirtualDevice { file, name: name.to_string() })
+        }
+
+        /// The device's event node, once udev has made it readable.
+        pub fn node(&self, within: Duration) -> Result<PathBuf, String> {
+            let end = Instant::now() + within;
+            loop {
+                for e in std::fs::read_dir("/sys/class/input").map_err(|e| e.to_string())?.flatten() {
+                    let n = e.file_name().to_string_lossy().to_string();
+                    let named = std::fs::read_to_string(e.path().join("device/name")).is_ok_and(|s| s.trim() == self.name);
+                    if super::numbered(&n, "event") && named {
+                        let node = Path::new("/dev/input").join(&n);
+                        if File::open(&node).is_ok() {
+                            return Ok(node);
+                        }
+                    }
+                }
+                if Instant::now() > end {
+                    return Err(format!("no readable event node for {} (is there a udev rule making it readable?)", self.name));
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+
+        pub fn emit(&mut self, kind: u16, code: u16, value: i32) {
+            let mut ev = [0u8; 24];
+            ev[16..18].copy_from_slice(&kind.to_ne_bytes());
+            ev[18..20].copy_from_slice(&code.to_ne_bytes());
+            ev[20..24].copy_from_slice(&value.to_ne_bytes());
+            self.file.write_all(&ev).expect("write to uinput");
+        }
+
+        pub fn press(&mut self, key: u16) {
+            for v in [1, 0] {
+                self.emit(EV_KEY, key, v);
+                self.emit(EV_SYN, 0, 0);
+            }
+        }
+    }
+
+    impl Drop for VirtualDevice {
+        fn drop(&mut self) {
+            // SAFETY: destroying the device made on this descriptor.
+            unsafe { libc::ioctl(self.file.as_raw_fd(), UI_DEV_DESTROY as _) };
+        }
+    }
+
+    /// The machine can make virtual devices, or why not.
+    pub fn skip_reason() -> Option<String> {
+        OpenOptions::new().write(true).open("/dev/uinput").err().map(|e| format!("/dev/uinput: {e}"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
     use std::fs::{File, OpenOptions};
-    use std::io::{Read, Write};
+    use std::io::Read;
     use std::os::unix::fs::OpenOptionsExt;
     use std::os::unix::io::AsRawFd;
     use std::process::{Command, Stdio};
@@ -247,103 +367,8 @@ mod tests {
 
     // ---- the real thing: two sandboxed copies, two virtual pads --------------------------------------------
 
-    const EV_SYN: u16 = 0;
-    const EV_KEY: u16 = 1;
-    const BTN_SOUTH: u16 = 0x130;
-    const BTN_EAST: u16 = 0x131;
-    const UI_SET_EVBIT: libc::c_ulong = 0x4004_5564;
-    const UI_SET_KEYBIT: libc::c_ulong = 0x4004_5565;
-    const UI_DEV_SETUP: libc::c_ulong = 0x405c_5503;
-    const UI_DEV_CREATE: libc::c_ulong = 0x5501;
-    const UI_DEV_DESTROY: libc::c_ulong = 0x5502;
-    const EVIOCGNAME_256: libc::c_ulong = 0x8100_4506;
+    use super::uinput::{VirtualDevice, BTN_EAST, BTN_SOUTH, EV_KEY};
     const HIDIOCGRAWINFO: libc::c_ulong = 0x8008_4803;
-
-    #[repr(C)]
-    struct UinputSetup {
-        bustype: u16,
-        vendor: u16,
-        product: u16,
-        version: u16,
-        name: [u8; 80],
-        ff_effects_max: u32,
-    }
-
-    /// A virtual gamepad made through /dev/uinput; gone when dropped.
-    struct VirtualPad {
-        file: File,
-        name: String,
-    }
-
-    impl VirtualPad {
-        fn new(name: &str) -> Result<VirtualPad, String> {
-            let file = OpenOptions::new().write(true).custom_flags(libc::O_NONBLOCK).open("/dev/uinput").map_err(|e| format!("/dev/uinput: {e}"))?;
-            let fd = file.as_raw_fd();
-            let mut setup = UinputSetup { bustype: 0x06, vendor: 0x1209, product: 0x0001, version: 1, name: [0; 80], ff_effects_max: 0 };
-            setup.name[..name.len()].copy_from_slice(name.as_bytes());
-            // SAFETY: uinput ioctls on our own descriptor with the argument types the kernel expects.
-            let ok = unsafe {
-                libc::ioctl(fd, UI_SET_EVBIT as _, EV_KEY as libc::c_int) == 0
-                    && [BTN_SOUTH, BTN_EAST].iter().all(|b| libc::ioctl(fd, UI_SET_KEYBIT as _, *b as libc::c_int) == 0)
-                    && libc::ioctl(fd, UI_DEV_SETUP as _, &setup as *const UinputSetup) == 0
-                    && libc::ioctl(fd, UI_DEV_CREATE as _) == 0
-            };
-            if !ok {
-                return Err(format!("uinput setup failed: {}", std::io::Error::last_os_error()));
-            }
-            Ok(VirtualPad { file, name: name.to_string() })
-        }
-
-        /// The pad's event node, once udev has made it readable.
-        fn node(&self, within: Duration) -> Result<PathBuf, String> {
-            let end = Instant::now() + within;
-            loop {
-                for e in std::fs::read_dir("/sys/class/input").map_err(|e| e.to_string())?.flatten() {
-                    let n = e.file_name().to_string_lossy().to_string();
-                    let named = std::fs::read_to_string(e.path().join("device/name")).is_ok_and(|s| s.trim() == self.name);
-                    if numbered(&n, "event") && named {
-                        let node = Path::new("/dev/input").join(&n);
-                        if File::open(&node).is_ok() {
-                            return Ok(node);
-                        }
-                    }
-                }
-                if Instant::now() > end {
-                    return Err(format!("no readable event node for {} (is there a udev rule making it readable?)", self.name));
-                }
-                std::thread::sleep(Duration::from_millis(50));
-            }
-        }
-
-        fn emit(&mut self, kind: u16, code: u16, value: i32) {
-            let mut ev = [0u8; 24];
-            ev[16..18].copy_from_slice(&kind.to_ne_bytes());
-            ev[18..20].copy_from_slice(&code.to_ne_bytes());
-            ev[20..24].copy_from_slice(&value.to_ne_bytes());
-            self.file.write_all(&ev).expect("write to uinput");
-        }
-
-        fn press(&mut self, button: u16) {
-            for v in [1, 0] {
-                self.emit(EV_KEY, button, v);
-                self.emit(EV_SYN, 0, 0);
-            }
-        }
-    }
-
-    impl Drop for VirtualPad {
-        fn drop(&mut self) {
-            // SAFETY: destroying the device made on this descriptor.
-            unsafe { libc::ioctl(self.file.as_raw_fd(), UI_DEV_DESTROY as _) };
-        }
-    }
-
-    fn device_name(f: &File) -> Option<String> {
-        let mut buf = [0u8; 256];
-        // SAFETY: EVIOCGNAME writes at most 256 bytes into buf.
-        let n = unsafe { libc::ioctl(f.as_raw_fd(), EVIOCGNAME_256 as _, buf.as_mut_ptr()) };
-        (n > 0).then(|| String::from_utf8_lossy(&buf[..n as usize]).trim_end_matches('\0').to_string())
-    }
 
     /// Runs inside the sandbox (started by the test below through this same test binary): lists every input device
     /// it can open, then records which device each button press comes from.
@@ -403,7 +428,7 @@ mod tests {
         let tag = std::process::id();
         let mut pads = Vec::new();
         for side in ["a", "b"] {
-            match VirtualPad::new(&format!("couchlink-test-pad-{side}-{tag}")) {
+            match VirtualDevice::new(&format!("couchlink-test-pad-{side}-{tag}"), &[BTN_SOUTH, BTN_EAST], &[]) {
                 Ok(p) => pads.push(p),
                 Err(e) => return skip(e),
             }
