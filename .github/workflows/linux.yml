@@ -135,6 +135,9 @@ jobs:
           useradd -m player
           # The host limits user namespaces for unprivileged users (Ubuntu's AppArmor rule); bwrap needs them.
           echo 0 > /proc/sys/kernel/apparmor_restrict_unprivileged_userns || true
+          # Software Vulkan shares gamescope's buffers through udmabuf, which only root may open by default.
+          ls -l /dev/udmabuf /dev/dri 2>&1 || true
+          chmod 0666 /dev/udmabuf || true
           chown -R player: "$GITHUB_WORKSPACE"
 
       - name: umu's runtime and Proton (cached)
