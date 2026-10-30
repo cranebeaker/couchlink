@@ -173,6 +173,45 @@ pub fn guess_exe(install_dir: &Path) -> Option<String> {
     found.into_iter().next().map(|(_, p)| p)
 }
 
+/// A native Linux game's program inside its install folder (relative, forward slashes): the biggest executable ELF
+/// file near the top that is not a library, an installer or a helper.
+pub fn guess_native(install_dir: &Path) -> Option<String> {
+    fn is_elf_program(path: &Path, meta: &std::fs::Metadata) -> bool {
+        use std::io::Read;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if meta.permissions().mode() & 0o111 == 0 {
+                return false;
+            }
+        }
+        let mut magic = [0u8; 4];
+        std::fs::File::open(path).and_then(|mut f| f.read_exact(&mut magic)).is_ok() && magic == *b"\x7fELF"
+    }
+    fn walk(dir: &Path, rel: &str, depth: u8, out: &mut Vec<(i64, String)>) {
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            let Ok(meta) = e.metadata() else { continue };
+            let path = if rel.is_empty() { name.clone() } else { format!("{rel}/{name}") };
+            let lower = name.to_lowercase();
+            if meta.is_dir() {
+                if depth < 2 && !skip_dir(&name) && !lower.ends_with("_data") && lower != "lib" && lower != "lib64" {
+                    walk(&e.path(), &path, depth + 1, out);
+                }
+            } else if !lower.contains(".so") && !not_the_game(&name) && is_elf_program(&e.path(), &meta) {
+                let mb = (meta.len() / (1 << 20)) as i64;
+                let named = if lower.ends_with(".x86_64") || lower.ends_with(".x64") { 1000 } else { 0 };
+                out.push((named + mb - depth as i64 * 5, path));
+            }
+        }
+    }
+    let mut found = Vec::new();
+    walk(install_dir, "", 0, &mut found);
+    found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    found.into_iter().next().map(|(_, p)| p)
+}
+
 /// A "Try it" recipe for an installed Steam game: one copy per player, every named single-instance lock renamed,
 /// your Steam for every copy (a player with their own Steam account plays on it), borderless windows.
 pub fn try_recipe(app_id: u32, name: &str, exe: &str) -> Option<Recipe> {
@@ -200,7 +239,11 @@ pub fn try_recipes(known: &[Recipe]) -> Vec<Recipe> {
     let mut out: Vec<Recipe> = couchlink_steam::installed_apps()
         .into_iter()
         .filter(|a| !covered.contains(&a.app_id) && !is_tool(&a.name))
-        .filter_map(|a| try_recipe(a.app_id, &a.name, &guess_exe(&a.install_dir)?))
+        .filter_map(|a| {
+            // On Linux a native build runs as it is; a Windows one runs through Proton.
+            let native = if cfg!(target_os = "linux") { guess_native(&a.install_dir) } else { None };
+            try_recipe(a.app_id, &a.name, &native.or_else(|| guess_exe(&a.install_dir))?)
+        })
         .collect();
     out.sort_by(|a, b| a.game.to_lowercase().cmp(&b.game.to_lowercase()));
     out
@@ -415,5 +458,30 @@ mod tests {
         assert!(!game_info(&locators, &other).installed);
         let _ = std::fs::remove_dir_all(&state);
         let _ = std::fs::remove_dir_all(&game);
+    }
+
+    /// A native game: the biggest executable ELF program near the top, never a library or a helper.
+    #[cfg(unix)]
+    #[test]
+    fn a_native_games_program_is_found() {
+        use std::os::unix::fs::PermissionsExt;
+        let g = std::env::temp_dir().join(format!("couchlink-native-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&g);
+        std::fs::create_dir_all(g.join("Game_Data")).unwrap();
+        let elf = |p: &Path, size: usize, exec: bool| {
+            let mut b = vec![0u8; size];
+            b[..4].copy_from_slice(&[0x7f, b'E', b'L', b'F']);
+            std::fs::write(p, b).unwrap();
+            std::fs::set_permissions(p, std::fs::Permissions::from_mode(if exec { 0o755 } else { 0o644 })).unwrap();
+        };
+        elf(&g.join("UnityPlayer.so"), 4 << 20, true);
+        elf(&g.join("crashhandler"), 2 << 20, true);
+        elf(&g.join("Game_Data/plugin"), 8 << 20, true);
+        elf(&g.join("notes"), 9 << 20, false);
+        elf(&g.join("Game.x86_64"), 1 << 20, true);
+        std::fs::write(g.join("start.sh"), "#!/bin/sh\n").unwrap();
+        assert_eq!(guess_native(&g).as_deref(), Some("Game.x86_64"));
+        assert_eq!(guess_exe(&g), None, "no Windows build here");
+        let _ = std::fs::remove_dir_all(&g);
     }
 }

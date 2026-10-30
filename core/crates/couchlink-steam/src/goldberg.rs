@@ -152,7 +152,7 @@ pub fn ensure_goldberg_steamclient(cache_dir: &Path) -> Result<GoldbergFiles> {
     install_archive_with(&bytes, GOLDBERG.sha256, cache_dir, true)
 }
 
-fn download(url: &str) -> Result<Vec<u8>> {
+pub(crate) fn download(url: &str) -> Result<Vec<u8>> {
     let client = reqwest::blocking::Client::builder()
         .user_agent("couchlink-steam")
         .timeout(std::time::Duration::from_secs(300))
@@ -213,7 +213,7 @@ fn classify_io_blocked(ctx: &str, path: &Path, e: std::io::Error) -> SteamError 
     }
 }
 
-fn norm_components(name: &str) -> Vec<String> {
+pub(crate) fn norm_components(name: &str) -> Vec<String> {
     name.replace('\\', "/")
         .split('/')
         .filter(|s| !s.is_empty() && *s != ".")
@@ -232,7 +232,7 @@ struct Picked {
 }
 
 /// Lower score wins. The regular build beats anything else; shallower paths beat deeper ones.
-fn score(comps: &[String]) -> Option<usize> {
+pub(crate) fn score(comps: &[String]) -> Option<usize> {
     const EXCLUDED: [&str; 6] =
         ["experimental", "steam_old_lib", "steamclient_experimental", "tools", "debug", "steam_settings.example"];
     let dirs = &comps[..comps.len().saturating_sub(1)];

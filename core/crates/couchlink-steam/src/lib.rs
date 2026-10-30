@@ -15,6 +15,7 @@ pub mod accounts;
 pub mod dlc;
 pub mod error;
 pub mod goldberg;
+pub mod goldberg_linux;
 pub mod interfaces;
 pub mod library;
 pub mod options;

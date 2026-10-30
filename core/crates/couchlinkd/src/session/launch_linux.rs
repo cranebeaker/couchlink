@@ -30,6 +30,12 @@ impl Launcher for LinuxLauncher {
             Some(seat) => {
                 let home = seat.data_dir.join("home");
                 std::fs::create_dir_all(&home).map_err(|e| format!("cannot create {}: {e}", home.display()))?;
+                // Native Steam games find the Steam client through ~/.steam, so the seat's home points at the real one.
+                if let Some(real) = std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".steam")).filter(|p| p.exists()) {
+                    if std::fs::symlink_metadata(home.join(".steam")).is_err() {
+                        let _ = std::os::unix::fs::symlink(real, home.join(".steam"));
+                    }
+                }
                 log = std::fs::File::create(seat.data_dir.join("copy.log")).ok();
                 let sandbox = match seat.sandbox_pid {
                     Some(pid) => Sandbox::Holder(pid),
