@@ -64,7 +64,14 @@ pub fn open(seat: usize) -> Result<(), String> {
     if !couchlink_steam::accounts_ready(&cfg) {
         return Err(format!("Player {} has no Steam account set up yet", seat + 1));
     }
-    couchlink_steam::accounts_start_steam(&cfg, true).map(|_| ()).map_err(|e| e.user_message())
+    let log = seat_steam_log(seat);
+    crate::logfile::write("info", &format!("starting player {}'s own Steam (its output: {})", seat + 1, log.display()));
+    couchlink_steam::accounts_start_steam_logged(&cfg, true, Some(&log)).map(|_| ()).map_err(|e| e.user_message())
+}
+
+/// Where a seat's own Steam writes its output (Linux): `<state>/logs/steam-seat-<n>.log`.
+pub fn seat_steam_log(seat: usize) -> std::path::PathBuf {
+    crate::logfile::dir().join(format!("steam-seat-{}.log", seat + 1))
 }
 
 /// `couchlinkd --steam-account setup|remove <seat>`: the elevated half. Returns the exit code, or None when the

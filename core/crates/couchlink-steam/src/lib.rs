@@ -27,7 +27,7 @@ pub mod vdf;
 
 pub use accounts::{
     AccountsConfig, LaunchedAs, Step, accounts_apply, accounts_home, accounts_launch, accounts_plan, accounts_ready, accounts_remove,
-    accounts_start_steam, accounts_steam_running, merge_env, seat_config,
+    accounts_start_steam, accounts_start_steam_logged, accounts_steam_running, merge_env, seat_config,
 };
 pub use dlc::{DlcEntry, DlcSource, dlc_entries, installed_dlc_ids};
 pub use error::{Result, SteamError};

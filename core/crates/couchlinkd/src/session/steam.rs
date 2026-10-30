@@ -101,7 +101,7 @@ fn steam_appid_file(ctx: &PrepareCtx, journal: &mut Journal) -> Result<(), Strin
 }
 
 /// How long a seat's own Steam gets to start before its game copy is launched.
-const OWN_STEAM_WAIT: std::time::Duration = std::time::Duration::from_secs(40);
+const OWN_STEAM_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// A seat that has its own Steam account set up (Players, "Own Steam account") plays on it in every game that uses real
 /// Steam: its Steam is started if needed and its copy runs as that seat's helper Windows user. Seat 1 always uses the
@@ -122,10 +122,28 @@ fn own_account(ctx: &PrepareCtx) -> Result<SeatPrep, String> {
         return Ok(SeatPrep::default());
     };
     if !couchlink_steam::accounts_steam_running(&cfg) {
-        couchlink_steam::accounts_start_steam(&cfg, true).map_err(|e| format!("cannot start {}'s Steam: {}", ctx.seat.player, e.user_message()))?;
+        let log = crate::accounts::seat_steam_log(seat as usize);
+        crate::logfile::write("info", &format!("starting {}'s own Steam (its output: {})", ctx.seat.player, log.display()));
+        couchlink_steam::accounts_start_steam_logged(&cfg, true, Some(&log))
+            .map_err(|e| format!("cannot start {}'s Steam: {}", ctx.seat.player, e.user_message()))?;
         let start = std::time::Instant::now();
         while !couchlink_steam::accounts_steam_running(&cfg) && start.elapsed() < OWN_STEAM_WAIT {
             std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        if couchlink_steam::accounts_steam_running(&cfg) {
+            crate::logfile::write("info", &format!("{}'s own Steam is up", ctx.seat.player));
+        } else if cfg!(target_os = "linux") {
+            // Say so instead of starting a game that cannot reach its Steam.
+            let text = std::fs::read_to_string(&log).unwrap_or_default();
+            let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+            let tail = lines[lines.len().saturating_sub(3)..].join(" | ");
+            return Err(format!(
+                "{}'s own Steam did not start within {} s (its log: {}{})",
+                ctx.seat.player,
+                OWN_STEAM_WAIT.as_secs(),
+                log.display(),
+                if tail.is_empty() { String::new() } else { format!("; it ends: {tail}") }
+            ));
         }
         // Steam takes a moment after its process appears before games can talk to it.
         std::thread::sleep(std::time::Duration::from_secs(5));

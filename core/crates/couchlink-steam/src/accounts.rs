@@ -258,11 +258,22 @@ pub fn accounts_apply(cfg: &AccountsConfig, confirmed: bool) -> Result<()> {
 
 /// Start Steam as the helper user. Returns the process id of the new Steam. Only after confirmation.
 pub fn accounts_start_steam(cfg: &AccountsConfig, confirmed: bool) -> Result<u32> {
+    accounts_start_steam_logged(cfg, confirmed, None)
+}
+
+/// `accounts_start_steam`, with the seat's Steam's own output in `log` where the platform can (Linux).
+pub fn accounts_start_steam_logged(cfg: &AccountsConfig, confirmed: bool, log: Option<&std::path::Path>) -> Result<u32> {
     if !confirmed {
         return Err(SteamError::NotConfirmed);
     }
     check_name(cfg)?;
-    imp::start_steam(cfg)
+    #[cfg(target_os = "linux")]
+    return imp::start_steam_logged(cfg, log);
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = log;
+        imp::start_steam(cfg)
+    }
 }
 
 /// Undo `accounts_apply`. Only after the user clicked remove.
