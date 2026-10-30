@@ -53,6 +53,14 @@ impl Placer {
         let _ = (seat, root_pid, rect, borderless);
     }
 
+    /// Bring every game window to the front (`front`), or minimise them all so the desktop shows.
+    pub fn show_all(&mut self, front: bool) {
+        #[cfg(windows)]
+        win::show_all(&self.seats, front);
+        #[cfg(not(windows))]
+        let _ = front;
+    }
+
     /// Give every window back its original borders and position.
     pub fn restore_all(&mut self) {
         #[cfg(windows)]
@@ -466,6 +474,31 @@ mod win {
                 p.rect.bottom - p.rect.top,
                 SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS,
             );
+        }
+    }
+
+    pub fn show_all(seats: &HashMap<usize, Placed>, front: bool) {
+        let mut order: Vec<_> = seats.iter().collect();
+        order.sort_by_key(|(seat, _)| **seat);
+        for (_, p) in &order {
+            if hung(p.hwnd) {
+                continue;
+            }
+            // SAFETY: plain calls on windows this session placed.
+            unsafe {
+                if front {
+                    ShowWindow(p.hwnd, SW_RESTORE);
+                    // Above everything for a moment, then back to normal, so the windows come up without staying on top.
+                    SetWindowPos(p.hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+                    SetWindowPos(p.hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+                } else {
+                    ShowWindow(p.hwnd, SW_MINIMIZE);
+                }
+            }
+        }
+        if front && let Some((_, p)) = order.first() {
+            // SAFETY: as above; player 1's window gets the focus.
+            unsafe { SetForegroundWindow(p.hwnd) };
         }
     }
 

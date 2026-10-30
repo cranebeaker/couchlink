@@ -77,6 +77,8 @@ struct Run {
     plan: Plan,
     deps: Deps,
     stop: Arc<AtomicBool>,
+    /// The shortcut hid the game windows: keep them where they are until it brings them back.
+    hidden: bool,
     report: Report,
     info: SessionInfo,
     journal: Journal,
@@ -90,7 +92,16 @@ struct Run {
     nested: Option<super::gamemode_linux::Nested>,
 }
 
+/// 1: bring the game windows to the front, 2: hide them (the shortcuts set it, the running session takes it).
+static WINDOW_REQUEST: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Ask the running session to bring its windows to the front (`front`) or hide them.
+pub fn request_windows(front: bool) {
+    WINDOW_REQUEST.store(if front { 1 } else { 2 }, Ordering::Relaxed);
+}
+
 pub fn run(plan: Plan, deps: Deps, stop: Arc<AtomicBool>, report: Report) {
+    WINDOW_REQUEST.store(0, Ordering::Relaxed);
     Placer::init_thread();
     let (journal, note) = Journal::open(&plan.state_dir.join("journal.json"));
     if let Some(n) = note {
@@ -133,6 +144,7 @@ pub fn run(plan: Plan, deps: Deps, stop: Arc<AtomicBool>, report: Report) {
         helpers: Vec::new(),
         placer: Placer::new(),
         last_maintain: Instant::now(),
+        hidden: false,
         #[cfg(target_os = "linux")]
         nested: None,
     };
@@ -721,7 +733,7 @@ impl Run {
                 Ok(None) | Err(_) => {}
             }
         }
-        if self.last_maintain.elapsed() >= MAINTAIN_EVERY {
+        if !self.hidden && self.last_maintain.elapsed() >= MAINTAIN_EVERY {
             self.last_maintain = Instant::now();
             let borderless = self.plan.recipe.window.borderless;
             for s in self.seats.iter().filter(|s| !s.exited) {
@@ -729,6 +741,21 @@ impl Run {
                     self.placer.maintain(s.plan.seat, pid, s.plan.rect, borderless);
                 }
             }
+        }
+    }
+
+    /// Act on a front or hide request from the shortcuts (`request_windows`). While hidden, windows are left alone.
+    fn window_request(&mut self) {
+        match WINDOW_REQUEST.swap(0, Ordering::Relaxed) {
+            1 => {
+                self.hidden = false;
+                self.placer.show_all(true);
+            }
+            2 => {
+                self.hidden = true;
+                self.placer.show_all(false);
+            }
+            _ => {}
         }
     }
 
@@ -740,6 +767,7 @@ impl Run {
             if self.stopped() || self.seats.iter().all(|s| s.exited) {
                 return Outcome::Done;
             }
+            self.window_request();
             self.tick();
             std::thread::sleep(POLL);
         }

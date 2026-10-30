@@ -88,6 +88,8 @@ pub enum HubMsg {
     Kbm(RawKbmEvent),
     /// The close-the-games keys or pad buttons were pressed (`hotkey.rs`, `sdl.rs`).
     StopShortcut,
+    /// The keys that bring the game windows to the front (true) or hide them were pressed.
+    WindowsShortcut(bool),
     /// `check_update` finished.
     UpdateChecked(Result<Option<crate::update::Available>, String>),
     /// `install_update` finished staging (the updater runs) or failed.
@@ -170,6 +172,7 @@ impl Hub {
                 let settings = load_settings();
                 let _ = m.set_fps_limit(settings["fps_limit"].as_u64().map_or(0, |f| f as u32));
                 let _ = m.set_stop_shortcut(settings["stop_keys"].as_str(), settings["stop_pad"].as_str());
+                let _ = m.set_window_keys(settings["front_keys"].as_str(), settings["hide_keys"].as_str());
                 m
             },
             hotkey: crate::hotkey::spawn(self_tx.clone()),
@@ -193,9 +196,12 @@ impl Hub {
 
     /// Hand the close-the-games shortcut to the keyboard hotkey and the pad watcher.
     fn apply_shortcut(&self) {
-        let keys = couchlink_core::shortcut::parse_keys(self.model.stop_keys()).ok().flatten();
-        if let Err(e) = self.hotkey.set(keys) {
-            self.log(LogLevel::Warn, format!("The close-the-games keys could not be set ({e}); another program may use them"));
+        use crate::hotkey::Action;
+        for (action, keys) in [(Action::Stop, self.model.stop_keys()), (Action::Front, self.model.front_keys()), (Action::Hide, self.model.hide_keys())] {
+            let combo = couchlink_core::shortcut::parse_keys(keys).ok().flatten();
+            if let Err(e) = self.hotkey.set(action, combo) {
+                self.log(LogLevel::Warn, format!("The shortcut keys could not be set ({e}); another program may use them"));
+            }
         }
         crate::sdl::set_stop_pad(couchlink_core::shortcut::pad_buttons(self.model.stop_pad()).ok().flatten());
     }
@@ -281,6 +287,11 @@ impl Hub {
                 HubMsg::Session(info) => self.session_changed(info),
                 HubMsg::Kbm(ev) => self.handle_kbm(ev),
                 HubMsg::StopShortcut => self.stop_shortcut(),
+                HubMsg::WindowsShortcut(front) => {
+                    if self.session_info.active() {
+                        session::request_windows(front);
+                    }
+                }
                 HubMsg::UpdateChecked(result) => {
                     self.update_busy.0 = false;
                     let error = result.as_ref().err().cloned();
@@ -520,6 +531,15 @@ impl Hub {
             Command::SetFpsLimit { fps } => {
                 if self.model.set_fps_limit(fps)? {
                     save_setting("fps_limit", json!(fps));
+                    self.changed();
+                }
+                Ok(none)
+            }
+            Command::SetWindowKeys { front, hide } => {
+                if self.model.set_window_keys(front.as_deref(), hide.as_deref())? {
+                    save_setting("front_keys", json!(self.model.front_keys()));
+                    save_setting("hide_keys", json!(self.model.hide_keys()));
+                    self.apply_shortcut();
                     self.changed();
                 }
                 Ok(none)

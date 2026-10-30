@@ -107,7 +107,20 @@ pub struct State {
     pub stop_keys: String,
     #[serde(default = "default_stop_pad")]
     pub stop_pad: String,
+    /// The keys that bring the game windows to the front, and hide them (`set_window_keys`), each `off` when off.
+    #[serde(default = "default_front_keys")]
+    pub front_keys: String,
+    #[serde(default = "default_hide_keys")]
+    pub hide_keys: String,
     pub dev: bool,
+}
+
+fn default_front_keys() -> String {
+    crate::shortcut::DEFAULT_FRONT_KEYS.to_string()
+}
+
+fn default_hide_keys() -> String {
+    crate::shortcut::DEFAULT_HIDE_KEYS.to_string()
 }
 
 fn default_stop_keys() -> String {

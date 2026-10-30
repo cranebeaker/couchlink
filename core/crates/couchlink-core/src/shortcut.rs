@@ -5,6 +5,9 @@ use crate::Button;
 
 pub const DEFAULT_KEYS: &str = "Ctrl+Shift+Q";
 pub const DEFAULT_PAD: &str = "guide+back";
+/// Bring the game windows to the front, and hide them (back to the desktop).
+pub const DEFAULT_FRONT_KEYS: &str = "Ctrl+Shift+F";
+pub const DEFAULT_HIDE_KEYS: &str = "Ctrl+Shift+H";
 /// The pad choices Settings offers; `off` turns the pad shortcut off.
 pub const PAD_CHOICES: [&str; 4] = ["guide+back", "guide+start", "back+start", "off"];
 /// How long the pad buttons are held together before the games close.

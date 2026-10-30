@@ -67,6 +67,13 @@ pub enum Command {
     SetFpsLimit {
         fps: u32,
     },
+    /// The keys that bring the game windows to the front and hide them; either may be left out to keep it.
+    SetWindowKeys {
+        #[serde(default)]
+        front: Option<String>,
+        #[serde(default)]
+        hide: Option<String>,
+    },
     /// The close-the-games shortcut; either part may be left out to keep it.
     SetStopShortcut {
         #[serde(default)]
@@ -467,7 +474,7 @@ mod tests {
         let s = &v["state"];
         let mut keys: Vec<_> = s.as_object().unwrap().keys().cloned().collect();
         keys.sort();
-        assert_eq!(keys, ["dev", "devices", "displays", "fps_limit", "layout", "screens", "seats", "stop_keys", "stop_pad"]);
+        assert_eq!(keys, ["dev", "devices", "displays", "fps_limit", "front_keys", "hide_keys", "layout", "screens", "seats", "stop_keys", "stop_pad"]);
         assert_eq!(s["layout"], "auto");
         assert_eq!(s["fps_limit"], 0);
         assert_eq!(s["dev"], false);
@@ -497,6 +504,8 @@ mod tests {
           "fps_limit": 30,
           "stop_keys": "Ctrl+Alt+End",
           "stop_pad": "back+start",
+          "front_keys": "Ctrl+Shift+F",
+          "hide_keys": "off",
           "dev": false
         }"##;
         let state: State = serde_json::from_str(text).unwrap();

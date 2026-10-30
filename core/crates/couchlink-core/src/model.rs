@@ -16,6 +16,8 @@ pub struct Model {
     fps_limit: u32,
     stop_keys: String,
     stop_pad: String,
+    front_keys: String,
+    hide_keys: String,
     dev: bool,
 }
 
@@ -38,7 +40,7 @@ impl Model {
             charging: false,
             seat: None,
         });
-        Model { seats, displays: Vec::new(), used_overrides: HashMap::new(), layout: Layout::Auto, screens: Vec::new(), fps_limit: 0, stop_keys: crate::shortcut::DEFAULT_KEYS.to_string(), stop_pad: crate::shortcut::DEFAULT_PAD.to_string(), dev }
+        Model { seats, displays: Vec::new(), used_overrides: HashMap::new(), layout: Layout::Auto, screens: Vec::new(), fps_limit: 0, stop_keys: crate::shortcut::DEFAULT_KEYS.to_string(), stop_pad: crate::shortcut::DEFAULT_PAD.to_string(), front_keys: crate::shortcut::DEFAULT_FRONT_KEYS.to_string(), hide_keys: crate::shortcut::DEFAULT_HIDE_KEYS.to_string(), dev }
     }
 
     pub fn dev(&self) -> bool {
@@ -85,6 +87,29 @@ impl Model {
             self.stop_pad = p.to_string();
         }
         Ok(before != (self.stop_keys.clone(), self.stop_pad.clone()))
+    }
+
+    /// The keys that bring the game windows to the front and hide them (`Ctrl+Shift+F`, or `off`). True when either changed.
+    pub fn set_window_keys(&mut self, front: Option<&str>, hide: Option<&str>) -> Result<bool, String> {
+        let norm = |k: &str| -> Result<String, String> { Ok(crate::shortcut::parse_keys(k)?.map_or_else(|| "off".to_string(), |c| c.label())) };
+        let front = front.map(norm).transpose()?;
+        let hide = hide.map(norm).transpose()?;
+        let before = (self.front_keys.clone(), self.hide_keys.clone());
+        if let Some(f) = front {
+            self.front_keys = f;
+        }
+        if let Some(h) = hide {
+            self.hide_keys = h;
+        }
+        Ok(before != (self.front_keys.clone(), self.hide_keys.clone()))
+    }
+
+    pub fn front_keys(&self) -> &str {
+        &self.front_keys
+    }
+
+    pub fn hide_keys(&self) -> &str {
+        &self.hide_keys
     }
 
     pub fn stop_keys(&self) -> &str {
@@ -176,6 +201,8 @@ impl Model {
             fps_limit: self.fps_limit,
             stop_keys: self.stop_keys.clone(),
             stop_pad: self.stop_pad.clone(),
+            front_keys: self.front_keys.clone(),
+            hide_keys: self.hide_keys.clone(),
             dev: self.dev,
         }
     }

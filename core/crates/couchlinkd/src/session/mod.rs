@@ -43,7 +43,7 @@ pub mod window;
 
 pub use launch::{Child, CommandLauncher, LaunchSpec, Launched, Launcher};
 pub use recipes::Locator;
-pub use run::{Plan, Report};
+pub use run::{request_windows, Plan, Report};
 
 use couchlink_core::journal::ReplayReport;
 use couchlink_core::session::{plan_seats, SeatPlan};
