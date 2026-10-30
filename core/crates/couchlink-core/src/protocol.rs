@@ -27,6 +27,8 @@ pub enum Command {
     GetState,
     /// The log folder and the end of the logs, for "Copy log" after an error: `{"dir", "text"}`.
     GetLog,
+    /// Writes one file with every log in full and this PC's details, for a bug report: `{"path"}`.
+    SaveReport,
     GetCatalog,
     RefreshCatalog,
     Join {
@@ -291,6 +293,7 @@ mod tests {
         assert_eq!(parse(json!({"id": 2, "cmd": "get_state"})).cmd, Command::GetState);
         assert_eq!(parse(json!({"id": 13, "cmd": "get_catalog"})).cmd, Command::GetCatalog);
         assert_eq!(parse(json!({"id": 15, "cmd": "get_log"})).cmd, Command::GetLog);
+        assert_eq!(parse(json!({"id": 16, "cmd": "save_report"})).cmd, Command::SaveReport);
         assert_eq!(parse(json!({"id": 14, "cmd": "refresh_catalog"})).cmd, Command::RefreshCatalog);
         assert_eq!(parse(json!({"id": 3, "cmd": "join", "device": "pad:7"})).cmd, Command::Join { device: "pad:7".into() });
         assert_eq!(parse(json!({"id": 4, "cmd": "leave", "seat": 2})).cmd, Command::Leave { seat: 2 });

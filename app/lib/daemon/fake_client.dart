@@ -162,6 +162,9 @@ class FakeClient extends CouchClient {
   Future<({String text, String dir, String? error})> getLog() async =>
       (text: 'Couchlink test log\n== couchlinkd.log ==\nseat 0: exited with code 1 before showing a window', dir: '/tmp/couchlink/logs', error: null);
 
+  @override
+  Future<({String? path, String? error})> saveReport() async => (path: '/tmp/couchlink/logs/couchlink-report-1.txt', error: null);
+
   /// Tests: the program paths the UI added with [addGame].
   final List<String> addedGames = [];
 

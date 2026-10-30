@@ -40,17 +40,33 @@ void main() {
     }
   });
 
-  testWidgets('the language switch turns the app Russian and back', (tester) async {
+  testWidgets('the language switch in Settings turns the app Russian and back', (tester) async {
     await pumpApp(tester, newFake(), view: AppView.library);
     expect(find.text('Library'), findsWidgets);
+    await tester.tap(find.byKey(const ValueKey('settings-open')));
+    await tester.pump(const Duration(milliseconds: 200));
     await tester.tap(find.byKey(const ValueKey('lang-русский')));
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text('Библиотека'), findsWidgets);
+    expect(find.text('Настройки'), findsOneWidget);
     expect(find.text('Язык'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('lang-english')));
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text('Library'), findsWidgets);
+    expect(find.text('Settings'), findsOneWidget);
+    // Back shows the pages again.
+    await tester.tap(find.byKey(const ValueKey('settings-close')));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.byKey(const ValueKey('nav-library')), findsOneWidget);
+  });
+
+  testWidgets('Save full report in Settings saves the file and says where', (tester) async {
+    await pumpApp(tester, newFake(), view: AppView.library);
+    await tester.tap(find.byKey(const ValueKey('settings-open')));
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.tap(find.byKey(const ValueKey('settings-save-report')));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.descendant(of: find.byKey(const ValueKey('toast')), matching: find.textContaining('couchlink-report-1.txt')), findsOneWidget);
+    await tester.pump(const Duration(seconds: 12));
   });
 }

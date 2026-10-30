@@ -9,6 +9,7 @@ import '../l10n/l10n.dart';
 
 import '../daemon/client.dart';
 import '../daemon/models.dart';
+import '../daemon/real_client.dart' show appVersion;
 import '../layout/layout_math.dart';
 import '../theme/tokens.dart';
 import 'app_state.dart';
@@ -336,6 +337,7 @@ class Sidebar extends StatelessWidget {
                 selected: ui.view == v,
                 onTap: () => ui.go(v),
               );
+          if (ui.settingsOpen) return const _SettingsPanel();
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -359,21 +361,14 @@ class Sidebar extends StatelessWidget {
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 10, 12, 14),
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 12),
+                padding: const EdgeInsets.fromLTRB(8, 8, 0, 12),
+                decoration: BoxDecoration(border: Border(top: BorderSide(color: c.hair))),
                 child: Row(
                   children: [
-                    Expanded(child: Text(t('Appearance'), style: txt(context, size: 12, color: c.ink2))),
-                    _ThemeSwitch(value: ui.themeMode, onChanged: ui.setThemeMode),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 12, 14),
-                child: Row(
-                  children: [
-                    Expanded(child: Text(t('Language'), style: txt(context, size: 12, color: c.ink2))),
-                    _LangSwitch(value: ui.lang, onChanged: ui.setLang),
+                    Expanded(child: Text('Couchlink $appVersion', style: txt(context, size: 12, color: c.ink3))),
+                    _SideIconButton(key: const ValueKey('settings-open'), icon: iconSettings, label: t('Settings'), onTap: ui.toggleSettings),
                   ],
                 ),
               ),
@@ -493,6 +488,111 @@ class _ThemeSwitch extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// A 44 px square icon button for the sidebar's footer and the Settings header.
+class _SideIconButton extends StatelessWidget {
+  const _SideIconButton({super.key, required this.icon, required this.label, required this.onTap});
+
+  final IconSpec icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Tooltip(
+      message: label,
+      waitDuration: const Duration(milliseconds: 500),
+      child: Pressable(
+        onTap: onTap,
+        radius: 10,
+        semanticLabel: label,
+        builder: (context, s) => AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: s.hover || s.pressed ? c.raised : Colors.transparent, borderRadius: BorderRadius.circular(10)),
+          child: CIcon(icon, size: 18, color: c.ink2, strokeWidth: 1.8),
+        ),
+      ),
+    );
+  }
+}
+
+/// Settings, in the sidebar in place of the pages: appearance, language, and the logs to send when something breaks.
+class _SettingsPanel extends StatelessWidget {
+  const _SettingsPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final scope = Scope.of(context);
+    final ui = scope.ui;
+    Widget heading(String label) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(t(label), style: txt(context, size: 11, weight: FontWeight.w600, color: c.ink3, ls: .02, height: 1.3)),
+        );
+    Widget action(String key, IconSpec icon, String label, VoidCallback onTap, {bool primary = false}) => Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: SizedBox(
+            width: double.infinity,
+            child: CButton(
+              key: ValueKey(key),
+              label: t(label),
+              small: true,
+              primary: primary,
+              leading: CIcon(icon, size: 15, color: primary ? Colors.white : c.ink, strokeWidth: 1.8),
+              onTap: onTap,
+            ),
+          ),
+        );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(6, 10, 10, 10),
+          child: Row(children: [
+            _SideIconButton(key: const ValueKey('settings-close'), icon: iconChevronLeft, label: t('Back'), onTap: ui.toggleSettings),
+            const SizedBox(width: 4),
+            Text(t('Settings'), style: txt(context, size: 15, weight: FontWeight.w700, height: 1.3)),
+          ]),
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(18, 4, 14, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                heading('Appearance'),
+                _ThemeSwitch(value: ui.themeMode, onChanged: ui.setThemeMode),
+                const SizedBox(height: 18),
+                heading('Language'),
+                _LangSwitch(value: ui.lang, onChanged: ui.setLang),
+                const SizedBox(height: 18),
+                heading('Logs'),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Text(t('If a game will not start, send us these on the Discord. Your user name is left out.'),
+                      style: txt(context, size: 12, color: c.ink2, height: 1.4)),
+                ),
+                action('settings-copy-log', iconCopy, 'Copy log', () => copyLog(scope)),
+                action('settings-save-report', iconFileText, 'Save full report', () => saveReport(scope), primary: true),
+                action('settings-open-logs', iconFolderOpen, 'Open log folder', () => openLogFolder(scope)),
+              ],
+            ),
+          ),
+        ),
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 12),
+          padding: const EdgeInsets.fromLTRB(8, 10, 0, 14),
+          decoration: BoxDecoration(border: Border(top: BorderSide(color: c.hair))),
+          child: Text('Couchlink $appVersion\n${t('Free and open source, MIT')}', style: txt(context, size: 12, color: c.ink3, height: 1.5)),
+        ),
+      ],
     );
   }
 }

@@ -401,6 +401,13 @@ class DaemonClient extends CouchClient {
   }
 
   @override
+  Future<({String? path, String? error})> saveReport() async {
+    final r = await _request('save_report', {}, timeout: const Duration(seconds: 20));
+    if (r['ok'] != true) return (path: null, error: _errorOf(r));
+    return (path: r['path'] as String?, error: null);
+  }
+
+  @override
   Future<String?> removeGame(String recipe) async {
     final err = await _cmd('remove_game', {'recipe': recipe});
     if (err == null) await listGames();
