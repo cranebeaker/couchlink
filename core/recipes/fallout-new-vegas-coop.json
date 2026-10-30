@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "id": "fallout-new-vegas-coop",
+  "game": "Fallout: New Vegas (co-op)",
+  "match": { "steamAppId": 22380, "exe": "FalloutNV.exe" },
+  "players": [2, 4],
+  "mode": "instances",
+  "steam": "shared",
+  "present": "window",
+  "launch": {
+    "exe": "nvse_loader.exe",
+    "args": ""
+  },
+  "files": {
+    "copy": ["Data/NVSE/Plugins/nvcoop.ini"],
+    "link": "all",
+    "saves": ["$DOCUMENTS/My Games/FalloutNV"]
+  },
+  "edits": [
+    {
+      "file": "Data/NVSE/Plugins/nvcoop.ini",
+      "format": "ini",
+      "per_seat": true,
+      "set": [
+        { "section": "coop", "key": "enable", "value": "1" },
+        { "section": "coop", "key": "transport", "value": "enet" },
+        { "section": "coop", "key": "port", "value": "27960" },
+        { "section": "coop", "key": "name", "value": "$PLAYER" },
+        { "section": "coop", "key": "autostart", "value": "start" },
+        { "section": "coop", "key": "party", "value": "$PLAYERS" },
+        { "section": "bridge", "key": "multiInstance", "value": "1" },
+        { "section": "bridge", "key": "instance", "value": "$SEAT" },
+        { "section": "bridge", "key": "minimized", "value": "0" },
+        { "section": "bridge", "key": "focusGuard", "value": "1" }
+      ]
+    },
+    {
+      "file": "Data/NVSE/Plugins/nvcoop.ini",
+      "format": "ini",
+      "per_seat": true,
+      "seats": "0",
+      "set": [
+        { "section": "coop", "key": "role", "value": "host" },
+        { "section": "coop", "key": "listen", "value": "0.0.0.0" },
+        { "section": "coop", "key": "maxplayers", "value": "4" }
+      ]
+    },
+    {
+      "file": "Data/NVSE/Plugins/nvcoop.ini",
+      "format": "ini",
+      "per_seat": true,
+      "seats": "1+",
+      "set": [
+        { "section": "coop", "key": "role", "value": "client" },
+        { "section": "coop", "key": "host", "value": "127.0.0.1" },
+        { "section": "coop", "key": "token", "value": "7700$SEAT" }
+      ]
+    },
+    {
+      "file": "$DOCUMENTS/My Games/FalloutNV/FalloutPrefs.ini",
+      "format": "ini",
+      "per_seat": true,
+      "set": [
+        { "section": "Display", "key": "bFull Screen", "value": "0" },
+        { "section": "Display", "key": "iSize W", "value": "$WIDTH" },
+        { "section": "Display", "key": "iSize H", "value": "$HEIGHT" }
+      ]
+    },
+    {
+      "file": "$DOCUMENTS/My Games/FalloutNV/Fallout.ini",
+      "format": "ini",
+      "per_seat": true,
+      "set": [
+        { "section": "General", "key": "bAlwaysActive", "value": "1" }
+      ]
+    }
+  ],
+  "locks": ["FalloutNVGameMutex"],
+  "input": { "xinput": true, "dinput": true, "rawinput": false },
+  "window": { "exe": "FalloutNV.exe", "borderless": true, "settle_ms": 8000, "wait_ms": 180000 },
+  "requires": [
+    {
+      "file": "nvse_loader.exe",
+      "hint": "install xNVSE 6.3.0 or newer into the game folder (github.com/xNVSE/NVSE/releases)."
+    },
+    {
+      "file": "Data/NVSE/Plugins/nvcoop.dll",
+      "hint": "install FNV Co-Op 0.1.5 or newer once: download it from github.com/cranebeaker/fnv-coop/releases and run Install.cmd."
+    },
+    {
+      "file": "$DOCUMENTS/My Games/FalloutNV/FalloutPrefs.ini",
+      "hint": "start Fallout: New Vegas once from Steam and close it, so the game writes its settings."
+    }
+  ],
+  "tips": [
+    "Player 1 hosts, everyone else joins on this PC. The whole party starts a new game together and the opening movie plays for everyone at once.",
+    "Each player makes their own character at Doc Mitchell's.",
+    "Each seat keeps its own saves and settings."
+  ]
+}

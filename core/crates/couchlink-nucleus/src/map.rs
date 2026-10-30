@@ -1038,7 +1038,7 @@ fn brace_vars(v: &mut Value) {
                     }
                     let name = &s[start..end];
                     // The longest known name that starts the run; anything after it is literal text.
-                    let known = ["SEAT", "PLAYER", "WIDTH", "HEIGHT", "X", "Y", "GAMEDIR", "STEAMID", "USERPROFILE", "DOCUMENTS", "APPDATA", "LOCALAPPDATA"];
+                    let known = ["SEAT", "PLAYER", "PLAYERS", "WIDTH", "HEIGHT", "X", "Y", "GAMEDIR", "STEAMID", "USERPROFILE", "DOCUMENTS", "APPDATA", "LOCALAPPDATA"];
                     if let Some(k) = known.iter().filter(|k| name.starts_with(**k) && name.len() > k.len()).max_by_key(|k| k.len()) {
                         out.push_str(&format!("${{{k}}}{}", &name[k.len()..]));
                         i = end;

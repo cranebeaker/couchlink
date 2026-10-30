@@ -113,7 +113,17 @@ pub fn games_json_vars(state_dir: &Path, id: &str) -> std::collections::BTreeMap
 
 /// True when the game folder meets one `requires` entry: the file exists and, if asked, holds the text.
 pub fn require_met(game_dir: &Path, r: &couchlink_core::recipe::Require) -> bool {
-    let path = game_dir.join(&r.file);
+    // A file of this PC is named through the folder variables, like `files.saves` ("$DOCUMENTS/My Games/..."); anything else
+    // is in the game folder.
+    let file = if r.file.starts_with('$') {
+        match couchlink_core::recipe::expand(&r.file, &machine_vars()) {
+            Ok(f) => f,
+            Err(_) => return false,
+        }
+    } else {
+        r.file.clone()
+    };
+    let path = game_dir.join(&file);
     match &r.contains {
         None => path.exists(),
         Some(text) => std::fs::read(&path).is_ok_and(|bytes| bytes.windows(text.len()).any(|w| w == text.as_bytes())),
@@ -394,6 +404,21 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn a_requirement_can_name_a_file_of_this_pc() {
+        let g = temp("req");
+        let home = machine_vars().get("USERPROFILE").cloned().expect("a home folder");
+        let marker = format!("couchlink-req-{}-{}.txt", std::process::id(), N.fetch_add(1, Ordering::Relaxed));
+        let req = |file: &str| couchlink_core::recipe::Require { file: file.to_string(), hint: "h".into(), contains: None };
+        assert!(!require_met(&g, &req(&format!("$USERPROFILE/{marker}"))), "not there yet");
+        std::fs::write(Path::new(&home).join(&marker), b"x").unwrap();
+        let met = require_met(&g, &req(&format!("$USERPROFILE/{marker}")));
+        let _ = std::fs::remove_file(Path::new(&home).join(&marker));
+        assert!(met, "found through $USERPROFILE, not inside the game folder");
+        std::fs::write(g.join("Game.exe"), b"x").unwrap();
+        assert!(require_met(&g, &req("Game.exe")), "a plain path is still in the game folder");
     }
 
     #[test]

@@ -41,7 +41,7 @@ A recipe is one JSON file that tells Couchlink how to run a game. The full forma
 }
 ```
 
-- **Template variables** in `args`, `env` and most paths: `$SEAT` (0 to 7), `$PLAYER`, `$WIDTH` `$HEIGHT` `$X` `$Y` (the
+- **Template variables** in `args`, `env` and most paths: `$SEAT` (0 to 7), `$PLAYER`, `$PLAYERS` (how many play this session), `$WIDTH` `$HEIGHT` `$X` `$Y` (the
   copy's region in desktop pixels), `$GAMEDIR` (this copy's folder), `$USERPROFILE` `$DOCUMENTS` `$APPDATA` `$LOCALAPPDATA`,
   plus the recipe's own `vars`, `find` results and `options`.
 - **`steam`**: `none` (no Steam), `shared` (every copy under the player's one Steam account) or `goldberg` (each copy
@@ -71,6 +71,7 @@ let it join the host by itself.
    `"env": { "MYMOD_SEAT": "$SEAT", "MYMOD_NAME": "$PLAYER" }`.
 2. Seat 0 hosts. Every other seat joins `127.0.0.1` on a fixed port your recipe and mod agree on (or a server started
    with `launch.first`).
+   Pass `$PLAYERS` too if the mod waits for the whole party before it starts (a shared intro, a ready check).
 3. Size the window from `$WIDTH` and `$HEIGHT`, or leave it: Couchlink moves and sizes each copy's window anyway.
 4. Keep saves per player through `files.saves`, or have the mod use `$SEAT` in its own save path.
 

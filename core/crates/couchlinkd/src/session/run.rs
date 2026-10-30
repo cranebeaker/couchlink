@@ -382,6 +382,7 @@ impl Run {
     fn shared_vars(&self) -> Result<BTreeMap<String, String>, String> {
         let mut builtin = BTreeMap::new();
         builtin.insert("GAMEDIR".to_string(), self.plan.game_dir.display().to_string());
+        builtin.insert("PLAYERS".to_string(), self.seats.len().to_string());
         self.recipe_vars(builtin)
     }
 
@@ -392,6 +393,7 @@ impl Run {
         let mut v: BTreeMap<String, String> = BTreeMap::new();
         v.insert("SEAT".into(), s.plan.seat.to_string());
         v.insert("PLAYER".into(), s.plan.player.clone());
+        v.insert("PLAYERS".into(), self.seats.len().to_string());
         v.insert("WIDTH".into(), r.w.to_string());
         v.insert("HEIGHT".into(), r.h.to_string());
         v.insert("X".into(), r.x.to_string());

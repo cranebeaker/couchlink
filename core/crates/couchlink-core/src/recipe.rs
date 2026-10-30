@@ -10,8 +10,8 @@ use std::path::{Component, Path};
 /// Schema number this build reads.
 pub const SCHEMA: u32 = 1;
 /// Template variables the runner always provides.
-pub const BUILTIN_VARS: [&str; 12] =
-    ["SEAT", "PLAYER", "WIDTH", "HEIGHT", "X", "Y", "GAMEDIR", "STEAMID", "APPDATA", "LOCALAPPDATA", "USERPROFILE", "DOCUMENTS"];
+pub const BUILTIN_VARS: [&str; 13] =
+    ["SEAT", "PLAYER", "PLAYERS", "WIDTH", "HEIGHT", "X", "Y", "GAMEDIR", "STEAMID", "APPDATA", "LOCALAPPDATA", "USERPROFILE", "DOCUMENTS"];
 /// Built-in variables that name folders of this PC rather than anything about the seat.
 pub const MACHINE_VARS: [&str; 4] = ["APPDATA", "LOCALAPPDATA", "USERPROFILE", "DOCUMENTS"];
 
@@ -555,7 +555,7 @@ impl Recipe {
     /// A value for every known variable, to check the shape of a template that needs a real one: the numbers of a
     /// seat are 1, an option has its default, anything else is text.
     fn stand_ins(&self) -> BTreeMap<String, String> {
-        let mut m: BTreeMap<String, String> = BUILTIN_VARS.iter().map(|n| (n.to_string(), if ["SEAT", "WIDTH", "HEIGHT", "X", "Y"].contains(n) { "1" } else { "x" }.to_string())).collect();
+        let mut m: BTreeMap<String, String> = BUILTIN_VARS.iter().map(|n| (n.to_string(), if ["SEAT", "PLAYERS", "WIDTH", "HEIGHT", "X", "Y"].contains(n) { "1" } else { "x" }.to_string())).collect();
         m.extend(self.vars.keys().chain(self.find.keys()).map(|n| (n.clone(), "1".to_string())));
         m.extend(self.options.iter().map(|(n, o)| (n.clone(), o.default_value())));
         m
