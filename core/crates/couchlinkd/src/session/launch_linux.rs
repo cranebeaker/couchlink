@@ -24,6 +24,11 @@ impl Launcher for LinuxLauncher {
             return Err("an own Steam account per player is only available on Windows for now".to_string());
         }
         let tools = Tools::find();
+        if let (Some(seat), Some(bwrap)) = (&spec.linux, &tools.bwrap)
+            && seat.opts.uses_proton(&spec.exe.display().to_string())
+        {
+            nested_sandbox(bwrap)?;
+        }
         let line = match &spec.linux {
             Some(seat) => {
                 let home = seat.data_dir.join("home");
@@ -165,6 +170,30 @@ pub fn copy_line(spec: &LaunchSpec, seat: &LinuxSeat, tools: &Tools, pad_paths: 
     let mut args = seat_args(&own, &[]);
     args.extend(line);
     Ok(Line { program: bwrap, args, env })
+}
+
+/// Proton's runtime (pressure-vessel) starts a bwrap sandbox of its own inside Couchlink's. Some systems forbid that
+/// (Ubuntu 24.04 and later confine unprivileged user namespaces with AppArmor), and the copy would then die without a
+/// window and without a word. This tries it once per daemon and says what is wrong instead.
+fn nested_sandbox(bwrap: &Path) -> Result<(), String> {
+    static RESULT: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
+    RESULT.get_or_init(|| try_nested(bwrap)).clone()
+}
+
+fn try_nested(bwrap: &Path) -> Result<(), String> {
+    let b = bwrap.display().to_string();
+    let out = Command::new(bwrap)
+        .args(["--dev-bind", "/", "/", "--die-with-parent", "--", &b, "--dev-bind", "/", "/", "--", "true"])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("cannot run bwrap: {e}"))?;
+    if out.status.success() {
+        return Ok(());
+    }
+    Err(format!(
+        "Proton cannot start inside Couchlink's sandbox on this system ({}). On Ubuntu 24.04 and later AppArmor blocks a sandbox          inside another one; `sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0` lifts that until the next restart",
+        String::from_utf8_lossy(&out.stderr).trim()
+    ))
 }
 
 /// What PROTONPATH becomes for the recipe's `proton`: none (umu's own), umu's `GE-Proton` keyword, or a folder.
@@ -330,6 +359,22 @@ mod tests {
         // The plain gamescope cannot read them: the seat still gets a window, with the desktop's keyboard.
         let l = copy_line(&spec("/g/Game.exe"), &seat(LinuxOpts::default()), &tools(), &[], &kbm).unwrap();
         assert_eq!(after_sandbox(&l)[0], "/usr/bin/gamescope");
+    }
+
+    /// CI allows nested sandboxes, so there the check must pass (COUCHLINK_REQUIRE_SANDBOX_TEST=1).
+    #[test]
+    fn a_sandbox_inside_the_sandbox_is_tried() {
+        let Some(bwrap) = which("bwrap") else {
+            assert!(!std::env::var("COUCHLINK_REQUIRE_SANDBOX_TEST").is_ok_and(|v| v == "1"), "bwrap is missing");
+            return;
+        };
+        let r = try_nested(&bwrap);
+        if std::env::var("COUCHLINK_REQUIRE_SANDBOX_TEST").is_ok_and(|v| v == "1") {
+            assert_eq!(r, Ok(()));
+        } else if let Err(e) = r {
+            assert!(e.contains("AppArmor"), "{e}");
+        }
+        assert!(try_nested(Path::new("/nonexistent/bwrap")).unwrap_err().contains("cannot run bwrap"));
     }
 
     #[test]

@@ -185,13 +185,25 @@ The same pipeline, with Linux parts in `session/*_linux.rs` (Windows code is unt
    gamescope runs with `SDL_VIDEODRIVER=x11` so that this works on Wayland desktops through XWayland. Without an X display
    the windows keep their size and the desktop places them.
 
-Needs on the host: `bwrap`, `gamescope`, `umu-run` (Windows games only), `fuse-overlayfs` (optional). `/tmp` stays shared
-on purpose: gamescope runs inside the sandbox and needs the desktop's X11 socket. Ubuntu 24.04 and later confine
-unprivileged user namespaces with AppArmor; umu's pressure-vessel is a second bwrap inside ours, and the stock profile can
-refuse it ("No permissions to create new namespace"). Copies get `PROTON_ENABLE_HIDRAW=1` (Wine reads its own seat's hidraw
-node) and gamescope runs with `ENABLE_GAMESCOPE_WSI=0`, as PartyDeck does. Not yet on Linux:
-keyboard and mouse per seat (the hub's Raw Input listener is Windows only; nested gamescope sends the desktop's keyboard
-and mouse to the focused window), and an own Steam account per seat (`steam: accounts`).
+Needs on the host: `bwrap`, `gamescope`, `umu-run` (Windows games only), `fuse-overlayfs` (optional), and
+`gamescope-kbm` (PartyDeck's gamescope fork, optional) for keyboard and mouse seats. `/tmp` stays shared on purpose:
+gamescope runs inside the sandbox and needs the desktop's X11 socket. Copies get `PROTON_ENABLE_HIDRAW=1` (Wine reads its
+own seat's hidraw node) and gamescope runs with `ENABLE_GAMESCOPE_WSI=0`, as PartyDeck does.
+
+**Proton inside the sandbox.** umu's pressure-vessel is a second bwrap inside ours. Ubuntu 24.04 and later confine
+unprivileged user namespaces with AppArmor, which can refuse that. Before the first Proton copy starts, the launcher tries a
+nested bwrap once; if it fails, the session fails at once with what to do, instead of copies that die without a window.
+
+**Keyboards and mice** (`rawkbm_linux.rs`): every evdev keyboard (letters and Enter) and mouse (relative X/Y and a left
+button) is a device, one per physical device (grouped by sysfs like controllers); Enter on one asks for a seat, as on
+Windows. Reading them needs the `input` group (or a udev rule); without it the daemon logs why and there are no keyboard
+seats. A seat that owns keyboards or mice gets their nodes in its sandbox and runs in `gamescope-kbm` (found on `PATH`, or
+`COUCHLINK_GAMESCOPE_KBM`) with `--backend-disable-keyboard --backend-disable-mouse --libinput-hold-dev=<nodes>, --grab`,
+so only that copy reads them. With plain gamescope the seat still plays, with the desktop's keyboard and mouse going to
+the focused window. Software devices (`/sys/devices/virtual`) are left out unless `COUCHLINK_KBM_VIRTUAL=1` (tests).
+
+Not yet on Linux: an own Steam account per seat (`steam: accounts`), and the input processor (remaps, profiles), since
+copies read their controllers directly.
 
 **Recipe `linux` object** (optional; `couchlink-core/src/recipe_linux.rs`; Windows ignores it):
 
@@ -262,6 +274,9 @@ A copy is two layers: the **base** is the real install, shared read-only; the **
 ## Tests (automated, no human playtests)
 
 - Unit: recipe parsing and validation, template expansion, region to pixel maths, journal replay, Goldberg config files, hub mapping.
+- Linux (CI runs these with `COUCHLINK_REQUIRE_SANDBOX_TEST=1` and, when gamescope is packaged, `COUCHLINK_REQUIRE_GAMESCOPE_TEST=1`,
+  under Xvfb with software Vulkan): virtual keyboards and mice are listed and Enter joins; the integration test runs two testgame
+  copies through the daemon (sandbox, own home, layered copy, undo), then again inside gamescope and checks each window's region.
 - Linux sandbox (`sandbox_linux.rs`): two copies of a probe program, each in its own seat's sandbox with one uinput virtual pad, each must list only its own pad and get only its own presses. CI makes it required (`COUCHLINK_REQUIRE_SANDBOX_TEST=1`); the layered copies test runs there too.
 - Integration with `testgame`: start a session of 2 to 4 testgame copies through couchlinkd, check each window lands on its region, each sees only its own (virtual SDL or synthetic) pad via the hook, unfocused copies keep running, and everything is restored after `stop_session` and after a simulated crash.
 - Real game (manual run only when the PC is unlocked and the owner is not playing): Nitrox with 2 copies on one screen.
