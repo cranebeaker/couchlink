@@ -30,6 +30,23 @@ bool before((double, double) a, (double, double) b) => a.$1 < b.$1 || (a.$1 == b
 
 void main() {
   group('Library', () {
+    testWidgets('the search box narrows every section to the games that match', (tester) async {
+      final fake = fastFake();
+      await pumpApp(tester, fake, view: AppView.library);
+      expect(byKey('game-l4d2'), findsOneWidget);
+      await tester.enterText(byKey('library-search'), 'dead 4');
+      await settle(tester);
+      expect(byKey('game-l4d2'), findsOneWidget, reason: 'every word matches, in any order');
+      expect(byKey('game-fnv'), findsNothing);
+      expect(byKey('section-installed'), findsNothing);
+      await tester.enterText(byKey('library-search'), 'zzz');
+      await settle(tester);
+      expect(find.textContaining('No game matches'), findsOneWidget);
+      await tester.enterText(byKey('library-search'), '');
+      await settle(tester);
+      expect(byKey('game-fnv'), findsOneWidget);
+    });
+
     testWidgets('lists the daemon games, installed first, the others dimmed and marked', (tester) async {
       final fake = fastFake();
       await pumpApp(tester, fake, view: AppView.library);

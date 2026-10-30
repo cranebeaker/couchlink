@@ -80,6 +80,15 @@ class UiState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// What the Library search box holds; every section shows only the games whose name matches it.
+  String libraryQuery = '';
+
+  void setLibraryQuery(String q) {
+    if (q == libraryQuery) return;
+    libraryQuery = q;
+    notifyListeners();
+  }
+
   void setCatalogFilter(String f) {
     catalogFilter = f;
     notifyListeners();
