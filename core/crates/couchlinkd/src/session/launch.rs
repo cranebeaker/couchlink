@@ -303,8 +303,14 @@ mod tests {
         fn kill(&mut self) {}
     }
 
+    /// A port nothing uses, as `port_in_use` sees it (Windows reserves some ranges a random port can fall in).
     fn free_port() -> u16 {
-        TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
+        loop {
+            let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+            if !port_in_use(port) {
+                return port;
+            }
+        }
     }
 
     #[test]
