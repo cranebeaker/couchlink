@@ -489,6 +489,9 @@ mod tests {
     #[test]
     fn a_pads_keys_reach_the_seats_keyboard_feed() {
         let _l = profiles_lock();
+        // The keyboard feed's seat lives in rawkbm's registry, which other tests reset (the hook's e2e test includes
+        // this file and rawkbm.rs): hold its lock too.
+        let _reg = super::super::rawkbm::test_lock();
         let keys = Profile::from_value(&serde_json::json!({"id": "k", "name": "K", "buttons": {"south": {"type": "key", "value": "E"}}})).unwrap();
         let default = couchlink_core::profile::builtin("default").unwrap();
         set_profiles(&[default.clone(), default.clone(), default.clone(), keys]);

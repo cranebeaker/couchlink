@@ -259,11 +259,13 @@ pub(super) struct Watcher {
     pub denied: usize,
     /// Devices taken for a seat's copy, by handle.
     grabbed: std::collections::BTreeSet<u64>,
+    /// The modifiers held on each device (`hotkey::linux` bits), for the close-the-games shortcut.
+    mods: BTreeMap<u64, u8>,
 }
 
 impl Watcher {
     pub fn new(include_virtual: bool) -> Watcher {
-        Watcher { include_virtual, open: BTreeMap::new(), last_scan: None, denied: 0, grabbed: Default::default() }
+        Watcher { include_virtual, open: BTreeMap::new(), last_scan: None, denied: 0, grabbed: Default::default(), mods: BTreeMap::new() }
     }
 
     /// Look for plugged and unplugged devices now.
@@ -277,6 +279,7 @@ impl Watcher {
         let gone: Vec<u64> = self.open.keys().filter(|h| !found.iter().any(|f| f.handle == **h)).copied().collect();
         for h in gone {
             self.open.remove(&h);
+            self.mods.remove(&h);
             events.extend(reg.remove_device(h));
         }
         for f in found {
@@ -313,6 +316,18 @@ impl Watcher {
                 let kind = u16::from_ne_bytes([ev[16], ev[17]]);
                 let code = u16::from_ne_bytes([ev[18], ev[19]]);
                 let value = i32::from_ne_bytes([ev[20], ev[21], ev[22], ev[23]]);
+                if kind == EV_KEY {
+                    // The close-the-games keys work on any keyboard, also one a seat's copy has taken.
+                    let held = self.mods.entry(*handle).or_default();
+                    match crate::hotkey::linux::modifier(code) {
+                        0 if value == 1 => {
+                            crate::hotkey::linux::key_down(*held, code);
+                        }
+                        0 => {}
+                        m if value == 0 => *held &= !m,
+                        m => *held |= m,
+                    }
+                }
                 if let Some(i) = seat {
                     seats[i].send(kind, code, value);
                 } else if kind == EV_KEY && (code == KEY_ENTER || code == KEY_KPENTER) && value != 2 {
@@ -444,6 +459,57 @@ mod tests {
             break;
         }
         assert!(w.rescan().contains(&RawKbmEvent::Removed(m.id.clone())), "unplugging is noticed");
+        test_reset();
+    }
+
+    /// The close-the-games keys pressed on a real (virtual) keyboard reach the hub. Needs /dev/uinput.
+    #[test]
+    fn the_close_the_games_keys_work_on_any_keyboard() {
+        use crate::hotkey::linux::{key_down, TEST_LOCK};
+        let required = std::env::var("COUCHLINK_REQUIRE_SANDBOX_TEST").is_ok_and(|v| v == "1");
+        if let Some(why) = skip_reason() {
+            assert!(!required, "{why}");
+            eprintln!("skipped the_close_the_games_keys_work_on_any_keyboard: {why}");
+            return;
+        }
+        let _h = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _l = test_lock();
+        test_reset();
+        const CTRL: u16 = 29;
+        const SHIFT: u16 = 42;
+        const Q: u16 = 16;
+        let mut keys = letters();
+        keys.extend([CTRL, SHIFT]);
+        let mut kbd = VirtualDevice::new(&format!("couchlink-test-stopkeys-{}", std::process::id()), &keys, &[]).unwrap();
+        kbd.node(Duration::from_secs(10)).unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        crate::hotkey::spawn(tx).set(couchlink_core::shortcut::parse_keys("Ctrl+Shift+Q").unwrap()).unwrap();
+        let mut w = Watcher::new(true);
+        w.rescan();
+        let press = |kbd: &mut VirtualDevice, code: u16, value: i32| {
+            kbd.emit(EV_KEY, code, value);
+            kbd.emit(0, 0, 0);
+        };
+        press(&mut kbd, Q, 1);
+        press(&mut kbd, Q, 0);
+        std::thread::sleep(Duration::from_millis(100));
+        w.poll();
+        assert!(rx.try_recv().is_err(), "Q alone is typing");
+        press(&mut kbd, CTRL, 1);
+        press(&mut kbd, SHIFT, 1);
+        press(&mut kbd, Q, 1);
+        std::thread::sleep(Duration::from_millis(100));
+        w.poll();
+        assert!(matches!(rx.try_recv(), Ok(crate::hub::HubMsg::StopShortcut)), "Ctrl+Shift+Q closes the games");
+        for code in [Q, SHIFT, CTRL] {
+            press(&mut kbd, code, 0);
+        }
+        press(&mut kbd, Q, 1);
+        std::thread::sleep(Duration::from_millis(100));
+        w.poll();
+        assert!(rx.try_recv().is_err(), "the modifiers are let go again");
+        crate::hotkey::spawn(tokio::sync::mpsc::unbounded_channel().0).set(None).unwrap();
+        assert!(!key_down(crate::hotkey::linux::CTRL | crate::hotkey::linux::SHIFT, Q));
         test_reset();
     }
 }
