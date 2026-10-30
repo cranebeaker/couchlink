@@ -55,6 +55,7 @@ verbatim for every DLL. Not written in steamclient mode (upstream says it is not
 | `disable_networking`, `offline`, `disable_lobby_creation`, `disable_lan_only`, `disable_sharing_stats_with_gameserver`, `disable_source_query` | `configs.main.ini` `[main::connectivity]` | written only when true |
 | `new_app_ticket`, `gc_token` | `[main::general]` | for very old games |
 | `custom_broadcasts` | `custom_broadcasts.txt` | extra hosts, added to the loopback lines |
+| `experimental` | the experimental `steam_api(64).dll` in place of the regular one | has the in-game overlay (Shift+Tab) for games that join through a Steam invite; turns the overlay on for every seat unless a selector below says otherwise; the other copies accept invites by themselves (`auto_accept_invite.txt`); Windows builds |
 | `overlay_off_seats`, `overlay_on_seats` (`disable_overlay_seats` alias) | `configs.overlay.ini` `enable_experimental_overlay` | seat selectors `all`, `1+`, `0,2`; experimental builds only |
 | `achievements: false` | `stat_achievement_progress_functionality=0`, overlay `disable_achievement_notification`/`disable_achievement_progress` | silences popups and progress writes; no `achievements.json` is ever written |
 | `force_language` | `configs.user.ini` `language` | |

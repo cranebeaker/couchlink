@@ -33,7 +33,8 @@ pub use accounts::{
 pub use dlc::{DlcEntry, DlcSource, dlc_entries, installed_dlc_ids};
 pub use error::{Result, SteamError};
 pub use goldberg::{
-    GOLDBERG, GoldbergFiles, GoldbergPin, SteamClientFiles, ensure_goldberg, ensure_goldberg_steamclient,
+    ExperimentalFiles, GOLDBERG, GoldbergFiles, GoldbergPin, SteamClientFiles, ensure_goldberg, ensure_goldberg_experimental,
+    ensure_goldberg_steamclient,
 };
 pub use interfaces::{generate_interfaces, original_needs_interfaces_file, scan_interfaces};
 pub use library::{InstalledApp, find_app, installed_apps, steam_libraries, steam_root};

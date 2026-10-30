@@ -6,7 +6,7 @@
 
 use crate::dlc::{DlcSource, configs_app_ini, dlc_entries};
 use crate::error::{Result, SteamError};
-use crate::goldberg::{GoldbergFiles, SteamClientFiles, ensure_goldberg, ensure_goldberg_steamclient};
+use crate::goldberg::{GoldbergFiles, SteamClientFiles, ensure_goldberg, ensure_goldberg_experimental, ensure_goldberg_steamclient};
 use crate::interfaces::{
     generate_interfaces, interfaces_from_list, original_needs_interfaces_file, read_dll,
 };
@@ -201,7 +201,13 @@ pub fn prepare_full(
                     "steamclient mode needs the game's exe (PrepareOptions::game_launch)".into(),
                 ));
             }
-            let files = if use_sc { ensure_goldberg_steamclient(cache_dir)? } else { ensure_goldberg(cache_dir)? };
+            let files = if use_sc {
+                ensure_goldberg_steamclient(cache_dir)?
+            } else if opts.goldberg.experimental {
+                ensure_goldberg_experimental(cache_dir)?
+            } else {
+                ensure_goldberg(cache_dir)?
+            };
             match prepare_goldberg(copy_dir, seat, &files, opts, &mut out.undos) {
                 Ok(launch) => out.launch = launch,
                 Err(e) => {
@@ -261,11 +267,21 @@ pub fn prepare_goldberg(
     if dlls.is_empty() {
         return Err(SteamError::NoSteamApiDll(copy_dir.to_path_buf()));
     }
+    // The experimental build has the in-game overlay; a recipe asks for it with `goldberg.experimental`.
+    let exp = match (g.experimental, &files.experimental) {
+        (true, Some(e)) => Some(e),
+        (true, None) => {
+            return Err(SteamError::MissingInArchive("the experimental steam_api DLLs (installed by ensure_goldberg_experimental)".into()));
+        }
+        (false, _) => None,
+    };
     for dll in dlls {
         let bits = pe_bitness(&dll)?;
-        let src = match bits {
-            Bitness::X86 => &files.dll_x86,
-            Bitness::X64 => &files.dll_x64,
+        let src = match (bits, exp) {
+            (Bitness::X86, Some(e)) => &e.dll_x86,
+            (Bitness::X64, Some(e)) => &e.dll_x64,
+            (Bitness::X86, None) => &files.dll_x86,
+            (Bitness::X64, None) => &files.dll_x64,
         };
         place_file_from(&dll, src, undos)?;
         // The original DLL is now the backup beside it (make_room moved it, or restored a crashed run's first).
@@ -641,6 +657,20 @@ mod tests {
         let cache = tmp.join("cache");
         install_archive(&arc, &sha256_hex(&arc), &cache).unwrap();
         (tmp, base, copy, cache)
+    }
+
+    #[test]
+    fn the_experimental_build_brings_its_overlay() {
+        let (tmp, _base, copy, cache) = setup("exp");
+        let mut opts = t_opts();
+        opts.goldberg = GoldbergOptions::from_recipe(&serde_json::json!({"experimental": true})).unwrap();
+        prepare_with(&copy, SteamMode::Goldberg, &seat(2, 1), &cache, &opts).unwrap();
+        assert_eq!(std::fs::read(copy.join("steam_api64.dll")).unwrap(), b"EXPERIMENTAL-64");
+        assert_eq!(std::fs::read(copy.join("sub/Steam_API.dll")).unwrap(), b"EXPERIMENTAL-32");
+        let st = copy.join("steam_settings");
+        assert!(std::fs::read_to_string(st.join("configs.overlay.ini")).unwrap().contains("enable_experimental_overlay=1"));
+        assert!(st.join("auto_accept_invite.txt").exists(), "the other copies join an invite by themselves");
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]

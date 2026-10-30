@@ -43,6 +43,9 @@ const LGPL_TEXT: &str = include_str!("../assets/gbe_fork-LICENSE-LGPL-3.0.txt");
 
 const MARKER: &str = ".couchlink-installed";
 const SC_MARKER: &str = ".couchlink-steamclient-installed";
+/// The experimental `steam_api(64).dll` pair (the one with the overlay) is installed too.
+const EXP_MARKER: &str = ".couchlink-experimental-installed";
+const EXP_DIR: &str = "experimental";
 const SC_DIR: &str = "steamclient";
 /// The archive folder the steamclient files live in.
 const SC_ARCHIVE_DIR: &str = "steamclient_experimental";
@@ -61,6 +64,15 @@ pub struct GoldbergFiles {
     pub version: String,
     /// The experimental steamclient set, when it has been installed (`ensure_goldberg_steamclient`).
     pub steamclient: Option<SteamClientFiles>,
+    /// The experimental `steam_api(64).dll` pair, which has the in-game overlay (`ensure_goldberg_experimental`).
+    pub experimental: Option<ExperimentalFiles>,
+}
+
+/// gbe_fork's experimental `steam_api.dll` and `steam_api64.dll`, as cached files.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExperimentalFiles {
+    pub dll_x86: PathBuf,
+    pub dll_x64: PathBuf,
 }
 
 /// gbe_fork's experimental steamclient build with its ColdClientLoader, as cached files.
@@ -118,6 +130,10 @@ fn files_for(cache_dir: &Path) -> GoldbergFiles {
         license: dir.join("LICENSE-LGPL-3.0.txt"),
         version: GOLDBERG.tag.to_string(),
         steamclient: dir.join(SC_MARKER).exists().then(|| steamclient_files_for(&dir)),
+        experimental: dir.join(EXP_MARKER).exists().then(|| ExperimentalFiles {
+            dll_x86: dir.join(EXP_DIR).join("x32").join("steam_api.dll"),
+            dll_x64: dir.join(EXP_DIR).join("x64").join("steam_api64.dll"),
+        }),
         dir,
     }
 }
@@ -187,6 +203,24 @@ pub fn ensure_goldberg_steamclient(cache_dir: &Path) -> Result<GoldbergFiles> {
     }
     let bytes = download(GOLDBERG.url)?;
     install_archive_with(&bytes, GOLDBERG.sha256, cache_dir, true)
+}
+
+/// Like `ensure_goldberg`, and the experimental `steam_api(64).dll` pair is there too (`GoldbergFiles::experimental`
+/// is `Some` on success). A cache from before Couchlink kept that pair gets the pinned archive again.
+pub fn ensure_goldberg_experimental(cache_dir: &Path) -> Result<GoldbergFiles> {
+    let files = files_for(cache_dir);
+    let cached = files.dir.join(MARKER).exists() && files.dir.join(EXP_MARKER).exists();
+    let files = if cached || seed_from_bundle(cache_dir, EXP_MARKER) {
+        let files = files_for(cache_dir);
+        verify_installed(&files)?;
+        files
+    } else {
+        let bytes = download(GOLDBERG.url)?;
+        install_archive(&bytes, GOLDBERG.sha256, cache_dir)?
+    };
+    let exp = files.experimental.clone().ok_or_else(|| SteamError::MissingInArchive("experimental/x64/steam_api64.dll".into()))?;
+    verify_readable(&[&exp.dll_x86, &exp.dll_x64])?;
+    Ok(files)
 }
 
 pub(crate) fn download(url: &str) -> Result<Vec<u8>> {
@@ -262,6 +296,8 @@ pub(crate) fn norm_components(name: &str) -> Vec<String> {
 struct Picked {
     x86: Option<(usize, Vec<u8>)>,
     x64: Option<(usize, Vec<u8>)>,
+    exp_x86: Option<(usize, Vec<u8>)>,
+    exp_x64: Option<(usize, Vec<u8>)>,
     readme: Option<Vec<u8>>,
     credits: Option<Vec<u8>>,
     /// Canonical file name to bytes, from the `steamclient_experimental` folder.
@@ -278,6 +314,14 @@ pub(crate) fn score(comps: &[String]) -> Option<usize> {
     }
     let regular = dirs.iter().any(|c| c == "regular");
     Some(if regular { 0 } else { 100 } + comps.len())
+}
+
+/// The experimental build's slot: under an `experimental` folder (not the steamclient one, tools or debug builds).
+/// Lower wins, like `score`.
+pub(crate) fn experimental_score(comps: &[String]) -> Option<usize> {
+    const EXCLUDED: [&str; 5] = ["steam_old_lib", "steamclient_experimental", "tools", "debug", "steam_settings.example"];
+    let dirs = &comps[..comps.len().saturating_sub(1)];
+    (dirs.iter().any(|c| c == EXP_DIR) && !dirs.iter().any(|c| EXCLUDED.contains(&c.as_str()))).then_some(comps.len())
 }
 
 /// Verify `archive` against `expected_sha256` and install the files into `cache_dir`.
@@ -310,6 +354,7 @@ pub fn install_archive_with(
             let Some(file) = comps.last().cloned() else { return Ok(true) };
             let top_level = comps.len() <= 2; // "<root>/README.release.md" or "README.release.md"
             let slot_score = score(&comps);
+            let exp_score = experimental_score(&comps);
             let sc_name = if with_steamclient && comps.len() >= 2 && comps[comps.len() - 2] == SC_ARCHIVE_DIR {
                 SC_WANTED.iter().find(|(n, _)| *n == file.as_str()).map(|(_, canon)| *canon)
             } else {
@@ -322,7 +367,7 @@ pub fn install_archive_with(
                 return Ok(true);
             }
             let wanted = match file.as_str() {
-                "steam_api.dll" | "steam_api64.dll" => slot_score.is_some(),
+                "steam_api.dll" | "steam_api64.dll" => slot_score.is_some() || exp_score.is_some(),
                 "readme.release.md" | "credits.md" => top_level,
                 _ => false,
             };
@@ -333,6 +378,15 @@ pub fn install_archive_with(
             }
             let mut buf = Vec::new();
             data.read_to_end(&mut buf)?;
+            if slot_score.is_none()
+                && let Some(s) = exp_score
+            {
+                let slot = if file == "steam_api.dll" { &mut picked.exp_x86 } else { &mut picked.exp_x64 };
+                if slot.as_ref().is_none_or(|(old, _)| s < *old) {
+                    *slot = Some((s, buf));
+                }
+                return Ok(true);
+            }
             match file.as_str() {
                 "steam_api.dll" => {
                     let s = slot_score.unwrap();
@@ -398,6 +452,21 @@ pub fn install_archive_with(
 
     // Marker only after the DLLs read back intact.
     write_plain(&files.dir.join(MARKER), GOLDBERG.tag.as_bytes())?;
+
+    // The experimental pair (with the overlay), when the archive has it.
+    let _ = std::fs::remove_file(files.dir.join(EXP_MARKER));
+    if let (Some((_, e86)), Some((_, e64))) = (picked.exp_x86, picked.exp_x64) {
+        let exp = ExperimentalFiles {
+            dll_x86: files.dir.join(EXP_DIR).join("x32").join("steam_api.dll"),
+            dll_x64: files.dir.join(EXP_DIR).join("x64").join("steam_api64.dll"),
+        };
+        mkdir(exp.dll_x86.parent().unwrap())?;
+        mkdir(exp.dll_x64.parent().unwrap())?;
+        write_checked(&exp.dll_x86, &e86)?;
+        write_checked(&exp.dll_x64, &e64)?;
+        write_plain(&files.dir.join(EXP_MARKER), GOLDBERG.tag.as_bytes())?;
+        files.experimental = Some(exp);
+    }
 
     if with_steamclient {
         // The loader and steamclient DLLs are what Defender flags most often: check each one reads back.
@@ -540,6 +609,11 @@ mod tests {
         // (Same cache dir; the marker makes it return without downloading.)
         let again = ensure_goldberg(&cache).unwrap();
         assert_eq!(again, f);
+        // The experimental pair (with the overlay) comes out of the same archive, kept apart.
+        let exp = f.experimental.clone().expect("the experimental steam_api pair");
+        assert_eq!(std::fs::read(&exp.dll_x86).unwrap(), b"EXPERIMENTAL-32");
+        assert_eq!(std::fs::read(&exp.dll_x64).unwrap(), b"EXPERIMENTAL-64");
+        assert_eq!(ensure_goldberg_experimental(&cache).unwrap(), f, "no download when it is cached");
         std::fs::remove_dir_all(&tmp).unwrap();
     }
 
@@ -684,6 +758,31 @@ mod tests {
 
 #[cfg(test)]
 mod real_archive {
+    /// The pinned release has the experimental steam_api pair where `experimental_score` looks for it. Reads the
+    /// archive in memory only (nothing written for an antivirus to flag): `cargo test -p couchlink-steam
+    /// pinned_release_has_the_experimental_pair -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn pinned_release_has_the_experimental_pair() {
+        use std::io::Cursor;
+        let bytes = super::download(super::GOLDBERG.url).unwrap();
+        let mut reader = sevenz_rust2::ArchiveReader::new(Cursor::new(&bytes[..]), sevenz_rust2::Password::empty()).unwrap();
+        let mut found = Vec::new();
+        reader
+            .for_each_entries(|entry, data| {
+                let comps = super::norm_components(entry.name());
+                let file = comps.last().cloned().unwrap_or_default();
+                if (file == "steam_api.dll" || file == "steam_api64.dll") && super::experimental_score(&comps).is_some() {
+                    found.push(entry.name().to_string());
+                }
+                std::io::copy(data, &mut std::io::sink())?;
+                Ok(true)
+            })
+            .unwrap();
+        println!("{found:?}");
+        assert!(found.iter().any(|n| n.ends_with("x64/steam_api64.dll")) && found.iter().any(|n| n.ends_with("/steam_api.dll")), "{found:?}");
+    }
+
     /// The pinned release itself (network): every DLL comes out of it, also with the steamclient set. Writes the
     /// DLLs into a temp folder, which antivirus tools may flag, so it only runs on demand:
     /// `cargo test -p couchlink-steam pinned_release_unpacks -- --ignored`.

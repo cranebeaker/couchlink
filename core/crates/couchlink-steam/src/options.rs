@@ -117,6 +117,11 @@ pub struct GoldbergOptions {
     /// party. Added to the loopback lines when `PrepareOptions::loopback_broadcasts` is on.
     pub custom_broadcasts: Vec<String>,
 
+    /// `steam_api(64).dll` from gbe's experimental build instead of the regular one: it has the in-game overlay
+    /// (Shift+Tab), where players invite each other in games that only join through a Steam invite. The overlay
+    /// is switched on for every seat unless `overlay_off_seats` or `overlay_on_seats` say otherwise. Windows only.
+    pub experimental: bool,
+
     // ---- configs.overlay.ini (only the experimental builds have an overlay)
     /// Seats whose in-game overlay is switched off (`enable_experimental_overlay=0`).
     #[serde(alias = "disable_overlay_seats")]
@@ -164,6 +169,7 @@ impl Default for GoldbergOptions {
             new_app_ticket: None,
             gc_token: None,
             custom_broadcasts: Vec::new(),
+            experimental: false,
             overlay_off_seats: None,
             overlay_on_seats: None,
             achievements: true,
@@ -236,7 +242,12 @@ impl GoldbergOptions {
         {
             return Some(false);
         }
-        self.overlay_on_seats.as_ref().map(|on| on.matches(seat))
+        match &self.overlay_on_seats {
+            Some(on) => Some(on.matches(seat)),
+            // The experimental build is asked for because of its overlay.
+            None if self.experimental && self.overlay_off_seats.is_none() => Some(true),
+            None => None,
+        }
     }
 }
 
@@ -388,6 +399,19 @@ mod tests {
             overlay_ini(0, &g).unwrap(),
             "[overlay::general]\ndisable_achievement_notification=1\ndisable_achievement_progress=1\n"
         );
+    }
+
+    #[test]
+    fn the_experimental_build_turns_the_overlay_on() {
+        let g = GoldbergOptions::from_recipe(&serde_json::json!({"experimental": true})).unwrap();
+        assert!(g.experimental);
+        assert_eq!(g.overlay_for(0), Some(true));
+        assert_eq!(g.overlay_for(3), Some(true));
+        assert!(overlay_ini(1, &g).unwrap().contains("enable_experimental_overlay=1"));
+        let off = GoldbergOptions { overlay_off_seats: Some(SeatSelector::From(1)), ..g.clone() };
+        assert_eq!(off.overlay_for(0), None, "an explicit choice wins");
+        assert_eq!(off.overlay_for(1), Some(false));
+        assert_eq!(GoldbergOptions::default().overlay_for(0), None);
     }
 
     #[test]
