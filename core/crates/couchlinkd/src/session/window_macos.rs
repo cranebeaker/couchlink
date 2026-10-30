@@ -38,7 +38,10 @@ unsafe extern "C" {
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
     fn CGWindowListCopyWindowInfo(option: u32, relative_to: u32) -> CFArrayRef;
+    fn CGRectMakeWithDictionaryRepresentation(dict: CFDictionaryRef, rect: *mut CGRect) -> u8;
 }
+/// `kCGMainMenuWindowLevel`: the menu bar's windows.
+const MENU_BAR_LAYER: i32 = 24;
 const CG_ON_SCREEN_ONLY: u32 = 1 << 0;
 const CG_EXCLUDE_DESKTOP: u32 = 1 << 4;
 
@@ -167,12 +170,13 @@ impl Ax {
         unsafe { AXUIElementSetAttributeValue(self.0, name.0, v as CFTypeRef) == AX_OK }
     }
 
-    /// Position first (so the size is not clipped by the old screen), then size, then position again (some apps
-    /// move themselves while resizing).
+    /// Size, position, size. macOS refuses a size that would push the window past the bottom of the screen from where
+    /// it is now, and a position that would do the same with the size it has now; going size, position, size gets
+    /// both in either direction. Some apps also move themselves while resizing.
     fn set_frame(&self, r: CGRect) {
-        self.set_value("AXPosition", AX_VALUE_CGPOINT, &r.origin as *const _ as *const c_void);
         self.set_value("AXSize", AX_VALUE_CGSIZE, &r.size as *const _ as *const c_void);
         self.set_value("AXPosition", AX_VALUE_CGPOINT, &r.origin as *const _ as *const c_void);
+        self.set_value("AXSize", AX_VALUE_CGSIZE, &r.size as *const _ as *const c_void);
     }
 
     fn press(&self, attr: &str) {
@@ -354,6 +358,62 @@ pub struct Placed {
 #[derive(Default)]
 pub struct Seats(HashMap<usize, Placed>);
 
+/// The menu bars on screen (one per display that shows one), from the window list. Their size needs no permission.
+fn menu_bars() -> Vec<CGRect> {
+    let mut out = Vec::new();
+    // SAFETY: as in `titled`; the bounds dictionary is borrowed and read into a local rect.
+    unsafe {
+        let list = CGWindowListCopyWindowInfo(CG_ON_SCREEN_ONLY | CG_EXCLUDE_DESKTOP, 0);
+        if list.is_null() {
+            return out;
+        }
+        let (k_layer, k_bounds) = (CfStr::new("kCGWindowLayer"), CfStr::new("kCGWindowBounds"));
+        for i in 0..CFArrayGetCount(list) {
+            let d = CFArrayGetValueAtIndex(list, i) as CFDictionaryRef;
+            let layer = CFDictionaryGetValue(d, k_layer.0 as *const c_void) as CFNumberRef;
+            let mut v: i32 = 0;
+            if layer.is_null() || !CFNumberGetValue(layer, kCFNumberSInt32Type, &mut v as *mut i32 as *mut c_void) || v != MENU_BAR_LAYER {
+                continue;
+            }
+            let bounds = CFDictionaryGetValue(d, k_bounds.0 as *const c_void) as CFDictionaryRef;
+            let mut r = CGRect::default();
+            if !bounds.is_null() && CGRectMakeWithDictionaryRepresentation(bounds, &mut r) != 0 {
+                out.push(r);
+            }
+        }
+        CFRelease(list as CFTypeRef);
+    }
+    out
+}
+
+/// Where a seat's window goes, in points. macOS keeps titled windows out from under the menu bar, so on a display
+/// that shows one the whole split is fitted into the part below it: every region keeps its share, nothing overlaps.
+fn target(rect: Rect) -> CGRect {
+    let displays = point_displays();
+    fit_below_menu_bar(to_points(rect, &displays), &displays.iter().map(|d| d.bounds).collect::<Vec<_>>(), &menu_bars())
+}
+
+/// `want` squeezed vertically into the part of its display below that display's menu bar (unchanged when the display
+/// has none, as with an auto-hidden menu bar).
+pub fn fit_below_menu_bar(want: CGRect, displays: &[CGRect], bars: &[CGRect]) -> CGRect {
+    let (cx, cy) = (want.origin.x + want.size.width / 2.0, want.origin.y + want.size.height / 2.0);
+    let inside = |r: &CGRect, x: f64, y: f64| x >= r.origin.x && x < r.origin.x + r.size.width && y >= r.origin.y && y < r.origin.y + r.size.height;
+    let Some(d) = displays.iter().find(|d| inside(d, cx, cy)) else { return want };
+    let bar = bars
+        .iter()
+        .filter(|b| inside(d, b.origin.x + b.size.width / 2.0, b.origin.y + b.size.height / 2.0) && (b.origin.y - d.origin.y).abs() < 1.0)
+        .map(|b| b.size.height)
+        .fold(0.0, f64::max);
+    if bar <= 0.0 || bar >= d.size.height {
+        return want;
+    }
+    let k = (d.size.height - bar) / d.size.height;
+    CGRect {
+        origin: CGPoint { x: want.origin.x, y: d.origin.y + bar + (want.origin.y - d.origin.y) * k },
+        size: CGSize { width: want.size.width, height: want.size.height * k },
+    }
+}
+
 fn apply(p: &Placed, rect: Rect) {
     if p.window.bool("AXFullScreen") == Some(true) {
         p.window.set_bool("AXFullScreen", false);
@@ -361,7 +421,7 @@ fn apply(p: &Placed, rect: Rect) {
     if p.window.bool("AXMinimized") == Some(true) {
         p.window.set_bool("AXMinimized", false);
     }
-    p.window.set_frame(to_points(rect, &point_displays()));
+    p.window.set_frame(target(rect));
 }
 
 fn restore(p: &Placed) {
@@ -399,7 +459,7 @@ pub fn maintain(seats: &mut Seats, seat: usize, root: u32, rect: Rect, borderles
     }
     let Some(p) = seats.0.get(&seat) else { return };
     let Some(now) = p.window.frame() else { return };
-    let want = to_points(rect, &point_displays());
+    let want = target(rect);
     let off = (now.origin.x - want.origin.x)
         .abs()
         .max((now.origin.y - want.origin.y).abs())
@@ -457,6 +517,11 @@ mod tests {
         assert!(!alive(pid));
     }
 
+    /// Every side within 2 points.
+    fn close(a: CGRect, b: CGRect) -> bool {
+        [a.origin.x - b.origin.x, a.origin.y - b.origin.y, a.size.width - b.size.width, a.size.height - b.size.height].iter().all(|d| d.abs() <= 2.0)
+    }
+
     /// Places a real window and puts it back. Needs the Accessibility permission for the process that runs the
     /// tests (System Settings > Privacy & Security > Accessibility), so it only runs when asked:
     /// `cargo test -p couchlinkd -- --ignored placing_a_window`.
@@ -475,20 +540,42 @@ mod tests {
         let before = best_window(pid).unwrap().frame().unwrap();
         let displays = point_displays();
         let main = crate::displays_macos::to_pixels(&displays[0], displays.iter().map(|d| d.scale).fold(1.0, f64::max));
-        let rect = Rect { x: main.x, y: main.y + main.h / 2, w: main.w / 2, h: main.h / 2 };
+        let (hw, hh) = (main.w / 2, main.h / 2);
         let mut seats = Seats::default();
-        assert_eq!(place(&mut seats, 0, pid, rect, true), Ok(true));
-        std::thread::sleep(std::time::Duration::from_millis(300));
-        let now = best_window(pid).unwrap().frame().unwrap();
-        let want = to_points(rect, &displays);
-        assert!((now.origin.x - want.origin.x).abs() <= 2.0 && (now.size.width - want.size.width).abs() <= 2.0, "{now:?} vs {want:?}");
+        // The four quarters of a four-player split, bottom ones first (the case macOS is fussy about).
+        for (x, y) in [(0, hh), (hw, hh), (0, 0), (hw, 0)] {
+            let rect = Rect { x: main.x + x, y: main.y + y, w: hw, h: hh };
+            assert_eq!(place(&mut seats, 0, pid, rect, true), Ok(true));
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            let now = best_window(pid).unwrap().frame().unwrap();
+            let want = target(rect);
+            println!("wanted {want:?}\nplaced {now:?}");
+            assert!(close(now, want), "{now:?} vs {want:?}");
+        }
         assert!(titled("inputprobe"));
         restore_all(&mut seats);
         std::thread::sleep(std::time::Duration::from_millis(300));
         let back = best_window(pid).unwrap().frame().unwrap();
-        assert!((back.origin.x - before.origin.x).abs() <= 2.0 && (back.size.width - before.size.width).abs() <= 2.0, "{back:?} vs {before:?}");
+        println!("restored {back:?}");
+        assert!(close(back, before), "{back:?} vs {before:?}");
         kill(pid);
         let _ = child.wait();
+    }
+
+    #[test]
+    fn a_split_is_fitted_below_the_menu_bar() {
+        let r = |x: f64, y: f64, w: f64, h: f64| CGRect { origin: CGPoint { x, y }, size: CGSize { width: w, height: h } };
+        let screen = [r(0.0, 0.0, 1512.0, 982.0), r(1512.0, 0.0, 1920.0, 1080.0)];
+        let bar = [r(0.0, 0.0, 1512.0, 33.0)];
+        let top = fit_below_menu_bar(r(0.0, 0.0, 756.0, 491.0), &screen, &bar);
+        let bottom = fit_below_menu_bar(r(0.0, 491.0, 756.0, 491.0), &screen, &bar);
+        assert_eq!(top.origin.y, 33.0);
+        assert!((top.origin.y + top.size.height - bottom.origin.y).abs() < 1e-9, "the rows meet: {top:?} {bottom:?}");
+        assert!((bottom.origin.y + bottom.size.height - 982.0).abs() < 1e-9, "the bottom row ends at the screen's edge");
+        // The second display shows no menu bar: unchanged.
+        assert_eq!(fit_below_menu_bar(r(1512.0, 0.0, 960.0, 540.0), &screen, &bar), r(1512.0, 0.0, 960.0, 540.0));
+        // Nor does a display whose menu bar hides itself.
+        assert_eq!(fit_below_menu_bar(r(0.0, 0.0, 756.0, 491.0), &screen, &[]), r(0.0, 0.0, 756.0, 491.0));
     }
 
     #[test]
