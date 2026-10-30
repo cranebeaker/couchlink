@@ -480,6 +480,11 @@ impl Hub {
                 let errors: Vec<_> = errors.into_iter().map(|(file, error)| json!({ "file": file, "error": error })).collect();
                 Ok(json!({ "games": games, "errors": errors }))
             }
+            Command::AddGame { path, name } => {
+                let recipe = self.session.add_game(&path, name.as_deref())?;
+                Ok(json!({ "recipe": recipe }))
+            }
+            Command::RemoveGame { recipe } => self.session.remove_game(&recipe).map(|_| none),
             Command::StartSession { recipe, options } => self.start_session(&recipe, &options),
             Command::StopSession => self.stop_session(),
             Command::SteamAccounts => Ok(crate::accounts::list()),

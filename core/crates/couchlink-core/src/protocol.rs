@@ -85,6 +85,16 @@ pub enum Command {
         button: Button,
     },
     ListGames,
+    /// A game of the player's own (any store, or none): its program or its folder.
+    AddGame {
+        path: String,
+        #[serde(default)]
+        name: Option<String>,
+    },
+    /// Forget a game added with `add_game`, by its recipe id.
+    RemoveGame {
+        recipe: String,
+    },
     StartSession {
         recipe: String,
         /// The player's choices for the recipe's `options`: name to chosen value. Left out: the defaults.
@@ -313,6 +323,11 @@ mod tests {
         }
         assert_eq!(parse(json!({"id": 11, "cmd": "subscribe_input", "on": true})).cmd, Command::SubscribeInput { on: true });
         assert_eq!(parse(json!({"id": 20, "cmd": "list_games"})).cmd, Command::ListGames);
+        assert_eq!(
+            parse(json!({"id": 21, "cmd": "add_game", "path": "D:/Games/Old Game/game.exe"})).cmd,
+            Command::AddGame { path: "D:/Games/Old Game/game.exe".into(), name: None }
+        );
+        assert_eq!(parse(json!({"id": 22, "cmd": "remove_game", "recipe": "try-own-1a2b3c4d"})).cmd, Command::RemoveGame { recipe: "try-own-1a2b3c4d".into() });
         assert_eq!(parse(json!({"id": 21, "cmd": "start_session", "recipe": "testgame"})).cmd, Command::StartSession { recipe: "testgame".into(), options: BTreeMap::new() });
         assert_eq!(
             parse(json!({"id": 23, "cmd": "start_session", "recipe": "g", "options": {"FPS": "Yes"}})).cmd,

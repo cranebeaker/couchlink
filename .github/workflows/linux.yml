@@ -4,7 +4,7 @@ name: Linux
 
 on:
   push:
-    branches: [main, "claude/linux-**"]
+    branches: [main, "claude/**"]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
