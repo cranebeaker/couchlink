@@ -268,6 +268,8 @@ impl Hub {
     }
 
     fn log(&self, level: LogLevel, text: impl Into<String>) {
+        let text = text.into();
+        crate::logfile::write(&format!("{level:?}").to_lowercase(), &text);
         self.broadcast(&Event::log(level, text));
     }
 
@@ -341,6 +343,10 @@ impl Hub {
                 self.sync_profile_refs();
                 Ok(json!({ "state": self.model.state() }))
             }
+            Command::GetLog => Ok(json!({
+                "dir": crate::logfile::dir(),
+                "text": crate::logfile::report(self.session_info.recipe.as_deref()),
+            })),
             Command::GetCatalog => {
                 let catalog = self.catalog.clone().unwrap_or_else(Catalog::empty);
                 Ok(json!({ "catalog": catalog, "refreshing": self.fetching }))
@@ -590,6 +596,15 @@ impl Hub {
             }
         }
         if info != self.session_info {
+            if info.state == SessionState::Failed && self.session_info.state != SessionState::Failed {
+                let recipe = info.recipe.as_deref().unwrap_or("?");
+                let mut text = format!("{recipe} failed: {}", info.error.as_deref().unwrap_or("no reason given"));
+                for s in info.seats.iter().filter(|s| s.error.is_some()) {
+                    text += &format!("
+player {}: {}", s.seat + 1, s.error.as_deref().unwrap_or_default());
+                }
+                crate::logfile::write("error", &text);
+            }
             self.session_info = info;
             self.broadcast(&Event::session(&self.session_info));
         }

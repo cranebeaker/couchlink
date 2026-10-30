@@ -139,7 +139,7 @@ class _FpsLimitState extends State<_FpsLimit> {
   Future<void> _set(int fps) async {
     final scope = Scope.of(context);
     final err = await scope.client.setFpsLimit(fps);
-    if (err != null) scope.toaster.show(err);
+    if (err != null) scope.toaster.show(err, error: true);
   }
 
   void _commit() {

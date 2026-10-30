@@ -436,6 +436,7 @@ impl Run {
             hook_children: false,
             run_as: None,
             linux: None,
+            log: seat.map(|i| crate::logfile::copy_log(&recipe.id, self.seats[i].plan.seat)),
         })
     }
 
@@ -502,6 +503,7 @@ impl Run {
             hook_children: false,
             run_as: None,
             linux: None,
+            log: None,
         };
         let launched = self.deps.launcher.launch(&spec)?;
         self.helpers.push(launched.child);

@@ -4,6 +4,7 @@ mod accounts;
 mod catalog;
 mod displays;
 mod hub;
+mod logfile;
 mod profiles;
 mod sdl;
 mod session;

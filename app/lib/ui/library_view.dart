@@ -44,7 +44,7 @@ class _LibraryViewState extends State<LibraryView> {
     final added = await scope.client.addGame(path);
     if (!mounted) return;
     if (added.error != null) {
-      scope.toaster.show(added.error!, long: true);
+      scope.toaster.show(added.error!, error: true);
       return;
     }
     scope.ui.selectGame(added.recipe!);
@@ -54,7 +54,7 @@ class _LibraryViewState extends State<LibraryView> {
   Future<void> _removeGame(Scope scope, String recipe) async {
     final err = await scope.client.removeGame(recipe);
     if (!mounted) return;
-    scope.toaster.show(err ?? t('Removed from Couchlink. Its files stay where they are.'), long: err != null);
+    scope.toaster.show(err ?? t('Removed from Couchlink. Its files stay where they are.'), error: err != null);
   }
 
   @override

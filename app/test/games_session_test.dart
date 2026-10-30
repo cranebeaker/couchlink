@@ -308,6 +308,40 @@ void main() {
       await tester.pump(const Duration(seconds: 3));
     });
 
+    testWidgets('every error offers the logs: Copy log puts them on the clipboard', (tester) async {
+      String? copied;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') copied = (call.arguments as Map)['text'] as String?;
+        return null;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+
+      // A copy that fails: the card has both log buttons.
+      final fake = fastFake()..launchFailure = 'exited with code 1 before showing a window';
+      await pumpApp(tester, fake, view: AppView.library);
+      await tester.tap(byKey('play'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+      await tester.pump(_step * 2);
+      await settle(tester);
+      expect(byKey('launch-open-logs'), findsOneWidget);
+      await tester.tap(byKey('launch-copy-log'));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(copied, contains('exited with code 1 before showing a window'));
+      expect(find.descendant(of: byKey('toast'), matching: find.text('Log copied. Paste it into your message.')), findsOneWidget);
+      await tester.tap(byKey('launch-close'));
+      await settle(tester);
+
+      // A daemon error toast has them too, and a plain toast does not.
+      fake.startError = 'the game folder is missing';
+      await tester.tap(byKey('play'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.descendant(of: byKey('toast'), matching: byKey('toast-copy-log')), findsOneWidget);
+      expect(find.descendant(of: byKey('toast'), matching: byKey('toast-open-logs')), findsOneWidget);
+      await tester.pump(const Duration(seconds: 16));
+    });
+
     testWidgets('an old failure does not show on the next launch', (tester) async {
       final fake = fastFake()..launchFailure = 'It did not start.';
       await pumpApp(tester, fake, view: AppView.library);

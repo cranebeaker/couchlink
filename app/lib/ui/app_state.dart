@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart' show ThemeMode;
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter/widgets.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -137,16 +138,19 @@ Future<bool> _openInBrowser(Uri url) async {
 /// One toast at a time, shown for about two seconds.
 class Toaster extends ChangeNotifier {
   String? message;
+  /// The toast is an error: it stays up longer and offers "Copy log" and "Open log folder".
+  bool error = false;
   int serial = 0;
   Timer? _timer;
 
-  /// [long] is for sentences the player has to read and act on (a daemon error): it stays up longer.
-  void show(String text, {bool long = false}) {
+  /// [long] is for sentences the player has to read and act on: it stays up longer. [error] marks a failure.
+  void show(String text, {bool long = false, bool error = false}) {
     message = text;
+    this.error = error;
     serial++;
     notifyListeners();
     _timer?.cancel();
-    final hold = long ? (2400 + text.length * 40).clamp(4000, 10000) : 2400;
+    final hold = error ? (4000 + text.length * 40).clamp(9000, 15000) : long ? (2400 + text.length * 40).clamp(4000, 10000) : 2400;
     _timer = Timer(Duration(milliseconds: hold), () {
       message = null;
       notifyListeners();
@@ -174,8 +178,33 @@ class Scope extends InheritedWidget {
 }
 
 /// Runs a client command and toasts its error, if any.
+/// "Copy log": the end of Couchlink's logs onto the clipboard, ready to paste into a message.
+Future<void> copyLog(Scope scope) async {
+  final log = await scope.client.getLog();
+  if (log.error != null) {
+    scope.toaster.show(log.error!, long: true);
+    return;
+  }
+  await Clipboard.setData(ClipboardData(text: log.text));
+  scope.toaster.show(t('Log copied. Paste it into your message.'));
+}
+
+/// "Open log folder": the folder with Couchlink's log and each game copy's, in the file manager.
+Future<void> openLogFolder(Scope scope) async {
+  final log = await scope.client.getLog();
+  if (log.error != null) {
+    scope.toaster.show(log.error!, long: true);
+    return;
+  }
+  var ok = false;
+  try {
+    ok = await launchUrl(Uri.directory(log.dir), mode: LaunchMode.externalApplication);
+  } catch (_) {}
+  if (!ok) scope.toaster.show(t('Could not open {dir}', {'dir': log.dir}), long: true);
+}
+
 Future<void> runCmd(BuildContext context, Future<String?> Function() cmd) async {
   final toaster = Scope.of(context).toaster;
   final err = await cmd();
-  if (err != null) toaster.show(err);
+  if (err != null) toaster.show(err, error: true);
 }

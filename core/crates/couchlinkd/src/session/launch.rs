@@ -35,6 +35,8 @@ pub struct LaunchSpec {
     pub run_as: Option<couchlink_steam::AccountsConfig>,
     /// What a game copy needs on Linux (`launch_linux.rs`); none for helpers.
     pub linux: Option<LinuxSeat>,
+    /// Where the copy's own output (stdout and stderr) goes, written again at each launch (`logfile::copy_log`).
+    pub log: Option<PathBuf>,
 }
 
 /// A copy on Linux starts in a window of its seat's size and keeps its own data next to its copy.
@@ -89,10 +91,27 @@ pub struct CommandLauncher;
 impl Launcher for CommandLauncher {
     fn launch(&self, spec: &LaunchSpec) -> Result<Launched, String> {
         let mut cmd = Command::new(&spec.exe);
-        cmd.args(&spec.args).envs(&spec.env).current_dir(&spec.cwd).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        let (out, err) = log_outputs(spec.log.as_deref(), spec);
+        cmd.args(&spec.args).envs(&spec.env).current_dir(&spec.cwd).stdin(Stdio::null()).stdout(out).stderr(err);
         let child = cmd.spawn().map_err(|e| format!("cannot start {}: {e}", spec.exe.display()))?;
         let job = job::Job::adopt(&child);
         Ok(Launched { child: Box::new(Started { child, job }), hooked: false })
+    }
+}
+
+/// Stdout and stderr for a copy: both into its log file when it has one (headed with what was started), else nowhere.
+pub fn log_outputs(log: Option<&std::path::Path>, spec: &LaunchSpec) -> (Stdio, Stdio) {
+    use std::io::Write;
+    let file = log.and_then(|p| {
+        let _ = std::fs::create_dir_all(p.parent()?);
+        let mut f = std::fs::File::create(p).ok()?;
+        let _ = writeln!(f, "== {} {}
+== in {}", spec.exe.display(), spec.args.join(" "), spec.cwd.display());
+        Some(f)
+    });
+    match file.as_ref().and_then(|f| Some((f.try_clone().ok()?, f.try_clone().ok()?))) {
+        Some((a, b)) => (Stdio::from(a), Stdio::from(b)),
+        None => (Stdio::null(), Stdio::null()),
     }
 }
 
@@ -367,6 +386,7 @@ mod tests {
             hook_children: false,
             run_as: None,
             linux: None,
+            log: None,
         };
         let mut l = CommandLauncher.launch(&spec).unwrap();
         assert!(!l.hooked);

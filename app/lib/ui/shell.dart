@@ -70,7 +70,7 @@ class _ShellState extends State<Shell> {
       scope.ui.closeLaunch();
       scope.toaster.show(t('The game session ended. Your desktop is back.'));
     } else if (now.state == 'failed' && !scope.ui.launchOpen) {
-      scope.toaster.show(now.error ?? t('The game session failed.'), long: true);
+      scope.toaster.show(now.error ?? t('The game session failed.'), error: true);
     }
   }
 
@@ -85,8 +85,8 @@ class _ShellState extends State<Shell> {
           final name = scope.client.state?.seats[seat]?.name ?? t('Player {seat_1}', {'seat_1': seat + 1});
           scope.toaster.show(t('{name} joined as Player {seat_1}', {'name': name, 'seat_1': seat + 1}));
         });
-      case LogEvent(:final text):
-        scope.toaster.show(text);
+      case LogEvent(:final level, :final text):
+        scope.toaster.show(text, error: level != 'info');
     }
   }
 
@@ -746,6 +746,7 @@ class ToastHost extends StatefulWidget {
 
 class _ToastHostState extends State<ToastHost> {
   String _last = '';
+  bool _lastError = false;
   Toaster? _toaster;
 
   @override
@@ -761,14 +762,19 @@ class _ToastHostState extends State<ToastHost> {
       left: 16,
       right: 16,
       bottom: 92,
-      child: IgnorePointer(
-        child: ListenableBuilder(
-          listenable: _toaster!,
-          builder: (context, _) {
-            final msg = _toaster!.message;
-            if (msg != null) _last = msg;
-            final on = msg != null;
-            return Center(
+      child: ListenableBuilder(
+        listenable: _toaster!,
+        builder: (context, _) {
+          final msg = _toaster!.message;
+          if (msg != null) {
+            _last = msg;
+            _lastError = _toaster!.error;
+          }
+          final on = msg != null;
+          // Only an error toast takes clicks (its log buttons); others let clicks through to the page.
+          return IgnorePointer(
+            ignoring: !(on && _lastError),
+            child: Center(
               child: AnimatedSlide(
                 duration: const Duration(milliseconds: 250),
                 curve: Curves.easeOut,
@@ -787,14 +793,47 @@ class _ToastHostState extends State<ToastHost> {
                         borderRadius: BorderRadius.circular(_last.length > 70 ? 20 : 999),
                         boxShadow: const [BoxShadow(color: Color(0x40000000), blurRadius: 18, offset: Offset(0, 6))],
                       ),
-                      child: Text(_last, maxLines: 4, overflow: TextOverflow.ellipsis, style: txt(context, size: 13, weight: FontWeight.w500, color: c.window, height: 1.3)),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(_last, maxLines: 4, overflow: TextOverflow.ellipsis, style: txt(context, size: 13, weight: FontWeight.w500, color: c.window, height: 1.3)),
+                          if (_lastError) ...[
+                            const SizedBox(height: 6),
+                            Row(mainAxisSize: MainAxisSize.min, children: [
+                              _ToastLink(key: const ValueKey('toast-copy-log'), label: t('Copy log'), onTap: () => copyLog(Scope.of(context))),
+                              const SizedBox(width: 16),
+                              _ToastLink(key: const ValueKey('toast-open-logs'), label: t('Open log folder'), onTap: () => openLogFolder(Scope.of(context))),
+                            ]),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            );
-          },
-        ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// A small underlined action inside a toast (the toast is dark on light, so a full button would not fit).
+class _ToastLink extends StatelessWidget {
+  const _ToastLink({super.key, required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Text(label, style: txt(context, size: 12, weight: FontWeight.w700, color: c.window, height: 1.3).copyWith(decoration: TextDecoration.underline, decorationColor: c.window)),
       ),
     );
   }

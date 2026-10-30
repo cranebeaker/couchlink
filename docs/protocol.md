@@ -26,6 +26,7 @@ Daemon to client (events, no id): `{"event": "<name>", ...}`
 | `hello` | `token`, `client` (string, e.g. "couchlink-app 0.1.0") | `{"protocol": 1, "daemon": "0.1.0"}`, then a `state` event right away |
 | `get_state` | | `{"state": State}` |
 | `get_catalog` | | `{"catalog": Catalog, "refreshing": bool}`. The cached Co-op Anything game catalog right away (an empty `Catalog` when nothing was fetched yet). `refreshing` is true while a download runs. See [Game catalog](#game-catalog). |
+| `get_log` | | `{"dir": path, "text": string}`. `dir` is the log folder (`<state>/logs`): `couchlinkd.log` (every `log` event and every failed session, with the time) and `<recipe>-player<N>.log` (that game copy's own output, written again at each launch). `text` is what the app's "Copy log" copies: the Couchlink version, then the end of `couchlinkd.log` and of each player's log for the last session's game. |
 | `refresh_catalog` | | Replies at once; downloads the catalog in the background. A `catalog` event follows on success, a `log` warn event on failure. Does nothing if a download is already running. |
 | `join` | `device` (device id) | Seats the device in the first free seat. Error if no seat free or device unknown/already seated. |
 | `leave` | `seat` (0..3) | Frees the seat; its devices become unseated. |

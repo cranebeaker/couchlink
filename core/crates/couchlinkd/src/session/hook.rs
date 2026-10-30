@@ -492,6 +492,7 @@ mod tests {
             hook_children: false,
             run_as: None,
             linux: None,
+            log: None,
         };
         let undoers = Undoers::new();
         register_undoers(&undoers);

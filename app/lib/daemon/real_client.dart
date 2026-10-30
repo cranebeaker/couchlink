@@ -391,6 +391,13 @@ class DaemonClient extends CouchClient {
   }
 
   @override
+  Future<({String text, String dir, String? error})> getLog() async {
+    final r = await _request('get_log', {});
+    if (r['ok'] != true) return (text: '', dir: '', error: _errorOf(r));
+    return (text: r['text'] as String? ?? '', dir: r['dir'] as String? ?? '', error: null);
+  }
+
+  @override
   Future<String?> removeGame(String recipe) async {
     final err = await _cmd('remove_game', {'recipe': recipe});
     if (err == null) await listGames();

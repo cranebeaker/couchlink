@@ -269,7 +269,7 @@ class _ControlsViewState extends State<ControlsView> {
     final err = await _client!.deleteProfile(p.id);
     if (!mounted) return;
     if (err != null) {
-      _toaster!.show(err);
+      _toaster!.show(err, error: true);
       return;
     }
     _toaster!.show(t('Deleted {name}', {'name': p.name}));

@@ -36,7 +36,9 @@ impl Launcher for LinuxLauncher {
                         let _ = std::os::unix::fs::symlink(real, home.join(".steam"));
                     }
                 }
-                log = std::fs::File::create(seat.data_dir.join("copy.log")).ok();
+                let path = spec.log.clone().unwrap_or_else(|| seat.data_dir.join("copy.log"));
+                let _ = path.parent().map(std::fs::create_dir_all);
+                log = std::fs::File::create(path).ok();
                 let sandbox = match seat.sandbox_pid {
                     Some(pid) => Sandbox::Holder(pid),
                     None => Sandbox::Bwrap,
@@ -385,6 +387,7 @@ mod tests {
             hook_children: false,
             run_as: None,
             linux: None,
+            log: None,
         }
     }
 
