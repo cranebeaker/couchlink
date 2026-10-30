@@ -86,8 +86,8 @@ jobs:
           if-no-files-found: error
 
   gamescope:
-    # Ubuntu does not package gamescope; Arch does. Runs the integration test with the copies in real gamescope
-    # windows on Xvfb (software Vulkan), so window placement and the gamescope command line are checked for real.
+    # Ubuntu does not package gamescope; Arch does. Runs the integration test with the copies inside a real gamescope
+    # (headless backend, software Vulkan), so the gamescope command line and the game inside it are checked for real.
     name: gamescope end to end
     runs-on: ubuntu-24.04
     container:
@@ -105,10 +105,12 @@ jobs:
         working-directory: core
         env:
           COUCHLINK_REQUIRE_GAMESCOPE_TEST: "1"
+          # gamescope's window backend needs Vulkan present-wait, which software Vulkan lacks: run it headless.
+          COUCHLINK_TEST_GAMESCOPE_HEADLESS: "1"
           XDG_RUNTIME_DIR: /tmp/xdg-runtime
         run: |
           mkdir -p -m 0700 "$XDG_RUNTIME_DIR"
-          xvfb-run -a -s "-screen 0 1920x1080x24" cargo test -p couchlinkd --test integration --locked -- --nocapture
+          cargo test -p couchlinkd --test integration --locked -- --nocapture
 
   windows-check:
     # The Linux port edits shared session files; this keeps the Windows build compiling.

@@ -260,7 +260,8 @@ fn run_window() {
 fn sandbox_facts() -> String {
     let mut nodes: Vec<String> = std::fs::read_dir("/dev/input").map(|d| d.flatten().map(|e| esc(&e.file_name().to_string_lossy())).collect()).unwrap_or_default();
     nodes.sort();
-    format!(",\"home\":{},\"input_nodes\":[{}]", esc(&std::env::var("HOME").unwrap_or_default()), nodes.join(","))
+    let var = |v: &str| esc(&std::env::var(v).unwrap_or_default());
+    format!(",\"home\":{},\"display\":{},\"input_nodes\":[{}]", var("HOME"), var("DISPLAY"), nodes.join(","))
 }
 
 #[cfg(windows)]

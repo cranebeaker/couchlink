@@ -64,6 +64,9 @@ pub async fn run(c: &mut Checks, fx: &Fixture) {
     let mut in_gamescope = recipe.clone();
     in_gamescope["id"] = json!("testgame-gamescope");
     in_gamescope["linux"]["gamescope"] = json!(true);
+    if gamescope_headless() {
+        in_gamescope["linux"]["gamescope_args"] = json!("--backend headless");
+    }
     std::fs::write(state.join("recipes").join("testgame-gamescope.json"), in_gamescope.to_string()).unwrap();
     let games = json!({"testgame-linux": game.display().to_string(), "testgame-gamescope": game.display().to_string()});
     std::fs::write(state.join("games.json"), games.to_string()).unwrap();
@@ -188,11 +191,19 @@ fn x_window_rect(pid: u64) -> Option<[i64; 4]> {
     None
 }
 
+/// COUCHLINK_TEST_GAMESCOPE_HEADLESS=1 runs gamescope with `--backend headless`: its window backend needs Vulkan
+/// present-wait, which software Vulkan (CI has no GPU) does not have. There is then no gamescope window to place, and
+/// the checks look for the game's window on gamescope's own display instead.
+fn gamescope_headless() -> bool {
+    std::env::var("COUCHLINK_TEST_GAMESCOPE_HEADLESS").is_ok_and(|v| v == "1")
+}
+
 /// The same two copies in gamescope windows of their own, each moved onto its player's half of the display. Needs
-/// gamescope and an X display (CI: Xvfb with software Vulkan); COUCHLINK_REQUIRE_GAMESCOPE_TEST=1 makes it required.
+/// gamescope and an X display (or the headless backend); COUCHLINK_REQUIRE_GAMESCOPE_TEST=1 makes it required.
 async fn gamescope(c: &mut Checks, cl: &mut Client, state: &Path, display: &Value) {
     let required = std::env::var("COUCHLINK_REQUIRE_GAMESCOPE_TEST").is_ok_and(|v| v == "1");
-    if !installed("gamescope") || std::env::var_os("DISPLAY").is_none() {
+    let headless = gamescope_headless();
+    if !installed("gamescope") || (!headless && std::env::var_os("DISPLAY").is_none()) {
         if required {
             c.check("linux: gamescope and an X display are there", false);
         } else {
@@ -229,6 +240,12 @@ async fn gamescope(c: &mut Checks, cl: &mut Client, state: &Path, display: &Valu
         let name = std::fs::read_to_string(format!("/proc/{scope}/comm")).unwrap_or_default();
         c.check(&format!("gamescope: seat {seat}'s copy runs inside gamescope"), name.trim().starts_with("gamescope"));
         c.check(&format!("gamescope: seat {seat}'s copy still sees no other input device"), s["input_nodes"].as_array().is_some_and(Vec::is_empty));
+        if headless {
+            let own = wait_status(&status, Duration::from_secs(15), |s| s["window"]["visible"] == true).await;
+            let shown = own.as_ref().is_some_and(|s| s["display"].as_str().is_some_and(|d| !d.is_empty() && Some(d.to_string()) != std::env::var("DISPLAY").ok()));
+            c.check(&format!("gamescope: seat {seat}'s game window opens on gamescope's own display"), shown);
+            continue;
+        }
         let want = expected_rect(display, region);
         let mut got = None;
         let end = Instant::now() + Duration::from_secs(10);
