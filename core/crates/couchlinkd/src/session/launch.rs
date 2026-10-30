@@ -329,11 +329,19 @@ mod tests {
 
     #[test]
     fn a_bound_udp_port_is_seen() {
-        let s = UdpSocket::bind("127.0.0.1:0").unwrap();
-        let port = s.local_addr().unwrap().port();
-        assert!(port_in_use(port));
-        drop(s);
-        assert!(!port_in_use(port));
+        // Tests run side by side and may be given the freed port at once: one of a few tries must see it free.
+        let mut freed = false;
+        for _ in 0..5 {
+            let s = UdpSocket::bind("127.0.0.1:0").unwrap();
+            let port = s.local_addr().unwrap().port();
+            assert!(port_in_use(port));
+            drop(s);
+            if !port_in_use(port) {
+                freed = true;
+                break;
+            }
+        }
+        assert!(freed, "a closed UDP port should read as free");
     }
 
     #[test]

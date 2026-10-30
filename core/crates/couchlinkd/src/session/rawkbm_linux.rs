@@ -479,7 +479,8 @@ mod tests {
         const SHIFT: u16 = 42;
         const Q: u16 = 16;
         let mut keys = letters();
-        keys.extend([CTRL, SHIFT]);
+        // evdev's Q is 16, outside the home row letters() holds.
+        keys.extend([CTRL, SHIFT, Q]);
         let mut kbd = VirtualDevice::new(&format!("couchlink-test-stopkeys-{}", std::process::id()), &keys, &[]).unwrap();
         kbd.node(Duration::from_secs(10)).unwrap();
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
