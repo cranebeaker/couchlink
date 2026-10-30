@@ -146,6 +146,17 @@ or an anti-cheat or copy protection component (EasyAntiCheat, BattlEye, Vanguard
 `port:N` (a TCP or UDP port on this PC is open; a helper whose first wait is a port that is already open is left alone, it counts as already running), `delay:MS`, `file:PATH`, `window:TEXT` (a visible window on the PC has TEXT in its title), `exit` (the helper ends by itself, up to 5 minutes).
 Waits may use variables. `at` is `start` (default, before any copy), `first_copy` (once the first copy has its window) or `placed` (once every copy has its window). `launch.per_seat_helpers` has the same fields plus `seats`, started for every seat with that seat's variables:
 `at: start` before that seat's copy launches, `placed` once its window is placed. Helpers run in the session's job: they end with the session, or when the daemon dies.
+**window.fps_limit**: frames per second the copies are held to when the player set no limit in Screens (10 to 360):
+`"window": {"fps_limit": 30}`. Linux: gamescope's `--framerate-limit`; both systems: `DXVK_FRAME_RATE` and
+`VKD3D_FRAME_RATE` for games that draw through DXVK or VKD3D (the recipe's own `launch.env` wins).
+
+**controls**: pad controls for a game without (good) pad support, as a controller profile (the format of
+`couchlink-core/src/profile.rs`, with its own `id` and `name`): buttons may send keys (`{"type": "key", "value": "E"}`)
+or mouse buttons, a stick may move the mouse (`"sticks": {"right": {"as": "mouse"}}`) or act as WASD. While the game
+runs, every seat whose player kept the default profile plays these controls; a player who chose a profile of their own
+keeps theirs. Keys and mouse reach the copy through the hook's keyboard and mouse feed on Windows and through XTEST into
+the seat's gamescope on Linux. The Library shows such games with a "Pad controls" tag.
+
 **window.exe**: for a launcher that starts the game and exits, or a game whose window belongs to another process than the one launched. `"window": {"exe": "Game.exe"}`: the process is looked for by exe name among the processes the launch started, then among all processes that began after the launch
 (and that no other seat has taken). The window is placed, kept in place and the seat's end watched on that process, and it is put in a job of its own so it ends with the session.
 

@@ -174,7 +174,8 @@ impl Config {
         if matches!(recipe.steam, couchlink_core::recipe::SteamMode::Goldberg | couchlink_core::recipe::SteamMode::Accounts) && self.deps.prepare.is_none() {
             return Err(format!("{} needs Steam mode {:?}, which this build of Couchlink cannot set up yet", recipe.game, recipe.steam));
         }
-        Ok(Plan { recipe, game_dir, seats, state_dir: self.state_dir.clone(), options })
+        let fps_limit = (state.fps_limit > 0).then_some(state.fps_limit).or(recipe.window.fps_limit);
+        Ok(Plan { recipe, game_dir, seats, state_dir: self.state_dir.clone(), options, fps_limit })
     }
 
     /// Undo whatever an earlier run left in the journal. Blocks while it works.

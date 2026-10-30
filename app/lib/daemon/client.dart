@@ -66,6 +66,9 @@ abstract class CouchClient extends ChangeNotifier {
   Future<String?> rename(int seat, String name);
   Future<String?> identify(int seat);
   Future<String?> setLayout(String layout);
+
+  /// Hold every game copy to [fps] frames a second; 0 for no limit. Null on success, else the error.
+  Future<String?> setFpsLimit(int fps);
   Future<String?> setDisplayUsed(String display, bool used);
 
   /// Replace every screen's arrangement at once (who plays on which display, and where).

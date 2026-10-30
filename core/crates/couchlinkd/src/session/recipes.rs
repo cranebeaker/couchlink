@@ -364,6 +364,7 @@ pub fn game_info(locators: &[Locator], r: &Recipe) -> GameInfo {
         options: couchlink_core::OptionInfo::list(r),
         steam_app_id: r.matching.steam_app_id,
         setup,
+        controls: r.controls.is_some(),
     }
 }
 

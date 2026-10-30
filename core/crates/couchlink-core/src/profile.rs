@@ -388,6 +388,53 @@ fn check_name(field: &str, name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Windows virtual key, make code and whether it is an extended (E0) key, for a key name a binding may send.
+pub fn windows_key(name: &str) -> Option<(u16, u16, bool)> {
+    const LETTER_SCANS: [u16; 26] = [30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38, 50, 49, 24, 25, 16, 19, 31, 20, 22, 47, 17, 45, 21, 44];
+    let mut cs = name.chars();
+    if let (Some(c), None) = (cs.next(), cs.next()) {
+        if c.is_ascii_uppercase() {
+            return Some((c as u16, LETTER_SCANS[(c as u8 - b'A') as usize], false));
+        }
+        if let Some(d) = c.to_digit(10) {
+            return Some((c as u16, if d == 0 { 11 } else { 1 + d as u16 }, false));
+        }
+        return None;
+    }
+    let named: [(&str, u16, u16, bool); 14] = [
+        ("Space", 0x20, 57, false),
+        ("Enter", 0x0D, 28, false),
+        ("Esc", 0x1B, 1, false),
+        ("Tab", 0x09, 15, false),
+        ("Shift", 0x10, 42, false),
+        ("Ctrl", 0x11, 29, false),
+        ("Alt", 0x12, 56, false),
+        ("Backspace", 0x08, 14, false),
+        ("Up", 0x26, 0x48, true),
+        ("Down", 0x28, 0x50, true),
+        ("Left", 0x25, 0x4B, true),
+        ("Right", 0x27, 0x4D, true),
+        ("F11", 0x7A, 87, false),
+        ("F12", 0x7B, 88, false),
+    ];
+    if let Some((_, vk, scan, e0)) = named.iter().find(|(n, ..)| *n == name) {
+        return Some((*vk, *scan, *e0));
+    }
+    let f: u16 = name.strip_prefix('F')?.parse().ok()?;
+    (1..=10).contains(&f).then_some((0x6F + f, 58 + f, false))
+}
+
+impl Profile {
+    /// True when the profile turns pad input into keys or the mouse (a key or mouse binding, or a stick used as the
+    /// mouse or as WASD), so a game copy needs a keyboard and mouse feed for it.
+    pub fn sends_kbm(&self) -> bool {
+        let kbm = |b: &Binding| matches!(b.kind, BindKind::Key | BindKind::Mouse);
+        self.buttons.values().any(kbm)
+            || self.layers.iter().any(|l| l.buttons.values().any(kbm))
+            || [&self.sticks.left, &self.sticks.right].iter().any(|s| matches!(s.act_as, StickAs::Mouse | StickAs::Wasd))
+    }
+}
+
 /// True for a key name a binding may send.
 pub fn is_key_name(s: &str) -> bool {
     let mut cs = s.chars();
@@ -636,5 +683,24 @@ mod tests {
         }
         assert!(Curve::Precise.apply(0.5) < 0.5 && Curve::Fast.apply(0.5) > 0.5);
         assert!((Curve::Wide.apply(0.5) - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn every_key_name_has_a_windows_key_and_kbm_use_is_seen() {
+        for c in ('A'..='Z').chain('0'..='9') {
+            assert!(windows_key(&c.to_string()).is_some(), "{c}");
+        }
+        for k in NAMED_KEYS.iter().chain(MORE_KEYS.iter()) {
+            assert!(windows_key(k).is_some(), "{k}");
+        }
+        assert_eq!(windows_key("A"), Some((0x41, 30, false)));
+        assert_eq!(windows_key("F1"), Some((0x70, 59, false)));
+        assert_eq!(windows_key("Up"), Some((0x26, 0x48, true)));
+        assert_eq!(windows_key("Nope"), None);
+        assert!(!builtin("default").unwrap().sends_kbm());
+        let keys = Profile::from_value(&json!({"id": "k", "name": "K", "buttons": {"south": {"type": "key", "value": "E"}}})).unwrap();
+        assert!(keys.sends_kbm());
+        let pad = Profile::from_value(&json!({"id": "p", "name": "P", "buttons": {"south": {"type": "pad", "value": "east"}}})).unwrap();
+        assert!(!pad.sends_kbm());
     }
 }

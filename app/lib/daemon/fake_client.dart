@@ -420,7 +420,7 @@ class FakeClient extends CouchClient {
           sizes: s.sizes,
         ),
     ];
-    return DaemonState(devices: devices, seats: seats, displays: displays ?? _state.displays, screens: screens, layout: layout ?? _state.layout, dev: _state.dev);
+    return DaemonState(devices: devices, seats: seats, displays: displays ?? _state.displays, screens: screens, layout: layout ?? _state.layout, fpsLimit: _state.fpsLimit, dev: _state.dev);
   }
 
   @override
@@ -436,7 +436,7 @@ class FakeClient extends CouchClient {
     }
     final used = {for (final s in screens) s.display: s.on};
     final displays = [for (final d in _state.displays) used.containsKey(d.id) ? d.copyWith(used: used[d.id]) : d];
-    _set(DaemonState(devices: _state.devices, seats: _state.seats, displays: displays, screens: screens, layout: _state.layout, dev: _state.dev));
+    _set(DaemonState(devices: _state.devices, seats: _state.seats, displays: displays, screens: screens, layout: _state.layout, fpsLimit: _state.fpsLimit, dev: _state.dev));
     return null;
   }
 
@@ -482,6 +482,7 @@ class FakeClient extends CouchClient {
           ScreenArrangement(display: s.display, on: s.on, seats: [for (final x in s.seats) x == a ? b : x == b ? a : x], regions: s.regions, shape: s.shape, custom: s.custom, sizes: s.sizes),
       ],
       layout: _state.layout,
+      fpsLimit: _state.fpsLimit,
       dev: _state.dev,
     );
     _set(_normalize(seats));
@@ -524,6 +525,14 @@ class FakeClient extends CouchClient {
     for (final d in s.devices) {
       _burst(d, 12);
     }
+    return null;
+  }
+
+  @override
+  Future<String?> setFpsLimit(int fps) async {
+    if (fps != 0 && (fps < 10 || fps > 360)) return '$fps fps is not a limit Couchlink takes (0 for none, or 10 to 360)';
+    final s = _state;
+    _set(DaemonState(devices: s.devices, seats: s.seats, displays: s.displays, screens: s.screens, layout: s.layout, fpsLimit: fps, dev: s.dev));
     return null;
   }
 

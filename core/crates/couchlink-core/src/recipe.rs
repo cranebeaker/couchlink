@@ -213,11 +213,14 @@ pub struct WindowOpts {
     /// started, then among all processes that began after the launch. Placement and the job object follow it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exe: Option<String>,
+    /// Frames per second the copies are held to when the player set no limit of their own (10 to 360).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fps_limit: Option<u32>,
 }
 
 impl Default for WindowOpts {
     fn default() -> WindowOpts {
-        WindowOpts { borderless: true, settle_ms: 4000, wait_ms: 60_000, exe: None }
+        WindowOpts { borderless: true, settle_ms: 4000, wait_ms: 60_000, exe: None, fps_limit: None }
     }
 }
 
@@ -295,6 +298,11 @@ pub struct Recipe {
     /// Changes to settings files, made for the session and undone (shared files) or kept in the seat's copy.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub edits: Vec<Edit>,
+    /// Controls the game plays with by default: a controller profile (`profile.rs` format) whose buttons and sticks
+    /// may send keys and mouse input, for games without pad support. A seat whose player chose a profile of their own
+    /// keeps theirs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub controls: Option<serde_json::Value>,
     /// How copies run on Linux (Proton choice, a native build, gamescope); `recipe_linux.rs`. Ignored elsewhere.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub linux: Option<crate::recipe_linux::LinuxOpts>,
@@ -315,6 +323,14 @@ impl Recipe {
     pub fn validate(&self) -> Result<(), String> {
         if self.schema != SCHEMA {
             return Err(format!("schema is {} but this version reads schema {SCHEMA}", self.schema));
+        }
+        if let Some(fps) = self.window.fps_limit
+            && !(10..=360).contains(&fps)
+        {
+            return Err(format!("window.fps_limit: {fps} is not between 10 and 360"));
+        }
+        if let Some(c) = &self.controls {
+            crate::profile::Profile::from_value(c).map_err(|e| format!("controls: {e}"))?;
         }
         let id_ok = !self.id.is_empty()
             && self.id.len() <= 64
@@ -903,6 +919,18 @@ mod tests {
         assert!(Wait::parse("port:0").is_err());
         assert!(Wait::parse("port:70000").is_err());
         assert!(Wait::parse("delay:x").is_err());
+    }
+
+    #[test]
+    fn a_recipe_may_bring_an_fps_limit_and_pad_controls() {
+        let base = |extra: &str| format!(r#"{{"schema":1,"id":"g","game":"G","players":[1,4],"launch":{{"exe":"g.exe"}}{extra}}}"#);
+        let r = Recipe::parse(&base(r#","window":{"fps_limit":30},"controls":{"id":"g-pad","name":"G pad","buttons":{"south":{"type":"key","value":"Space"}},"sticks":{"right":{"as":"mouse"}}}"#)).unwrap();
+        assert_eq!(r.window.fps_limit, Some(30));
+        assert!(crate::profile::Profile::from_value(r.controls.as_ref().unwrap()).unwrap().sends_kbm());
+        assert!(Recipe::parse(&base(r#","window":{"fps_limit":5}"#)).unwrap_err().contains("fps_limit"));
+        let e = Recipe::parse(&base(r#","controls":{"id":"x","name":"X","buttons":{"south":{"type":"key","value":"Banana"}}}"#)).unwrap_err();
+        assert!(e.starts_with("controls:"), "{e}");
+        assert_eq!(Recipe::parse(&base("")).unwrap().controls, None);
     }
 
     #[test]

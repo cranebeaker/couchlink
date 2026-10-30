@@ -324,6 +324,8 @@ class DaemonClient extends CouchClient {
   @override
   Future<String?> setLayout(String layout) => _cmd('set_layout', {'layout': layout});
   @override
+  Future<String?> setFpsLimit(int fps) => _cmd('set_fps_limit', {'fps': fps});
+  @override
   Future<String?> setDisplayUsed(String display, bool used) => _cmd('set_display_used', {'display': display, 'used': used});
   @override
   Future<String?> setScreens(List<ScreenArrangement> screens) => _cmd('set_screens', {'screens': [for (final s in screens) s.toJson()]});

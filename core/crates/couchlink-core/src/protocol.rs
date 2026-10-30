@@ -51,6 +51,10 @@ pub enum Command {
     SetLayout {
         layout: Layout,
     },
+    /// Frames per second every game copy is held to; 0 for no limit.
+    SetFpsLimit {
+        fps: u32,
+    },
     SetDisplayUsed {
         display: String,
         used: bool,
@@ -294,6 +298,7 @@ mod tests {
         ] {
             assert_eq!(parse(json!({"id": 9, "cmd": "set_layout", "layout": s})).cmd, Command::SetLayout { layout: l });
         }
+        assert_eq!(parse(json!({"id": 9, "cmd": "set_fps_limit", "fps": 30})).cmd, Command::SetFpsLimit { fps: 30 });
         assert_eq!(
             parse(json!({"id": 10, "cmd": "set_display_used", "display": "disp:1", "used": false})).cmd,
             Command::SetDisplayUsed { display: "disp:1".into(), used: false }

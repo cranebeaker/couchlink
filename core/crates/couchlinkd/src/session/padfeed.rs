@@ -124,6 +124,66 @@ struct Entry {
     /// The seat whose profile the feed plays (none: the pad as it is).
     seat: Option<usize>,
     state: ProcState,
+    /// The seat's keyboard and mouse feed, for what its profile turns into keys and mouse input.
+    kbm: Option<String>,
+    keys: Vec<String>,
+    mouse: Vec<String>,
+    last_ms: u64,
+    /// Mouse movement not sent yet (less than a pixel).
+    rest: (f32, f32),
+}
+
+/// Pixels per second a fully pushed stick moves the mouse.
+const MOUSE_SPEED: f32 = 1500.0;
+
+/// What changed in a profile's keys and mouse between two samples, as keyboard and mouse feed input.
+fn kbm_changes(o: &Output, keys: &[String], mouse: &[String], dt: f32, rest: &mut (f32, f32)) -> Vec<super::rawkbm::Input> {
+    use super::rawkbm::Input;
+    use couchlink_hook::kbmfeed::{key_flags, mouse_flags};
+    let mut out = Vec::new();
+    let key = |name: &str, up: bool| {
+        couchlink_core::profile::windows_key(name).map(|(vk, scan, e0)| {
+            let flags = if up { key_flags::BREAK } else { 0 } | if e0 { key_flags::E0 } else { 0 };
+            Input::Key { vk, scan, flags }
+        })
+    };
+    out.extend(o.keys.iter().filter(|k| !keys.contains(k)).filter_map(|k| key(k, false)));
+    out.extend(keys.iter().filter(|k| !o.keys.contains(k)).filter_map(|k| key(k, true)));
+    let button = |m: &str, down: bool| -> Option<(u16, i16)> {
+        Some(match (m, down) {
+            ("left", true) => (mouse_flags::LEFT_DOWN, 0),
+            ("left", false) => (mouse_flags::LEFT_UP, 0),
+            ("right", true) => (mouse_flags::RIGHT_DOWN, 0),
+            ("right", false) => (mouse_flags::RIGHT_UP, 0),
+            ("middle", true) => (mouse_flags::MIDDLE_DOWN, 0),
+            ("middle", false) => (mouse_flags::MIDDLE_UP, 0),
+            ("back", true) => (mouse_flags::X1_DOWN, 0),
+            ("back", false) => (mouse_flags::X1_UP, 0),
+            ("forward", true) => (mouse_flags::X2_DOWN, 0),
+            ("forward", false) => (mouse_flags::X2_UP, 0),
+            ("wheel_up", true) => (mouse_flags::WHEEL, 120),
+            ("wheel_down", true) => (mouse_flags::WHEEL, -120),
+            _ => return None,
+        })
+    };
+    for (m, down) in o.mouse.iter().filter(|m| !mouse.contains(m)).map(|m| (m, true)).chain(mouse.iter().filter(|m| !o.mouse.contains(m)).map(|m| (m, false))) {
+        if let Some((flags, wheel)) = button(m, down) {
+            out.push(Input::Mouse { dx: 0, dy: 0, flags, wheel });
+        }
+    }
+    rest.0 += o.mx * MOUSE_SPEED * dt;
+    rest.1 += o.my * MOUSE_SPEED * dt;
+    let (dx, dy) = (rest.0.trunc(), rest.1.trunc());
+    *rest = (rest.0 - dx, rest.1 - dy);
+    if dx != 0.0 || dy != 0.0 {
+        out.push(Input::Mouse { dx: dx as i32, dy: dy as i32, flags: 0, wheel: 0 });
+    }
+    out
+}
+
+/// True when the profile on `seat` turns pad input into keys or the mouse (its copy then needs a keyboard feed).
+pub fn seat_sends_kbm(seat: usize) -> bool {
+    registry().profiles.get(seat).is_some_and(Profile::sends_kbm)
 }
 
 #[derive(Default)]
@@ -190,11 +250,12 @@ pub fn attach(name: &str, devices: &[String]) -> Result<FeedGuard, String> {
 
 /// `attach`, and the Windows user `share_with` (the seat's own Steam account) may read the feed too.
 pub fn attach_shared(name: &str, devices: &[String], share_with: Option<&str>) -> Result<FeedGuard, String> {
-    attach_for_seat(name, devices, None, share_with)
+    attach_for_seat(name, devices, None, None, share_with)
 }
 
-/// `attach_shared` for a seat: the feed plays the seat's profile.
-pub fn attach_for_seat(name: &str, devices: &[String], seat: Option<usize>, share_with: Option<&str>) -> Result<FeedGuard, String> {
+/// `attach_shared` for a seat: the feed plays the seat's profile, and what the profile turns into keys and mouse
+/// input goes to the seat's keyboard and mouse feed `kbm`.
+pub fn attach_for_seat(name: &str, devices: &[String], seat: Option<usize>, kbm: Option<&str>, share_with: Option<&str>) -> Result<FeedGuard, String> {
     let device = feed_device(devices).ok_or_else(|| "the seat has no controller".to_string())?;
     let mut feed = Feed::create_shared(name, share_with).map_err(|e| format!("cannot create the pad feed: {e}"))?;
     let mut reg = registry();
@@ -203,7 +264,18 @@ pub fn attach_for_seat(name: &str, devices: &[String], seat: Option<usize>, shar
     }
     reg.next_id += 1;
     let id = reg.next_id;
-    reg.entries.push(Entry { id, device: device.to_string(), feed, seat, state: ProcState::new() });
+    reg.entries.push(Entry {
+        id,
+        device: device.to_string(),
+        feed,
+        seat,
+        state: ProcState::new(),
+        kbm: kbm.map(str::to_string),
+        keys: Vec::new(),
+        mouse: Vec::new(),
+        last_ms: 0,
+        rest: (0.0, 0.0),
+    });
     Ok(FeedGuard { id, name: name.to_string() })
 }
 
@@ -230,13 +302,34 @@ pub fn publish_sample(device_id: &str, sample: &InputSample) {
         reg.latest.insert(device_id.to_string(), raw);
     }
     let Registry { entries, profiles, .. } = &mut *reg;
+    let mut kbm: Vec<(String, Vec<super::rawkbm::Input>)> = Vec::new();
     for e in entries.iter_mut().filter(|e| e.device == device_id) {
         let profile = e.seat.and_then(|s| profiles.get(s));
-        let state = played(profile, &mut e.state, now, sample);
+        let state = match profile {
+            Some(p) => {
+                let out = process(p, &mut e.state, now, sample);
+                if let Some(name) = &e.kbm {
+                    let dt = now.saturating_sub(e.last_ms).min(100) as f32 / 1000.0;
+                    let changes = kbm_changes(&out, &e.keys, &e.mouse, dt, &mut e.rest);
+                    e.keys = out.keys.clone();
+                    e.mouse = out.mouse.clone();
+                    if !changes.is_empty() {
+                        kbm.push((name.clone(), changes));
+                    }
+                }
+                e.last_ms = now;
+                PadState::from_output(&out)
+            }
+            None => PadState::from_sample(sample),
+        };
         if !e.feed.is_connected() {
             e.feed.set_connected(true);
         }
         e.feed.write_state(&state.feed_state());
+    }
+    drop(reg);
+    for (name, inputs) in kbm {
+        super::rawkbm::push_pad(&name, &inputs);
     }
 }
 
@@ -337,8 +430,8 @@ mod tests {
         let default = couchlink_core::profile::builtin("default").unwrap();
         set_profiles(&[default.clone(), swap, default]);
         let pid = std::process::id();
-        let mine = attach_for_seat(&feed_name(format!("test{pid}"), 1), &["pad:4242".to_string()], Some(1), None).unwrap();
-        let plain = attach_for_seat(&feed_name(format!("test{pid}"), 2), &["pad:4242".to_string()], None, None).unwrap();
+        let mine = attach_for_seat(&feed_name(format!("test{pid}"), 1), &["pad:4242".to_string()], Some(1), None, None).unwrap();
+        let plain = attach_for_seat(&feed_name(format!("test{pid}"), 2), &["pad:4242".to_string()], None, None, None).unwrap();
         let mut sample = InputSample::neutral();
         sample.buttons = vec![Button::South];
         publish_sample("pad:4242", &sample);
@@ -351,6 +444,62 @@ mod tests {
         assert_eq!(read(&plain), (true, xb::A), "a feed without a seat gets the pad as it is");
         drop((mine, plain));
         assert!(!active());
+    }
+
+    #[test]
+    fn a_profiles_keys_and_mouse_become_feed_input() {
+        use super::super::rawkbm::Input;
+        use couchlink_hook::kbmfeed::{key_flags, mouse_flags};
+        let out = |keys: &[&str], mouse: &[&str], mx: f32| Output {
+            lx: 0.0,
+            ly: 0.0,
+            rx: 0.0,
+            ry: 0.0,
+            lt: 0.0,
+            rt: 0.0,
+            buttons: vec![],
+            keys: keys.iter().map(|k| k.to_string()).collect(),
+            mouse: mouse.iter().map(|m| m.to_string()).collect(),
+            layer: None,
+            mx,
+            my: 0.0,
+        };
+        let mut rest = (0.0, 0.0);
+        let down = kbm_changes(&out(&["E", "Up"], &["left", "wheel_up"], 0.0), &[], &[], 0.01, &mut rest);
+        assert!(down.contains(&Input::Key { vk: 0x45, scan: 18, flags: 0 }));
+        assert!(down.contains(&Input::Key { vk: 0x26, scan: 0x48, flags: key_flags::E0 }));
+        assert!(down.contains(&Input::Mouse { dx: 0, dy: 0, flags: mouse_flags::LEFT_DOWN, wheel: 0 }));
+        assert!(down.contains(&Input::Mouse { dx: 0, dy: 0, flags: mouse_flags::WHEEL, wheel: 120 }));
+        let held = kbm_changes(&out(&["E"], &["left"], 0.0), &["E".into()], &["left".into()], 0.01, &mut rest);
+        assert!(held.is_empty(), "a held key is not sent again: {held:?}");
+        let up = kbm_changes(&out(&[], &[], 0.0), &["E".into()], &["left".into()], 0.01, &mut rest);
+        assert_eq!(up, [Input::Key { vk: 0x45, scan: 18, flags: key_flags::BREAK }, Input::Mouse { dx: 0, dy: 0, flags: mouse_flags::LEFT_UP, wheel: 0 }]);
+        let moved = kbm_changes(&out(&[], &[], 1.0), &[], &[], 0.1, &mut rest);
+        assert_eq!(moved, [Input::Mouse { dx: 150, dy: 0, flags: 0, wheel: 0 }], "a full stick moves 1500 px a second");
+    }
+
+    /// Windows: a seat whose pad sends keys gets them into its own keyboard and mouse feed.
+    #[cfg(windows)]
+    #[test]
+    fn a_pads_keys_reach_the_seats_keyboard_feed() {
+        let keys = Profile::from_value(&serde_json::json!({"id": "k", "name": "K", "buttons": {"south": {"type": "key", "value": "E"}}})).unwrap();
+        let default = couchlink_core::profile::builtin("default").unwrap();
+        set_profiles(&[default.clone(), default.clone(), default.clone(), keys]);
+        assert!(seat_sends_kbm(3) && !seat_sends_kbm(0));
+        let pid = std::process::id();
+        let kbm_name = super::super::rawkbm::feed_name(format!("padkeys{pid}"), 3);
+        let kbm = super::super::rawkbm::attach_pad(&kbm_name, None).unwrap();
+        let feed = attach_for_seat(&feed_name(format!("padkeys{pid}"), 3), &["pad:4343".to_string()], Some(3), Some(kbm.name()), None).unwrap();
+        let before = super::super::rawkbm::feed_head(&kbm_name).unwrap();
+        let mut sample = InputSample::neutral();
+        sample.buttons = vec![Button::South];
+        publish_sample("pad:4343", &sample);
+        assert_eq!(super::super::rawkbm::feed_head(&kbm_name).unwrap(), before + 1, "E went down in the seat's keyboard feed");
+        publish_sample("pad:4343", &sample);
+        assert_eq!(super::super::rawkbm::feed_head(&kbm_name).unwrap(), before + 1, "and is not sent again while held");
+        publish_sample("pad:4343", &InputSample::neutral());
+        assert_eq!(super::super::rawkbm::feed_head(&kbm_name).unwrap(), before + 2, "then E went up");
+        drop((feed, kbm));
     }
 
     #[test]

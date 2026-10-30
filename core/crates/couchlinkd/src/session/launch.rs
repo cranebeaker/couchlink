@@ -47,6 +47,8 @@ pub struct LinuxSeat {
     /// The seat's region in desktop pixels.
     pub rect: couchlink_core::session::Rect,
     pub borderless: bool,
+    /// Frames per second gamescope holds the copy to.
+    pub fps_limit: Option<u32>,
     /// A folder of the seat's own that outlives the session: its Proton prefix and its home.
     pub data_dir: PathBuf,
     /// The seat's sandbox holder (`ns_linux.rs`), which the copy joins; none when the copy is sandboxed with bwrap.

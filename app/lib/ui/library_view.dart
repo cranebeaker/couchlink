@@ -226,6 +226,7 @@ class _GameCard extends StatelessWidget {
             const SizedBox(height: 6),
             Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
               Tag(game.tier.label, kind: tagKind(game.tier)),
+              if (game.controls) const Tag('Pad controls'),
               Text(game.installed ? '${game.playersLabel} players' : t('Not installed'), style: txt(context, size: 12, color: c.ink2, height: 1.3)),
             ]),
           ],

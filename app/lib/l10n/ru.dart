@@ -239,6 +239,13 @@ const Map<String, String> ruStrings = {
   'Too small for most games': 'Слишком мало для большинства игр',
   'Small: text may be hard to read': 'Мало: текст может плохо читаться',
   'Too small': 'Слишком мало',
+  'Frame rate': 'Частота кадров',
+  'No limit': 'Без ограничения',
+  '30 fps': '30 к/с',
+  '60 fps': '60 к/с',
+  'Every game copy is held to it (on Windows, games that draw through DXVK or VKD3D).':
+      'Её держит каждая копия игры (в Windows: игры, которые рисуют через DXVK или VKD3D).',
+  'Pad controls': 'Управление с геймпада',
   'Small': 'Мало',
   '{other} and {name} swapped places': '{other} и {name} поменялись местами',
   'Take {name} off this screen': 'Убрать {name} с этого экрана',

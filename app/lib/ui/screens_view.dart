@@ -68,6 +68,8 @@ class _ScreensViewState extends State<ScreensView> {
                 ),
               ),
               _PlayersBar(ctl: ctl),
+              const SizedBox(height: 12),
+              _FpsLimit(fps: st.fpsLimit),
               const SizedBox(height: 18),
               if (ctl.screens.isEmpty)
                 Panel(child: SizedBox(height: 120, child: Center(child: Text('No screens found.', style: txt(context, size: 13, color: context.c.ink3)))))
@@ -77,6 +79,42 @@ class _ScreensViewState extends State<ScreensView> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ------------------------------------------------------------------ frame rate
+
+/// The frame rate every game copy is held to (for example 30, so several copies run smoothly together).
+class _FpsLimit extends StatelessWidget {
+  const _FpsLimit({required this.fps});
+
+  final int fps;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    const choices = [0, 30, 60];
+    return Wrap(
+      spacing: 12,
+      runSpacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text(t('Frame rate'), style: txt(context, size: 13, weight: FontWeight.w600, height: 1.3)),
+        Seg<int>(
+          keyPrefix: 'fps',
+          options: const [(0, 'No limit'), (30, '30 fps'), (60, '60 fps')],
+          value: choices.contains(fps) ? fps : 0,
+          onChanged: (v) async {
+            final client = Scope.of(context).client;
+            final toaster = Scope.of(context).toaster;
+            final err = await client.setFpsLimit(v);
+            if (err != null) toaster.show(err);
+          },
+        ),
+        Text(t('Every game copy is held to it (on Windows, games that draw through DXVK or VKD3D).'),
+            style: txt(context, size: 12, color: c.ink3, height: 1.3)),
+      ],
     );
   }
 }

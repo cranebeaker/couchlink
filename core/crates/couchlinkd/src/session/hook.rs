@@ -161,15 +161,22 @@ impl Launcher for HookLauncher {
         }
         // Any controller SDL sees reaches the copy through a feed the daemon writes; the XInput slot is
         // the fallback when the seat has no pad to feed from.
-        let mut feed = spec.seat.and_then(|seat| {
-            let tag = format!("{}-{}", std::process::id(), LAUNCHES.fetch_add(1, Ordering::Relaxed));
-            super::padfeed::attach_for_seat(&super::padfeed::feed_name(tag, seat as u32), &spec.devices, Some(seat), None).ok()
-        });
         // The seat's own keyboards and mice reach the copy through a second feed; a seat without any keeps the
-        // shared desktop keyboard and mouse.
-        let mut kbm = spec.seat.and_then(|seat| {
+        // shared desktop keyboard and mouse, unless its pad sends keys through its profile (then they get a feed).
+        let own_kbm = spec.seat.and_then(|seat| {
             let tag = format!("{}-{}", std::process::id(), LAUNCHES.fetch_add(1, Ordering::Relaxed));
             super::rawkbm::attach(&super::rawkbm::feed_name(tag, seat as u32), &spec.devices).ok()
+        });
+        let fake_cursor = own_kbm.is_some();
+        let mut kbm = own_kbm.or_else(|| {
+            let seat = spec.seat.filter(|s| super::padfeed::seat_sends_kbm(*s))?;
+            let tag = format!("{}-{}", std::process::id(), LAUNCHES.fetch_add(1, Ordering::Relaxed));
+            super::rawkbm::attach_pad(&super::rawkbm::feed_name(tag, seat as u32), None).ok()
+        });
+        let mut feed = spec.seat.and_then(|seat| {
+            let tag = format!("{}-{}", std::process::id(), LAUNCHES.fetch_add(1, Ordering::Relaxed));
+            let kbm_name = kbm.as_ref().map(|g| g.name().to_string());
+            super::padfeed::attach_for_seat(&super::padfeed::feed_name(tag, seat as u32), &spec.devices, Some(seat), kbm_name.as_deref(), None).ok()
         });
         let config = couchlink_hook::HookConfig {
             pad: pad_slot(&spec.devices),
@@ -179,7 +186,7 @@ impl Launcher for HookLauncher {
             cow_root: Some(spec.game_dir.clone()),
             saves: spec.saves.clone(),
             kbm_feed: kbm.as_ref().map(|g| g.name().to_string()),
-            fake_cursor: kbm.is_some(),
+            fake_cursor,
             hook_children: spec.hook_children,
             // Games that read controllers through DirectInput, Raw Input or HID see only this seat's.
             own_pads: Some(own_pad_paths(&spec.devices)),
@@ -281,13 +288,14 @@ fn launch_as_seat_user(spec: &LaunchSpec, account: &couchlink_steam::AccountsCon
         let l = start(&env)?;
         return Ok(Launched { child: Box::new(AsUser::new(l, None, None, None)), hooked: false });
     }
-    let feed = spec.seat.and_then(|seat| {
-        let tag = format!("{}-{}", std::process::id(), LAUNCHES.fetch_add(1, Ordering::Relaxed));
-        super::padfeed::attach_for_seat(&super::padfeed::feed_name(tag, seat as u32), &spec.devices, Some(seat), Some(&user)).ok()
-    });
     let kbm = spec.seat.and_then(|seat| {
         let tag = format!("{}-{}", std::process::id(), LAUNCHES.fetch_add(1, Ordering::Relaxed));
         super::rawkbm::attach_shared(&super::rawkbm::feed_name(tag, seat as u32), &spec.devices, Some(&user)).ok()
+    });
+    let feed = spec.seat.and_then(|seat| {
+        let tag = format!("{}-{}", std::process::id(), LAUNCHES.fetch_add(1, Ordering::Relaxed));
+        let kbm_name = kbm.as_ref().map(|g| g.name().to_string());
+        super::padfeed::attach_for_seat(&super::padfeed::feed_name(tag, seat as u32), &spec.devices, Some(seat), kbm_name.as_deref(), Some(&user)).ok()
     });
     let config = couchlink_hook::HookConfig {
         pad: pad_slot(&spec.devices),
