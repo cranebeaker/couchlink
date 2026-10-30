@@ -271,7 +271,7 @@ impl Worker {
                 next_input = now + INPUT_PERIOD;
                 self.sample_inputs();
             }
-            if crate::session::padfeed::active() {
+            if crate::session::padfeed::active() || linux_pads_active() {
                 self.feed_pads();
             }
             if now >= next_power {
@@ -415,6 +415,11 @@ impl Worker {
             Ok(p) => p,
             Err(_) => return,
         };
+        // The virtual pads couchlinkd makes for game copies on Linux are not players' controllers.
+        #[cfg(target_os = "linux")]
+        if pad.path().is_some_and(|p| crate::session::uipad_linux::is_ours(&p)) {
+            return;
+        }
         let (battery, charging) = battery_of(&pad);
         let is_virtual = self.virtuals.contains_key(&id);
         // Virtual pads share one mapping name, so ask the joystick layer for theirs.
@@ -462,10 +467,16 @@ impl Worker {
     fn feed_pads(&mut self) {
         use crate::session::padfeed::{publish, take_rumble, PadState};
         for (id, sample) in self.read_pads() {
+            // Linux: the seat's virtual pad, through the seat's profile (session/uipad_linux.rs).
+            #[cfg(target_os = "linux")]
+            crate::session::uipad_linux::publish(&format!("pad:{id}"), &sample);
             publish(&format!("pad:{id}"), PadState::from_sample(&sample));
         }
         for (id, pad) in self.pads.iter_mut() {
-            if let Some((low, high)) = take_rumble(&format!("pad:{id}")) {
+            let rumble = take_rumble(&format!("pad:{id}"));
+            #[cfg(target_os = "linux")]
+            let rumble = rumble.or_else(|| crate::session::uipad_linux::take_rumble(&format!("pad:{id}")));
+            if let Some((low, high)) = rumble {
                 // A changed value is sent again, so a long duration is safe (u32::MAX overflows in SDL).
                 let _ = pad.set_rumble(low, high, if low | high == 0 { 0 } else { 60_000 });
             }
@@ -661,5 +672,17 @@ fn joystick_name(id: u32) -> Option<String> {
         } else {
             Some(std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned())
         }
+    }
+}
+
+/// True while Linux game copies play through virtual pads (session/uipad_linux.rs).
+fn linux_pads_active() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        crate::session::uipad_linux::active()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
     }
 }

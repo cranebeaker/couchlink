@@ -66,6 +66,9 @@ struct SeatRun {
     /// The seat's sandbox on Linux (its namespace and layered copy); it ends when this is dropped.
     #[cfg(target_os = "linux")]
     ns: Option<super::ns_linux::SeatNs>,
+    /// The seat's virtual pad on Linux, which its copy plays with.
+    #[cfg(target_os = "linux")]
+    vpad: Option<super::uipad_linux::PadGuard>,
 }
 
 struct Run {
@@ -110,6 +113,8 @@ pub fn run(plan: Plan, deps: Deps, stop: Arc<AtomicBool>, report: Report) {
             followed: None,
             #[cfg(target_os = "linux")]
             ns: None,
+            #[cfg(target_os = "linux")]
+            vpad: None,
         })
         .collect();
     let mut r = Run { plan, deps, stop, report, info, journal, seats, helpers: Vec::new(), placer: Placer::new(), last_maintain: Instant::now() };
@@ -236,7 +241,18 @@ impl Run {
             // On Linux every seat gets a sandbox of its own, with its copy layered over the install (copies_linux.rs).
             #[cfg(target_os = "linux")]
             {
-                let pads = super::hook::pad_nodes(&self.seats[idx].plan.devices);
+                // The copy plays with a virtual pad the seat's controller drives through its profile; without
+                // /dev/uinput it gets the real controller.
+                let mut pads = super::hook::pad_nodes(&self.seats[idx].plan.devices);
+                if let Some(dev) = super::padfeed::feed_device(&self.seats[idx].plan.devices) {
+                    match super::uipad_linux::create(dev, seat) {
+                        Ok(g) => {
+                            pads = vec![g.node.display().to_string()];
+                            self.seats[idx].vpad = Some(g);
+                        }
+                        Err(e) => eprintln!("couchlinkd: seat {seat}: {e}; the copy gets the real controller, without remaps"),
+                    }
+                }
                 let layered = recipe.files.link != LinkMode::None;
                 match super::copies_linux::prepare_seat(&self.plan.game_dir, &instances, seat, layered, &copy, &exclude, &pads, &mut self.journal, &self.stop) {
                     Ok((dir, ns)) => {

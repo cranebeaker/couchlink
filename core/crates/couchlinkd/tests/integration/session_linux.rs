@@ -39,6 +39,18 @@ async fn seat_status(inst: &Path, seat: usize, within: Duration, pred: impl Fn(&
     None
 }
 
+/// The input devices a copy lists are its own player's virtual pad at most (named after the player, see
+/// uipad_linux.rs); where couchlinkd can make virtual pads (`/dev/uinput`), that pad must be there.
+fn only_own_pad(s: &Value, seat: usize) -> bool {
+    let Some(nodes) = s["input_nodes"].as_array() else { return false };
+    let own = nodes.iter().all(|n| {
+        let name = std::fs::read_to_string(format!("/sys/class/input/{}/device/name", n.as_str().unwrap_or(""))).unwrap_or_default();
+        name.contains(&format!("Couchlink player {}", seat + 1))
+    });
+    let can_make = std::fs::OpenOptions::new().write(true).open("/dev/uinput").is_ok();
+    own && (!can_make || !nodes.is_empty())
+}
+
 fn gone(pid: u64) -> bool {
     !Path::new(&format!("/proc/{pid}")).exists() || std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|s| s.contains(") Z "))
 }
@@ -169,7 +181,9 @@ pub async fn run(c: &mut Checks, fx: &Fixture) {
             &format!("linux: seat {seat} has a home of its own"),
             s["home"].as_str().is_some_and(|h| h.ends_with(&format!(".seats/{seat}/home")) && Path::new(h).is_dir()),
         );
-        c.check(&format!("linux: seat {seat}'s copy sees no input device that is not its own"), s["input_nodes"].as_array().is_some_and(Vec::is_empty));
+        if !c.check(&format!("linux: seat {seat}'s copy sees its own virtual pad and no other input device"), only_own_pad(&s, seat)) {
+            println!("  seat {seat} sees {}", s["input_nodes"]);
+        }
         if std::env::var_os("DISPLAY").is_some() {
             // testgame opens an X11 window at 100,100; the daemon moves it onto the seat's half of the display.
             let region = if seat == 0 { [0.0, 0.0, 0.5, 1.0] } else { [0.5, 0.0, 0.5, 1.0] };
@@ -319,7 +333,9 @@ async fn gamescope(c: &mut Checks, cl: &mut Client, state: &Path, display: &Valu
         // The game runs under a small shell that reports gamescope's display, under gamescope.
         let ancestors: Vec<String> = std::iter::successors(Some(pid), |p| parent(*p).filter(|q| *q > 1)).take(6).map(|p| std::fs::read_to_string(format!("/proc/{p}/comm")).unwrap_or_default().trim().to_string()).collect();
         c.check(&format!("gamescope: seat {seat}'s copy runs inside gamescope"), ancestors.iter().any(|n| n.starts_with("gamescope")));
-        c.check(&format!("gamescope: seat {seat}'s copy still sees no other input device"), s["input_nodes"].as_array().is_some_and(Vec::is_empty));
+        if !c.check(&format!("gamescope: seat {seat}'s copy sees its own virtual pad and no other input device"), only_own_pad(&s, seat)) {
+            println!("  seat {seat} sees {}", s["input_nodes"]);
+        }
         if headless {
             let own = seat_status(&inst, seat, Duration::from_secs(15), |s| s["window"]["visible"] == true).await;
             let shown = own.as_ref().is_some_and(|s| s["display"].as_str().is_some_and(|d| !d.is_empty() && Some(d.to_string()) != std::env::var("DISPLAY").ok()));

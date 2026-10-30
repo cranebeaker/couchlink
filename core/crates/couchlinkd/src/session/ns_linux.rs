@@ -142,7 +142,7 @@ fn setup(cfg: &Config) -> Result<(bool, String), String> {
     Ok((overlay, why))
 }
 
-/// The holder process: reads its config (one JSON line on stdin), sets up, answers `ok <overlay>` or `error <why>`,
+/// The holder process: reads its config (one JSON line on stdin), sets up, answers `ok <overlay> <pid>` or `error <why>`,
 /// then waits until stdin closes (the session ends, or the daemon dies).
 pub fn holder_main() -> i32 {
     let mut stdin = std::io::stdin().lock();
@@ -152,7 +152,8 @@ pub fn holder_main() -> i32 {
     }
     let mut out = std::io::stdout().lock();
     let answer = match serde_json::from_str::<Config>(&line).map_err(|e| format!("bad config: {e}")).and_then(|c| setup(&c)) {
-        Ok((overlay, why)) => format!("ok {overlay} {why}"),
+        // The process whose namespaces these are (the daemon reaches the copy through its /proc entry).
+        Ok((overlay, why)) => format!("ok {overlay} {} {why}", std::process::id()),
         Err(e) => format!("error {e}"),
     };
     let failed = answer.starts_with("error");
@@ -216,9 +217,12 @@ impl SeatNs {
         let mut ns = SeatNs { child, pid, overlay: false, overlay_error: String::new() };
         let answer = answer.trim();
         if let Some(rest) = answer.strip_prefix("ok ") {
-            let (flag, why) = rest.split_once(' ').unwrap_or((rest, ""));
-            ns.overlay = flag == "true";
-            ns.overlay_error = why.trim().to_string();
+            let mut parts = rest.splitn(3, ' ');
+            ns.overlay = parts.next() == Some("true");
+            if let Some(p) = parts.next().and_then(|p| p.parse().ok()) {
+                ns.pid = p;
+            }
+            ns.overlay_error = parts.next().unwrap_or("").trim().to_string();
             return Ok(ns);
         }
         let why = answer.strip_prefix("error ").unwrap_or(if answer.is_empty() { "the seat sandbox did not answer" } else { answer }).to_string();

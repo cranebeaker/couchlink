@@ -28,6 +28,8 @@ pub mod launch_linux;
 pub mod ns_linux;
 #[cfg(target_os = "linux")]
 pub mod sandbox_linux;
+#[cfg(target_os = "linux")]
+pub mod uipad_linux;
 pub mod padfeed;
 pub mod rawkbm;
 pub mod recipes;

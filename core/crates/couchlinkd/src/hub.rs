@@ -111,6 +111,9 @@ impl Hub {
                 .and_then(|id| builtin(id).or_else(|| store.load(id)))
                 .unwrap_or_else(default_profile)
         });
+        // Linux games play through a virtual pad per seat, driven through the seat's profile.
+        #[cfg(target_os = "linux")]
+        crate::session::uipad_linux::set_profiles(&seat_profiles);
         Hub {
             store,
             seat_profiles,
@@ -464,6 +467,8 @@ impl Hub {
     // ---- profiles -------------------------------------------------------
 
     fn save_seat_profiles(&self) {
+        #[cfg(target_os = "linux")]
+        crate::session::uipad_linux::set_profiles(&self.seat_profiles);
         let ids: [String; MAX_SEATS] = std::array::from_fn(|i| self.seat_profiles[i].id.clone());
         if let Err(e) = self.store.save_seats(&ids) {
             self.log(LogLevel::Warn, format!("Cannot remember the seat profiles: {e}"));
