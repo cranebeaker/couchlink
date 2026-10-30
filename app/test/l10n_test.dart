@@ -64,6 +64,8 @@ void main() {
     await pumpApp(tester, newFake(), view: AppView.library);
     await tester.tap(find.byKey(const ValueKey('settings-open')));
     await tester.pump(const Duration(milliseconds: 200));
+    await tester.ensureVisible(find.byKey(const ValueKey('settings-save-report')));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('settings-save-report')));
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.descendant(of: find.byKey(const ValueKey('toast')), matching: find.textContaining('couchlink-report-1.txt')), findsOneWidget);

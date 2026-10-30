@@ -191,6 +191,8 @@ class DaemonState {
     this.screens = const [],
     this.layout = 'auto',
     this.fpsLimit = 0,
+    this.stopKeys = 'Ctrl+Shift+Q',
+    this.stopPad = 'guide+back',
     this.dev = false,
   });
 
@@ -207,6 +209,10 @@ class DaemonState {
 
   /// Frames per second every game copy is held to; 0 for no limit.
   final int fpsLimit;
+
+  /// The close-the-games shortcut: keys like `Ctrl+Shift+Q` and pad buttons like `guide+back`, each `off` when off.
+  final String stopKeys;
+  final String stopPad;
   final bool dev;
 
   Device? device(String id) {
@@ -254,6 +260,8 @@ class DaemonState {
       screens: j['screens'] is List ? (j['screens'] as List).whereType<Map>().map((m) => ScreenArrangement.fromJson(m.cast<String, dynamic>())).toList() : const [],
       layout: _str(j['layout'], 'auto'),
       fpsLimit: j['fps_limit'] is num ? (j['fps_limit'] as num).toInt() : 0,
+      stopKeys: _str(j['stop_keys'], 'Ctrl+Shift+Q'),
+      stopPad: _str(j['stop_pad'], 'guide+back'),
       dev: j['dev'] == true,
     );
   }

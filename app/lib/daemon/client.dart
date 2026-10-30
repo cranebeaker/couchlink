@@ -69,6 +69,9 @@ abstract class CouchClient extends ChangeNotifier {
 
   /// Hold every game copy to [fps] frames a second; 0 for no limit. Null on success, else the error.
   Future<String?> setFpsLimit(int fps);
+
+  /// The close-the-games shortcut (`set_stop_shortcut`); a part left null stays as it is. Null on success, else the error.
+  Future<String?> setStopShortcut({String? keys, String? pad});
   Future<String?> setDisplayUsed(String display, bool used);
 
   /// Replace every screen's arrangement at once (who plays on which display, and where).

@@ -523,6 +523,111 @@ class _SideIconButton extends StatelessWidget {
   }
 }
 
+/// The close-the-games shortcut in Settings: a key combination (click, then press the new keys) and pad buttons.
+class _StopShortcutSettings extends StatefulWidget {
+  const _StopShortcutSettings();
+
+  @override
+  State<_StopShortcutSettings> createState() => _StopShortcutSettingsState();
+}
+
+class _StopShortcutSettingsState extends State<_StopShortcutSettings> {
+  static const _pads = [('guide+back', 'Guide + Back'), ('guide+start', 'Guide + Start'), ('back+start', 'Back + Start'), ('off', 'Off')];
+  bool _capturing = false;
+  final _focus = FocusNode();
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _set({String? keys, String? pad}) async {
+    final scope = Scope.of(context);
+    final err = await scope.client.setStopShortcut(keys: keys, pad: pad);
+    if (err != null) scope.toaster.show(err, long: true);
+  }
+
+  /// The key the shortcut can use for [k], as couchlinkd names it; null for keys it cannot (modifiers, space, arrows).
+  static String? _keyName(LogicalKeyboardKey k) {
+    final label = k.keyLabel;
+    if (label.length == 1 && RegExp(r'[A-Za-z0-9]').hasMatch(label)) return label.toUpperCase();
+    if (RegExp(r'^F([1-9]|1[0-9]|2[0-4])$').hasMatch(label)) return label;
+    const named = {'End': 'End', 'Home': 'Home', 'Pause': 'Pause', 'Delete': 'Delete', 'Insert': 'Insert', 'Page Up': 'PageUp', 'Page Down': 'PageDown'};
+    return named[label];
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent e) {
+    if (!_capturing || e is! KeyDownEvent) return KeyEventResult.ignored;
+    if (e.logicalKey == LogicalKeyboardKey.escape) {
+      setState(() => _capturing = false);
+      return KeyEventResult.handled;
+    }
+    final key = _keyName(e.logicalKey);
+    if (key == null) return KeyEventResult.handled; // a modifier on its own: wait for the key
+    final hw = HardwareKeyboard.instance;
+    final combo = [if (hw.isControlPressed) 'Ctrl', if (hw.isShiftPressed) 'Shift', if (hw.isAltPressed) 'Alt', if (hw.isMetaPressed) 'Win', key].join('+');
+    setState(() => _capturing = false);
+    _set(keys: combo);
+    return KeyEventResult.handled;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final client = Scope.of(context).client;
+    return ListenableBuilder(
+      listenable: client,
+      builder: (context, _) {
+        final st = client.state ?? DaemonState.empty;
+        final keysOff = st.stopKeys == 'off';
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(t('Ends the session and puts your desktop back, even while a game has the focus.'), style: txt(context, size: 12, color: c.ink2, height: 1.4)),
+            const SizedBox(height: 10),
+            Text(t('Keyboard'), style: txt(context, size: 12, weight: FontWeight.w600, color: c.ink2)),
+            const SizedBox(height: 6),
+            Focus(
+              focusNode: _focus,
+              onKeyEvent: _onKey,
+              child: Row(children: [
+                Expanded(
+                  child: CButton(
+                    key: const ValueKey('stop-keys'),
+                    label: _capturing ? t('Press the new keys') : (keysOff ? t('Off') : st.stopKeys),
+                    small: true,
+                    onTap: () {
+                      setState(() => _capturing = true);
+                      _focus.requestFocus();
+                    },
+                  ),
+                ),
+                if (!keysOff) ...[
+                  const SizedBox(width: 6),
+                  CButton(key: const ValueKey('stop-keys-off'), label: t('Off'), small: true, onTap: () => _set(keys: 'off')),
+                ],
+              ]),
+            ),
+            if (_capturing) ...[
+              const SizedBox(height: 4),
+              Text(t('Hold Ctrl, Alt or Win with a letter, or use an F key. Esc cancels.'), style: txt(context, size: 11, color: c.ink3, height: 1.35)),
+            ],
+            const SizedBox(height: 12),
+            Text(t('Controller (hold both)'), style: txt(context, size: 12, weight: FontWeight.w600, color: c.ink2)),
+            const SizedBox(height: 6),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final (v, l) in _pads) CChip(key: ValueKey('stop-pad-$v'), label: l, selected: st.stopPad == v, onTap: () => _set(pad: v)),
+            ]),
+            const SizedBox(height: 6),
+            Text(t('Guide is the Xbox or PS button. Back is View, Select or Create.'), style: txt(context, size: 11, color: c.ink3, height: 1.35)),
+          ],
+        );
+      },
+    );
+  }
+}
+
 /// Settings, in the sidebar in place of the pages: appearance, language, and the logs to send when something breaks.
 class _SettingsPanel extends StatelessWidget {
   const _SettingsPanel();
@@ -572,6 +677,9 @@ class _SettingsPanel extends StatelessWidget {
                 const SizedBox(height: 18),
                 heading('Language'),
                 _LangSwitch(value: ui.lang, onChanged: ui.setLang),
+                const SizedBox(height: 18),
+                heading('Close the games'),
+                const _StopShortcutSettings(),
                 const SizedBox(height: 18),
                 heading('Logs'),
                 Padding(

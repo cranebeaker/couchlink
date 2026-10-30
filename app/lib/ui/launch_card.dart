@@ -424,6 +424,10 @@ class _InGame extends StatelessWidget {
           stopping ? t('Putting your desktop back.') : t('{name} is running, one copy per player. Each part shows one player.', {'name': game.name}),
           style: txt(context, size: 14, color: c.ink2),
         ),
+        if (!stopping && _stopHint(state) != null) ...[
+          const SizedBox(height: 6),
+          Text(_stopHint(state)!, key: const ValueKey('stop-hint'), style: txt(context, size: 12, color: c.ink3)),
+        ],
         const SizedBox(height: 18),
         AspectRatio(
           aspectRatio: 16 / 9,
@@ -517,4 +521,15 @@ class _InGameTile extends StatelessWidget {
       ),
     );
   }
+}
+
+/// "To close the games: Ctrl+Shift+Q, or hold Guide + Back" from the shortcut in Settings; null when both are off.
+String? _stopHint(DaemonState st) {
+  const pads = {'guide+back': 'Guide + Back', 'guide+start': 'Guide + Start', 'back+start': 'Back + Start'};
+  final keys = st.stopKeys == 'off' ? null : st.stopKeys;
+  final pad = pads[st.stopPad];
+  if (keys == null && pad == null) return null;
+  if (keys != null && pad != null) return t('To close the games: {keys}, or hold {pad}', {'keys': keys, 'pad': pad});
+  if (keys != null) return t('To close the games: {keys}', {'keys': keys});
+  return t('To close the games: hold {pad}', {'pad': pad});
 }

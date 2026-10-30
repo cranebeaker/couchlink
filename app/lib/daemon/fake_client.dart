@@ -450,7 +450,7 @@ class FakeClient extends CouchClient {
           sizes: s.sizes,
         ),
     ];
-    return DaemonState(devices: devices, seats: seats, displays: displays ?? _state.displays, screens: screens, layout: layout ?? _state.layout, fpsLimit: _state.fpsLimit, dev: _state.dev);
+    return DaemonState(devices: devices, seats: seats, displays: displays ?? _state.displays, screens: screens, layout: layout ?? _state.layout, fpsLimit: _state.fpsLimit, stopKeys: _state.stopKeys, stopPad: _state.stopPad, dev: _state.dev);
   }
 
   @override
@@ -466,7 +466,7 @@ class FakeClient extends CouchClient {
     }
     final used = {for (final s in screens) s.display: s.on};
     final displays = [for (final d in _state.displays) used.containsKey(d.id) ? d.copyWith(used: used[d.id]) : d];
-    _set(DaemonState(devices: _state.devices, seats: _state.seats, displays: displays, screens: screens, layout: _state.layout, fpsLimit: _state.fpsLimit, dev: _state.dev));
+    _set(DaemonState(devices: _state.devices, seats: _state.seats, displays: displays, screens: screens, layout: _state.layout, fpsLimit: _state.fpsLimit, stopKeys: _state.stopKeys, stopPad: _state.stopPad, dev: _state.dev));
     return null;
   }
 
@@ -513,6 +513,8 @@ class FakeClient extends CouchClient {
       ],
       layout: _state.layout,
       fpsLimit: _state.fpsLimit,
+      stopKeys: _state.stopKeys,
+      stopPad: _state.stopPad,
       dev: _state.dev,
     );
     _set(_normalize(seats));
@@ -562,7 +564,18 @@ class FakeClient extends CouchClient {
   Future<String?> setFpsLimit(int fps) async {
     if (fps != 0 && (fps < 10 || fps > 360)) return '$fps fps is not a limit Couchlink takes (0 for none, or 10 to 360)';
     final s = _state;
-    _set(DaemonState(devices: s.devices, seats: s.seats, displays: s.displays, screens: s.screens, layout: s.layout, fpsLimit: fps, dev: s.dev));
+    _set(DaemonState(devices: s.devices, seats: s.seats, displays: s.displays, screens: s.screens, layout: s.layout, fpsLimit: fps, stopKeys: s.stopKeys, stopPad: s.stopPad, dev: s.dev));
+    return null;
+  }
+
+  @override
+  Future<String?> setStopShortcut({String? keys, String? pad}) async {
+    final s = _state;
+    if (keys != null && keys != 'off' && !RegExp(r'^((Ctrl|Shift|Alt|Win)\+)+[A-Z0-9]$|^((Ctrl|Shift|Alt|Win)\+)*(F[0-9]{1,2}|End|Home|Pause|Delete|Insert|PageUp|PageDown)$').hasMatch(keys)) {
+      return '$keys is not a key Couchlink can use for the shortcut';
+    }
+    if (pad != null && !const ['guide+back', 'guide+start', 'back+start', 'off'].contains(pad)) return '$pad is not a pad shortcut';
+    _set(DaemonState(devices: s.devices, seats: s.seats, displays: s.displays, screens: s.screens, layout: s.layout, fpsLimit: s.fpsLimit, stopKeys: keys ?? s.stopKeys, stopPad: pad ?? s.stopPad, dev: s.dev));
     return null;
   }
 
