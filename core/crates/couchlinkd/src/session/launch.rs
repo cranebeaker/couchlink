@@ -68,6 +68,10 @@ pub trait Child: Send {
     fn try_wait(&mut self) -> Result<Option<i32>, String>;
     /// End the process and everything it started. Does not wait.
     fn kill(&mut self);
+    /// What the input hook in the process reports (its hooks, counters and notes), for the player's report.
+    fn diagnostics(&self) -> Option<String> {
+        None
+    }
 }
 
 pub struct Launched {

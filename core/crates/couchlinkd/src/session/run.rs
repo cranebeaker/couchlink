@@ -18,6 +18,8 @@ use std::time::{Duration, Instant, SystemTime};
 
 /// How often the window of each running copy is checked.
 const MAINTAIN_EVERY: Duration = Duration::from_millis(500);
+/// How often each copy's input diagnostics (`<recipe>-player<N>-input.log`) are written while it runs.
+const DIAGNOSTICS_EVERY: Duration = Duration::from_secs(10);
 /// How long copies get to close on their own before they are killed.
 const CLOSE_GRACE: Duration = Duration::from_secs(4);
 const POLL: Duration = Duration::from_millis(100);
@@ -89,6 +91,8 @@ struct Run {
     helpers: Vec<Box<dyn super::Child>>,
     placer: Placer,
     last_maintain: Instant,
+    /// When each copy's input diagnostics were last written for the player's report.
+    last_diagnostics: Instant,
     /// SteamOS Game Mode: the nested KWin every copy's window is shown in (ends after the copies).
     #[cfg(target_os = "linux")]
     nested: Option<super::gamemode_linux::Nested>,
@@ -146,6 +150,7 @@ pub fn run(plan: Plan, deps: Deps, stop: Arc<AtomicBool>, report: Report) {
         helpers: Vec::new(),
         placer: Placer::new(),
         last_maintain: Instant::now(),
+        last_diagnostics: Instant::now(),
         hidden: false,
         on_top: true,
         #[cfg(target_os = "linux")]
@@ -741,6 +746,10 @@ impl Run {
                 Ok(None) | Err(_) => {}
             }
         }
+        if self.last_diagnostics.elapsed() >= DIAGNOSTICS_EVERY {
+            self.last_diagnostics = Instant::now();
+            self.write_input_diagnostics();
+        }
         if !self.hidden && self.last_maintain.elapsed() >= MAINTAIN_EVERY {
             self.last_maintain = Instant::now();
             let borderless = self.plan.recipe.window.borderless;
@@ -751,6 +760,23 @@ impl Run {
             }
             // A copy that replaced its window (splash screen to game) keeps the same priority as the others.
             self.placer.even_out();
+        }
+    }
+
+    /// For "Save full report": per copy, the input DLLs the game has loaded and what the input hook reports (its
+    /// hooks, counters, notes), so a report shows which way a game reads controllers and keys. Rewritten while the
+    /// copies run; the last one stays after the session.
+    fn write_input_diagnostics(&self) {
+        for s in self.seats.iter().filter(|s| !s.exited) {
+            let Some(child) = &s.child else { continue };
+            let pid = s.window_pid.unwrap_or_else(|| child.pid());
+            let mut text = format!("pid {pid}, devices {:?}\n\ninput modules:\n", s.plan.devices);
+            for m in input_modules(pid) {
+                text += &format!("  {m}\n");
+            }
+            text += &format!("\nhook:\n{}\n", child.diagnostics().unwrap_or_else(|| "(no hook in this copy)".into()));
+            let path = crate::logfile::dir().join(format!("{}-player{}-input.log", self.plan.recipe.id, s.plan.seat + 1));
+            let _ = std::fs::write(path, text);
         }
     }
 
@@ -914,4 +940,45 @@ fn resolve(p: &str, dir: &Path) -> PathBuf {
     } else {
         dir.join(path)
     }
+}
+
+/// The DLLs of process `pid` that read controllers or keys, or put themselves in their way (lower case names).
+#[cfg(windows)]
+fn input_modules(pid: u32) -> Vec<String> {
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, MODULEENTRY32W, Module32FirstW, Module32NextW, TH32CS_SNAPMODULE, TH32CS_SNAPMODULE32,
+    };
+    const INPUT: [&str; 14] = [
+        "xinput", "dinput", "hid.dll", "windows.gaming.input", "gameinput", "sdl", "steam_api", "steamclient",
+        "gameoverlayrenderer", "couchlink", "rewired", "inputsystem", "joy", "controller",
+    ];
+    let mut out = Vec::new();
+    // SAFETY: a snapshot of another process's module list; the entry struct is sized before use.
+    unsafe {
+        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
+        if snap == INVALID_HANDLE_VALUE {
+            return vec![format!("(cannot list the modules of {pid})")];
+        }
+        let mut me: MODULEENTRY32W = std::mem::zeroed();
+        me.dwSize = std::mem::size_of::<MODULEENTRY32W>() as u32;
+        let mut ok = Module32FirstW(snap, &mut me) != 0;
+        while ok {
+            let len = me.szModule.iter().position(|&c| c == 0).unwrap_or(me.szModule.len());
+            let name = String::from_utf16_lossy(&me.szModule[..len]).to_lowercase();
+            if INPUT.iter().any(|t| name.contains(t)) {
+                out.push(name);
+            }
+            ok = Module32NextW(snap, &mut me) != 0;
+        }
+        CloseHandle(snap);
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+#[cfg(not(windows))]
+fn input_modules(_pid: u32) -> Vec<String> {
+    Vec::new()
 }

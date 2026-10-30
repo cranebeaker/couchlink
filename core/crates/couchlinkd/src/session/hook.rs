@@ -386,6 +386,10 @@ impl Child for AsUser {
         Ok(if code == 259 { None } else { Some(code as i32) })
     }
 
+    fn diagnostics(&self) -> Option<String> {
+        self._handle.as_ref()?.status().ok().map(|s| format!("{s:#?}"))
+    }
+
     fn kill(&mut self) {
         match &self.job {
             Some(job) => job.terminate(),
@@ -424,6 +428,10 @@ impl Child for Proxied {
     fn kill(&mut self) {
         self.inner.kill()
     }
+
+    fn diagnostics(&self) -> Option<String> {
+        self._handle.status().ok().map(|s| format!("{s:#?}"))
+    }
 }
 
 struct Hooked {
@@ -444,6 +452,10 @@ impl Child for Hooked {
 
     fn try_wait(&mut self) -> Result<Option<i32>, String> {
         Ok(self.held.exit_code().map(|c| c as i32))
+    }
+
+    fn diagnostics(&self) -> Option<String> {
+        self._handle.status().ok().map(|s| format!("{s:#?}"))
     }
 
     fn kill(&mut self) {
