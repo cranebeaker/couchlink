@@ -94,6 +94,8 @@ pub fn copy_line(spec: &LaunchSpec, seat: &LinuxSeat, tools: &Tools, pad_paths: 
         let prefix = seat.data_dir.join("prefix");
         env.insert("WINEPREFIX".into(), prefix.display().to_string());
         env.insert("GAMEID".into(), seat.game_id.clone());
+        // Wine's controller driver reads hidraw too; the sandbox has hidden every other seat's hidraw nodes.
+        env.entry("PROTON_ENABLE_HIDRAW".into()).or_insert_with(|| "1".into());
         env.entry("STORE".into()).or_insert_with(|| "none".into());
         match proton_path(&opts.proton)? {
             Some(p) => {
@@ -121,7 +123,8 @@ pub fn copy_line(spec: &LaunchSpec, seat: &LinuxSeat, tools: &Tools, pad_paths: 
     if opts.gamescope {
         let gamescope = tools.gamescope.clone().ok_or("gamescope is not installed; Couchlink needs it to give each player a window of their own on Linux")?;
         let (w, h) = (seat.rect.w.max(1).to_string(), seat.rect.h.max(1).to_string());
-        let mut g = vec![gamescope.display().to_string(), "-W".into(), w.clone(), "-H".into(), h.clone(), "-w".into(), w, "-h".into(), h];
+        // A nested gamescope (SDL backend) in a window of the seat's size, the game rendered at that size.
+        let mut g = vec![gamescope.display().to_string(), "--backend".into(), "sdl".into(), "-W".into(), w.clone(), "-H".into(), h.clone(), "-w".into(), w, "-h".into(), h];
         if seat.borderless {
             g.push("-b".into());
         }
@@ -133,6 +136,8 @@ pub fn copy_line(spec: &LaunchSpec, seat: &LinuxSeat, tools: &Tools, pad_paths: 
         if std::env::var_os("DISPLAY").is_some() {
             env.insert("SDL_VIDEODRIVER".into(), "x11".into());
         }
+        // gamescope's Vulkan layer is for games under a gamescope session, and makes nested ones unstable.
+        env.insert("ENABLE_GAMESCOPE_WSI".into(), "0".into());
     }
 
     // Outermost: the input sandbox.
@@ -244,10 +249,12 @@ mod tests {
         assert_eq!(l.program, PathBuf::from("/usr/bin/bwrap"));
         assert_eq!(
             after_sandbox(&l),
-            ["/usr/bin/gamescope", "-W", "960", "-H", "1080", "-w", "960", "-h", "1080", "-b", "--", "/usr/bin/umu-run", "/state/instances/x/1/Game.exe", "-windowed"]
+            ["/usr/bin/gamescope", "--backend", "sdl", "-W", "960", "-H", "1080", "-w", "960", "-h", "1080", "-b", "--", "/usr/bin/umu-run", "/state/instances/x/1/Game.exe", "-windowed"]
         );
         assert_eq!(l.env["WINEPREFIX"], "/state/instances/x/.seats/1/prefix", "a prefix of the seat's own");
         assert_eq!(l.env["GAMEID"], "umu-264710");
+        assert_eq!(l.env["PROTON_ENABLE_HIDRAW"], "1");
+        assert_eq!(l.env["ENABLE_GAMESCOPE_WSI"], "0");
         assert_eq!(l.env["SteamAppId"], "264710", "the recipe's environment is kept");
         assert!(!l.env.contains_key("PROTONPATH") && !l.env.contains_key("HOME"));
     }

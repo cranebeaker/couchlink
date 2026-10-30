@@ -164,6 +164,47 @@ otherwise it is set once up front. Each write journals the value it replaces.
 8. **Run**: watchdog per copy; status events per seat; `stop_session` or all copies exiting ends it.
 9. **End**: close copies, replay the journal (registry restored, DLLs back, windows released), keep saves.
 
+## Session pipeline (Linux)
+
+The same pipeline, with Linux parts in `session/*_linux.rs` (Windows code is untouched):
+
+1. **Copies** (`copies_linux.rs`): with `fuse-overlayfs` installed, a seat's copy is a layer: the install is the lower
+   layer, `<state>/instances/<recipe>/.layers/<seat>/upper` holds what that seat changes, and the two are mounted at
+   `<state>/instances/<recipe>/<seat>/`. Each mount is journalled first and unmounted at the end (or on the next start
+   after a crash). `files.exclude_*` are deleted in the copy (a whiteout in the upper layer). Without fuse-overlayfs the
+   hardlink copies of Windows are used.
+2. **Launch** (`launch_linux.rs`): each copy runs as `bwrap [sandbox] -- gamescope -W w -H h -w w -h h [-b] -- umu-run Game.exe`
+   (Proton) or `... -- ./game` (native), in a process group of its own. Proton copies get `WINEPREFIX=<state>/instances/<recipe>/.seats/<seat>/prefix`
+   and `GAMEID`; native copies get `HOME` and `XDG_*` under `.seats/<seat>/home`, so each seat keeps its own settings and saves.
+3. **Input** (`sandbox_linux.rs`): bubblewrap shares the whole system except input: `/dev/input` is a fresh tmpfs holding
+   only the seat's own nodes, and every `/dev/hidraw*` the seat does not own is covered by `/dev/null`. A seat owns every
+   node under the same HID device (or USB interface) as the path SDL reports for its pad, so all nodes of one controller
+   (gamepad, motion sensors, touchpad, hidraw) go together. The copy reads its controller itself, so it keeps playing
+   while another copy's window has the focus.
+4. **Place** (`window_linux.rs`): gamescope's window is found over X11 by `_NET_WM_PID` and moved onto the seat's region;
+   gamescope runs with `SDL_VIDEODRIVER=x11` so that this works on Wayland desktops through XWayland. Without an X display
+   the windows keep their size and the desktop places them.
+
+Needs on the host: `bwrap`, `gamescope`, `umu-run` (Windows games only), `fuse-overlayfs` (optional). `/tmp` stays shared
+on purpose: gamescope runs inside the sandbox and needs the desktop's X11 socket. Ubuntu 24.04 and later confine
+unprivileged user namespaces with AppArmor; umu's pressure-vessel is a second bwrap inside ours, and the stock profile can
+refuse it ("No permissions to create new namespace"). Copies get `PROTON_ENABLE_HIDRAW=1` (Wine reads its own seat's hidraw
+node) and gamescope runs with `ENABLE_GAMESCOPE_WSI=0`, as PartyDeck does. Not yet on Linux:
+keyboard and mouse per seat (the hub's Raw Input listener is Windows only; nested gamescope sends the desktop's keyboard
+and mouse to the focused window), and an own Steam account per seat (`steam: accounts`).
+
+**Recipe `linux` object** (optional; `couchlink-core/src/recipe_linux.rs`; Windows ignores it):
+
+| Field | Default | Meaning |
+|---|---|---|
+| `runner` | `auto` | `auto`: Proton for `.exe`/`.bat`/`.msi`, the program itself otherwise; `proton`; `native` |
+| `proton` | empty | empty: umu-launcher's own UMU-Proton; `GE-Proton`: the newest GE build; a folder name in Steam's `compatibilitytools.d` or `steamapps/common` (`GE-Proton9-20`, `Proton 9.0`); or an absolute path |
+| `umu_id` | `umu-<steamAppId>` | umu-launcher's GAMEID, which picks umu's fixes for the game |
+| `exe`, `args` | `launch.exe`, `launch.args` | a native Linux build to start instead (templates) |
+| `env` | | environment on Linux only, after `launch.env` (templates) |
+| `gamescope` | `true` | `false` starts the copy without gamescope and places its own X11 window |
+| `gamescope_args` | | extra gamescope arguments (`--force-grab-cursor`) |
+
 ## Protocol additions (session runner owns)
 
 | cmd | args | result |
@@ -215,10 +256,12 @@ A copy is two layers: the **base** is the real install, shared read-only; the **
   `files.copy` are real copies. The hook adds copy-on-write: when the game opens a linked file for writing, the hook swaps
   in a private copy first, so one player can never change another's files. Saves go to a per-seat folder by redirecting
   the game's save path (Documents\My Games\..., AppData) through `HookConfig.saves`.
-- Linux (later): a real overlay (fuse-overlayfs) with the install as the lower layer and a per-seat upper layer, plus a per-seat HOME.
+- Linux: a real overlay (fuse-overlayfs) with the install as the lower layer and a per-seat upper layer, plus a per-seat
+  Proton prefix or HOME (see "Session pipeline (Linux)").
 
 ## Tests (automated, no human playtests)
 
 - Unit: recipe parsing and validation, template expansion, region to pixel maths, journal replay, Goldberg config files, hub mapping.
+- Linux sandbox (`sandbox_linux.rs`): two copies of a probe program, each in its own seat's sandbox with one uinput virtual pad, each must list only its own pad and get only its own presses. CI makes it required (`COUCHLINK_REQUIRE_SANDBOX_TEST=1`); the layered copies test runs there too.
 - Integration with `testgame`: start a session of 2 to 4 testgame copies through couchlinkd, check each window lands on its region, each sees only its own (virtual SDL or synthetic) pad via the hook, unfocused copies keep running, and everything is restored after `stop_session` and after a simulated crash.
 - Real game (manual run only when the PC is unlocked and the owner is not playing): Nitrox with 2 copies on one screen.

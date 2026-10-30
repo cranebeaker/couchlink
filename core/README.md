@@ -14,6 +14,11 @@ Rust workspace for the Couchlink background daemon. The contract with the UI is
 ## Build
 
 Rust, CMake and a C compiler (Visual Studio 2022 on Windows) are required.
+On Linux SDL also wants its X11, Wayland, udev and audio headers (the list is in
+`.github/workflows/linux.yml`); running split-screen sessions needs `bwrap`, `gamescope`,
+`umu-run` (Windows games) and optionally `fuse-overlayfs` (docs/launch.md, "Session pipeline (Linux)").
+The sandbox test makes uinput devices: it needs a writable `/dev/uinput` and readable test devices,
+and skips itself otherwise (CI sets `COUCHLINK_REQUIRE_SANDBOX_TEST=1` so it cannot skip there).
 
 ```sh
 cd core

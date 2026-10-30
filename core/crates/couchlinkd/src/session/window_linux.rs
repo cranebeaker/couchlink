@@ -197,8 +197,8 @@ pub fn place(p: &mut Placed, seat: usize, root_pid: u32, rect: Rect, borderless:
 }
 
 pub fn maintain(p: &mut Placed, seat: usize, root_pid: u32, rect: Rect, borderless: bool) {
-    let Some(x) = p.x() else { return };
     let current = p.seats.get(&seat).copied();
+    let Some(x) = p.x() else { return };
     let w = match current.filter(|w| x.rect(*w).is_some()) {
         Some(w) => w,
         None => match x.window_of(&tree(&processes(), root_pid)) {
