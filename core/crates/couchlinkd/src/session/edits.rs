@@ -216,10 +216,29 @@ impl SeatFiles<'_> {
 
     pub fn apply_edit(&self, edit: &Edit, target: &Target, journal: &mut Journal) -> Result<(), String> {
         let path = target.path();
+        // A seat's save folder is filled from the real one only when it is first made. A settings file the game made
+        // since (the player started it once, outside Couchlink) is taken from the real folder now.
+        if let Target::Redirected(own) = target
+            && !own.exists()
+        {
+            let real = PathBuf::from(self.ex()(&edit.file)?);
+            if real.is_file() {
+                if let Some(dir) = own.parent() {
+                    std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+                }
+                std::fs::copy(&real, own).map_err(|e| format!("cannot copy {} to {}: {e}", real.display(), own.display()))?;
+            }
+        }
         let (text, enc) = match std::fs::read(path) {
             Ok(bytes) => edit::decode(&bytes)?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound && edit.optional => return Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound && edit.create => (String::new(), edit::Encoding::Utf8),
+            // In the seat's own copy or save folder the game makes the file on its first start there, which this
+            // edit must not stop: it applies from the next start on.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && !matches!(target, Target::Shared(_)) => {
+                crate::logfile::write("warn", &format!("{} is not there yet; the game makes it on this start, and it is edited from the next one", path.display()));
+                return Ok(());
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 return Err(format!("{} does not exist yet (start the game once so it makes the file)", path.display()));
             }
@@ -433,9 +452,13 @@ mod tests {
         let seat1 = SeatFiles { seat: 1, ..rig.files(&r, &v, &[]) };
         seat1.edit_files(true, &mut journal).unwrap();
         assert!(rig.seat.join("b.ini").exists());
-        // A required file that is missing says what to do.
-        let strict = recipe(serde_json::json!({"edits": [{"file": "nope.ini", "format": "ini", "set": [{"key": "k", "value": "v"}]}]}));
-        let e = rig.files(&strict, &v, &[]).edit_files(false, &mut journal).unwrap_err();
+        // A file the seat's copy lacks waits for the game to make it there; a shared one says what to do.
+        let in_copy = recipe(serde_json::json!({"edits": [{"file": "nope.ini", "format": "ini", "set": [{"key": "k", "value": "v"}]}]}));
+        rig.files(&in_copy, &v, &[]).edit_files(false, &mut journal).expect("the game makes it on this start");
+        assert!(!rig.seat.join("nope.ini").exists());
+        let shared = recipe(serde_json::json!({"edits": [{"file": "$USERPROFILE/nope.ini", "format": "ini", "set": [{"key": "k", "value": "v"}]}]}));
+        let v = vars(&[("SEATNAME", "s"), ("USERPROFILE", &rig.root.join("profile").display().to_string())]);
+        let e = rig.files(&shared, &v, &[]).edit_files(false, &mut journal).unwrap_err();
         assert!(e.contains("edits[0]") && e.contains("start the game once"), "{e}");
         let _ = std::fs::remove_dir_all(&rig.root);
     }
@@ -494,6 +517,30 @@ mod tests {
         assert!(rig.root.join("profile/Other/Global.ini").is_file(), "a file outside the saves is shared, so it is journalled");
         assert_eq!(journal.replay(&couchlink_core::Undoers::new()).failed, Vec::<String>::new());
         assert!(!rig.root.join("profile/Other").exists());
+        let _ = std::fs::remove_dir_all(&rig.root);
+    }
+
+    #[test]
+    fn a_settings_file_the_seat_folder_lacks_comes_from_the_real_one_or_waits_for_the_game() {
+        // A tester tried Couchlink before ever starting the game, so the seat's save folder was made empty; then they
+        // played normally, which made the real settings file. Couchlink kept refusing to start.
+        let (rig, mut journal) = rig("late-settings");
+        let r = recipe(serde_json::json!({"files": {"saves": ["$DOCUMENTS/Shiner"]}, "edits": [
+            {"file": "$DOCUMENTS/Shiner/VideoSettings.xml", "format": "xml", "per_seat": true, "set": [{"path": "//XResolution", "value": "$WIDTH"}]}
+        ]}));
+        let docs = rig.root.join("docs");
+        let v = vars(&[("DOCUMENTS", &docs.display().to_string()), ("WIDTH", "960")]);
+        let saves = save_redirects(&r, &rig.seat, &v).unwrap();
+        assert!(saves[0].1.is_dir(), "the seat folder is made, empty");
+        rig.files(&r, &v, &saves).edit_files(true, &mut journal).expect("no file yet: the game starts and makes it");
+        assert!(!saves[0].1.join("VideoSettings.xml").exists());
+
+        std::fs::create_dir_all(docs.join("Shiner")).unwrap();
+        std::fs::write(docs.join("Shiner/VideoSettings.xml"), "<V><XResolution>1920</XResolution></V>").unwrap();
+        let saves = save_redirects(&r, &rig.seat, &v).unwrap();
+        rig.files(&r, &v, &saves).edit_files(true, &mut journal).unwrap();
+        assert_eq!(std::fs::read_to_string(saves[0].1.join("VideoSettings.xml")).unwrap(), "<V><XResolution>960</XResolution></V>");
+        assert_eq!(std::fs::read_to_string(docs.join("Shiner/VideoSettings.xml")).unwrap(), "<V><XResolution>1920</XResolution></V>", "the real file is not touched");
         let _ = std::fs::remove_dir_all(&rig.root);
     }
 
