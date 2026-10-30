@@ -35,6 +35,22 @@ abstract class CouchClient extends ChangeNotifier {
   /// The game catalog couchlinkd owns; null until the first answer.
   Catalog? get catalog => null;
 
+  /// The latest `update` event: a newer Couchlink and how a check or an install goes. Null until there is one.
+  UpdateInfo? get update => null;
+
+  /// `check_update`: ask GitHub for a newer version; [update] changes when it answers.
+  Future<String?> checkUpdate();
+
+  /// `install_update`: download and install the newer version, then restart.
+  Future<String?> installUpdate();
+
+  /// Whether Couchlink looks for a newer version when it starts.
+  Future<bool> getUpdateCheck();
+  Future<String?> setUpdateCheck(bool on);
+
+  /// The keys that bring the game windows to the front and hide them (`set_window_keys`); null parts stay.
+  Future<String?> setWindowKeys({String? front, String? hide});
+
   /// True while couchlinkd is downloading a fresh catalog.
   bool get catalogRefreshing => false;
 

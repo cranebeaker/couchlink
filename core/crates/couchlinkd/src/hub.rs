@@ -194,6 +194,11 @@ impl Hub {
         hub
     }
 
+    /// Work to start once the hub runs (it needs the tokio runtime).
+    fn on_start(&mut self) {
+        self.check_update_on_start();
+    }
+
     /// Hand the close-the-games shortcut to the keyboard hotkey and the pad watcher.
     fn apply_shortcut(&self) {
         use crate::hotkey::Action;
@@ -206,8 +211,8 @@ impl Hub {
         crate::sdl::set_stop_pad(couchlink_core::shortcut::pad_buttons(self.model.stop_pad()).ok().flatten());
     }
 
-    fn update_event(&self, error: Option<String>, restarting: bool) {
-        self.broadcast(&Event::Update {
+    fn update_json(&self, error: Option<String>, restarting: bool) -> String {
+        Event::Update {
             current: crate::update::current().to_string(),
             latest: self.update.as_ref().map(|u| u.version.clone()),
             page: self.update.as_ref().map(|u| u.page.clone()),
@@ -215,6 +220,26 @@ impl Hub {
             installing: self.update_busy.1,
             restarting,
             error,
+        }
+        .to_json()
+    }
+
+    fn update_event(&self, error: Option<String>, restarting: bool) {
+        let text = self.update_json(error, restarting);
+        for c in self.clients.values() {
+            let _ = c.tx.send(text.clone());
+        }
+    }
+
+    /// When Couchlink starts, look for a newer version once, unless the player turned that off in Settings.
+    fn check_update_on_start(&mut self) {
+        if load_settings()["update_check"] == false {
+            return;
+        }
+        self.update_busy.0 = true;
+        let tx = self.self_tx.clone();
+        tokio::task::spawn_blocking(move || {
+            let _ = tx.send(HubMsg::UpdateChecked(crate::update::check()));
         });
     }
 
@@ -232,6 +257,7 @@ impl Hub {
         // The idle clock also runs before the first client shows up, so a daemon
         // nobody connects to does not linger.
         let mut idle_since: Option<Instant> = Some(Instant::now());
+        self.on_start();
         loop {
             let deadline = match (idle_since, self.stay) {
                 (Some(t), false) => Some(t + IDLE_EXIT),
@@ -261,6 +287,9 @@ impl Hub {
                     self.send_to(client, &Event::State { state: self.model.state() }.to_json());
                     if self.session_info != SessionInfo::idle() {
                         self.send_to(client, &Event::session(&self.session_info).to_json());
+                    }
+                    if self.update.is_some() {
+                        self.send_to(client, &self.update_json(None, false));
                     }
                 }
                 HubMsg::Disconnect { client } => {
@@ -435,6 +464,11 @@ impl Hub {
                 self.sync_profile_refs();
                 Ok(json!({ "state": self.model.state() }))
             }
+            Command::SetUpdateCheck { on } => {
+                save_setting("update_check", json!(on));
+                Ok(json!({ "on": on }))
+            }
+            Command::GetUpdateCheck => Ok(json!({ "on": load_settings()["update_check"] != false })),
             Command::CheckUpdate => {
                 if !self.update_busy.0 {
                     self.update_busy.0 = true;

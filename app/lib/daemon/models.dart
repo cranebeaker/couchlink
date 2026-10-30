@@ -193,6 +193,8 @@ class DaemonState {
     this.fpsLimit = 0,
     this.stopKeys = 'Ctrl+Shift+Q',
     this.stopPad = 'guide+back',
+    this.frontKeys = 'Ctrl+Shift+F',
+    this.hideKeys = 'Ctrl+Shift+H',
     this.dev = false,
   });
 
@@ -213,6 +215,10 @@ class DaemonState {
   /// The close-the-games shortcut: keys like `Ctrl+Shift+Q` and pad buttons like `guide+back`, each `off` when off.
   final String stopKeys;
   final String stopPad;
+
+  /// The keys that bring the game windows to the front, and hide them; `off` when off.
+  final String frontKeys;
+  final String hideKeys;
   final bool dev;
 
   Device? device(String id) {
@@ -262,6 +268,8 @@ class DaemonState {
       fpsLimit: j['fps_limit'] is num ? (j['fps_limit'] as num).toInt() : 0,
       stopKeys: _str(j['stop_keys'], 'Ctrl+Shift+Q'),
       stopPad: _str(j['stop_pad'], 'guide+back'),
+      frontKeys: _str(j['front_keys'], 'Ctrl+Shift+F'),
+      hideKeys: _str(j['hide_keys'], 'Ctrl+Shift+H'),
       dev: j['dev'] == true,
     );
   }
@@ -675,4 +683,31 @@ class SteamAccounts {
         ],
         steam: j['steam'] != false,
       );
+}
+
+/// What couchlinkd knows about a newer Couchlink (`update` events).
+class UpdateInfo {
+  const UpdateInfo({required this.current, this.latest, this.page, this.checking = false, this.installing = false, this.restarting = false, this.error});
+
+  factory UpdateInfo.fromJson(Map<String, dynamic> j) => UpdateInfo(
+        current: _str(j['current']),
+        latest: _strOrNull(j['latest']),
+        page: _strOrNull(j['page']),
+        checking: j['checking'] == true,
+        installing: j['installing'] == true,
+        restarting: j['restarting'] == true,
+        error: _strOrNull(j['error']),
+      );
+
+  final String current;
+
+  /// A newer version, when there is one.
+  final String? latest;
+  final String? page;
+  final bool checking;
+  final bool installing;
+
+  /// The updater has taken over: the app closes now and comes back as the new version.
+  final bool restarting;
+  final String? error;
 }

@@ -450,7 +450,7 @@ class FakeClient extends CouchClient {
           sizes: s.sizes,
         ),
     ];
-    return DaemonState(devices: devices, seats: seats, displays: displays ?? _state.displays, screens: screens, layout: layout ?? _state.layout, fpsLimit: _state.fpsLimit, stopKeys: _state.stopKeys, stopPad: _state.stopPad, dev: _state.dev);
+    return DaemonState(devices: devices, seats: seats, displays: displays ?? _state.displays, screens: screens, layout: layout ?? _state.layout, fpsLimit: _state.fpsLimit, stopKeys: _state.stopKeys, stopPad: _state.stopPad, frontKeys: _state.frontKeys, hideKeys: _state.hideKeys, dev: _state.dev);
   }
 
   @override
@@ -466,7 +466,7 @@ class FakeClient extends CouchClient {
     }
     final used = {for (final s in screens) s.display: s.on};
     final displays = [for (final d in _state.displays) used.containsKey(d.id) ? d.copyWith(used: used[d.id]) : d];
-    _set(DaemonState(devices: _state.devices, seats: _state.seats, displays: displays, screens: screens, layout: _state.layout, fpsLimit: _state.fpsLimit, stopKeys: _state.stopKeys, stopPad: _state.stopPad, dev: _state.dev));
+    _set(DaemonState(devices: _state.devices, seats: _state.seats, displays: displays, screens: screens, layout: _state.layout, fpsLimit: _state.fpsLimit, stopKeys: _state.stopKeys, stopPad: _state.stopPad, frontKeys: _state.frontKeys, hideKeys: _state.hideKeys, dev: _state.dev));
     return null;
   }
 
@@ -515,6 +515,8 @@ class FakeClient extends CouchClient {
       fpsLimit: _state.fpsLimit,
       stopKeys: _state.stopKeys,
       stopPad: _state.stopPad,
+      frontKeys: _state.frontKeys,
+      hideKeys: _state.hideKeys,
       dev: _state.dev,
     );
     _set(_normalize(seats));
@@ -564,7 +566,48 @@ class FakeClient extends CouchClient {
   Future<String?> setFpsLimit(int fps) async {
     if (fps != 0 && (fps < 10 || fps > 360)) return '$fps fps is not a limit Couchlink takes (0 for none, or 10 to 360)';
     final s = _state;
-    _set(DaemonState(devices: s.devices, seats: s.seats, displays: s.displays, screens: s.screens, layout: s.layout, fpsLimit: fps, stopKeys: s.stopKeys, stopPad: s.stopPad, dev: s.dev));
+    _set(DaemonState(devices: s.devices, seats: s.seats, displays: s.displays, screens: s.screens, layout: s.layout, fpsLimit: fps, stopKeys: s.stopKeys, stopPad: s.stopPad, frontKeys: s.frontKeys, hideKeys: s.hideKeys, dev: s.dev));
+    return null;
+  }
+
+  UpdateInfo? _update;
+  @override
+  UpdateInfo? get update => _update;
+
+  /// Tests: the version `check_update` finds (null: none newer), and whether an install was asked for.
+  String? newerVersion = '0.1.5';
+  bool installAsked = false;
+  bool _updateCheck = true;
+
+  @override
+  Future<String?> checkUpdate() async {
+    _update = UpdateInfo(current: '0.1.4', latest: newerVersion, page: newerVersion == null ? null : 'https://github.com/cranebeaker/couchlink/releases/tag/v$newerVersion');
+    notifyListeners();
+    return null;
+  }
+
+  @override
+  Future<String?> installUpdate() async {
+    if (_update?.latest == null) return 'There is no newer Couchlink to install; check for updates first';
+    installAsked = true;
+    _update = UpdateInfo(current: _update!.current, latest: _update!.latest, page: _update!.page, installing: true);
+    notifyListeners();
+    return null;
+  }
+
+  @override
+  Future<bool> getUpdateCheck() async => _updateCheck;
+
+  @override
+  Future<String?> setUpdateCheck(bool on) async {
+    _updateCheck = on;
+    return null;
+  }
+
+  @override
+  Future<String?> setWindowKeys({String? front, String? hide}) async {
+    final s = _state;
+    _set(DaemonState(devices: s.devices, seats: s.seats, displays: s.displays, screens: s.screens, layout: s.layout, fpsLimit: s.fpsLimit, stopKeys: s.stopKeys, stopPad: s.stopPad, frontKeys: front ?? s.frontKeys, hideKeys: hide ?? s.hideKeys, dev: s.dev));
     return null;
   }
 
@@ -575,7 +618,7 @@ class FakeClient extends CouchClient {
       return '$keys is not a key Couchlink can use for the shortcut';
     }
     if (pad != null && !const ['guide+back', 'guide+start', 'back+start', 'off'].contains(pad)) return '$pad is not a pad shortcut';
-    _set(DaemonState(devices: s.devices, seats: s.seats, displays: s.displays, screens: s.screens, layout: s.layout, fpsLimit: s.fpsLimit, stopKeys: keys ?? s.stopKeys, stopPad: pad ?? s.stopPad, dev: s.dev));
+    _set(DaemonState(devices: s.devices, seats: s.seats, displays: s.displays, screens: s.screens, layout: s.layout, fpsLimit: s.fpsLimit, stopKeys: keys ?? s.stopKeys, stopPad: pad ?? s.stopPad, frontKeys: s.frontKeys, hideKeys: s.hideKeys, dev: s.dev));
     return null;
   }
 

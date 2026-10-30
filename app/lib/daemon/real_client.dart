@@ -70,6 +70,24 @@ class DaemonClient extends CouchClient {
   DaemonState? get state => _state;
   @override
   Catalog? get catalog => _catalog;
+
+  UpdateInfo? _update;
+  @override
+  UpdateInfo? get update => _update;
+
+  /// Called when an update takes over; the app closes then (main.dart sets it).
+  void Function()? onRestartForUpdate;
+
+  @override
+  Future<String?> checkUpdate() => _cmd('check_update');
+  @override
+  Future<String?> installUpdate() => _cmd('install_update', {'app_pid': pid});
+  @override
+  Future<bool> getUpdateCheck() async => (await _request('get_update_check', {}))['on'] != false;
+  @override
+  Future<String?> setUpdateCheck(bool on) => _cmd('set_update_check', {'on': on});
+  @override
+  Future<String?> setWindowKeys({String? front, String? hide}) => _cmd('set_window_keys', {'front': ?front, 'hide': ?hide});
   @override
   bool get catalogRefreshing => _refreshing;
   @override
@@ -273,6 +291,10 @@ class DaemonClient extends CouchClient {
         notifyListeners();
         // Game folders can change while a session runs (a first run installs a mod), so look again at the end.
         if (_session.state == 'idle') unawaited(listGames());
+      case 'update':
+        _update = UpdateInfo.fromJson(j);
+        notifyListeners();
+        if (_update!.restarting) onRestartForUpdate?.call();
       case 'games_changed':
         // New live recipes arrived after the list this client already has.
         unawaited(listGames());

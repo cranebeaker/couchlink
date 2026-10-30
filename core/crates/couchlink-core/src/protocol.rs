@@ -29,6 +29,11 @@ pub enum Command {
     GetLog,
     /// Ask GitHub for a newer Couchlink; an `update` event answers.
     CheckUpdate,
+    /// Whether Couchlink looks for a newer version when it starts (`{"on"}`), and changing that.
+    GetUpdateCheck,
+    SetUpdateCheck {
+        on: bool,
+    },
     /// Download, check and install the newer version found by `check_update`, then restart. `app_pid` is the app's
     /// process, which the updater waits for.
     InstallUpdate {

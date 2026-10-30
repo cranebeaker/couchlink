@@ -39,5 +39,7 @@ Future<void> main(List<String> args) async {
   }
 
   final CouchClient client = fake ? FakeClient() : DaemonClient();
+  // An update took over: close, so the updater can swap the files and start the new version.
+  if (client is DaemonClient) client.onRestartForUpdate = () => exit(0);
   runApp(CouchlinkApp(client: client, initialView: controlsSeat == null ? view : AppView.players, initialControlsSeat: controlsSeat));
 }

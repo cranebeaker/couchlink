@@ -121,6 +121,14 @@ class UiState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The Settings tab: 0 General, 1 Bindings.
+  int settingsTab = 0;
+
+  void setSettingsTab(int tab) {
+    settingsTab = tab;
+    notifyListeners();
+  }
+
   void setThemeMode(ThemeMode m) {
     if (m == themeMode) return;
     themeMode = m;

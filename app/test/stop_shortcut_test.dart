@@ -11,6 +11,8 @@ void main() {
     await pumpApp(tester, fake, view: AppView.library);
     await tester.tap(byKey('settings-open'));
     await tester.pump(const Duration(milliseconds: 200));
+    await tester.tap(byKey('settings-tab-1'));
+    await tester.pump(const Duration(milliseconds: 100));
     expect((fake.state as DaemonState).stopKeys, 'Ctrl+Shift+Q');
 
     // Click the keys, then press Ctrl+Alt+K.
