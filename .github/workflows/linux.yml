@@ -96,7 +96,7 @@ jobs:
     steps:
       - name: Packages
         run: |
-          pacman -Syu --noconfirm --needed git rust cmake ninja pkgconf gcc python gamescope xorg-server-xvfb             vulkan-swrast bubblewrap fuse-overlayfs libx11 libxext libxrandr libxi libxfixes libxcursor libxss libxtst             wayland libxkbcommon dbus alsa-lib libpulse systemd-libs
+          pacman -Syu --noconfirm --needed git rust cmake make ninja pkgconf gcc python gamescope xorg-server-xvfb             vulkan-swrast bubblewrap fuse-overlayfs libx11 libxext libxrandr libxi libxfixes libxcursor libxss libxtst             wayland libxkbcommon dbus alsa-lib libpulse systemd-libs
           gamescope --version || true
 
       - uses: actions/checkout@v4
