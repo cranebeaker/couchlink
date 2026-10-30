@@ -29,10 +29,13 @@ impl Launcher for LinuxLauncher {
         {
             nested_sandbox(bwrap)?;
         }
+        // A copy's own output (gamescope, Proton, the game) goes to `copy.log` next to its home, for when it fails.
+        let mut log = None;
         let line = match &spec.linux {
             Some(seat) => {
                 let home = seat.data_dir.join("home");
                 std::fs::create_dir_all(&home).map_err(|e| format!("cannot create {}: {e}", home.display()))?;
+                log = std::fs::File::create(seat.data_dir.join("copy.log")).ok();
                 let kbm = super::rawkbm::linux::nodes(&spec.devices);
                 if !kbm.is_empty() && tools.gamescope_kbm.is_none() {
                     eprintln!("couchlinkd: seat {:?} has a keyboard or mouse of its own, but gamescope-kbm is not installed; it gets the desktop's", spec.seat);
@@ -42,7 +45,11 @@ impl Launcher for LinuxLauncher {
             None => helper_line(spec, &tools)?,
         };
         let mut cmd = Command::new(&line.program);
-        cmd.args(&line.args).envs(&line.env).current_dir(&spec.cwd).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        cmd.args(&line.args).envs(&line.env).current_dir(&spec.cwd).stdin(Stdio::null());
+        match log.as_ref().and_then(|f| Some((f.try_clone().ok()?, f.try_clone().ok()?))) {
+            Some((out, err)) => cmd.stdout(out).stderr(err),
+            None => cmd.stdout(Stdio::null()).stderr(Stdio::null()),
+        };
         cmd.process_group(0);
         let child = cmd.spawn().map_err(|e| format!("cannot start {}: {e}", line.program.display()))?;
         Ok(Launched { child: Box::new(Group { child }), hooked: false })

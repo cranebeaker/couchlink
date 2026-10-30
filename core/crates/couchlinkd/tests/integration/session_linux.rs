@@ -208,10 +208,16 @@ async fn gamescope(c: &mut Checks, cl: &mut Client, state: &Path, display: &Valu
     let events = session_until(cl, Duration::from_secs(90), |e| e["state"] == "running" || e["state"] == "failed").await;
     let last = events.last().cloned().unwrap_or(Value::Null);
     c.check("gamescope: the session reaches running", last["state"] == "running");
+    let inst = state.join("instances").join("testgame-gamescope");
     if last["state"] == "failed" {
         println!("  session failed: {}", last["error"]);
+        for seat in 0..2 {
+            let log = std::fs::read_to_string(inst.join(".seats").join(seat.to_string()).join("copy.log")).unwrap_or_default();
+            println!("  seat {seat} copy.log:
+{}", log.lines().rev().take(40).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("
+"));
+        }
     }
-    let inst = state.join("instances").join("testgame-gamescope");
     for (seat, region) in [[0.0, 0.0, 0.5, 1.0], [0.5, 0.0, 0.5, 1.0]].into_iter().enumerate() {
         let status = inst.join(seat.to_string()).join("status.json");
         let Some(s) = wait_status(&status, Duration::from_secs(30), |s| s["alive"] == true).await else {
