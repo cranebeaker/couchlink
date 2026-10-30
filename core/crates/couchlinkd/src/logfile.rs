@@ -124,10 +124,8 @@ fn read_end(path: &std::path::Path, max: u64) -> std::io::Result<String> {
     if start == 0 {
         return Ok(text.into_owned());
     }
-    let rest = text.split_once('
-').map_or(&*text, |(_, rest)| rest);
-    Ok(format!("(the first {} MB are left out)
-{rest}", start.div_ceil(1 << 20)))
+    let rest = text.split_once('\n').map_or(&*text, |(_, rest)| rest);
+    Ok(format!("(the first {} MB are left out)\n{rest}", start.div_ceil(1 << 20)))
 }
 
 fn home_dir() -> Option<String> {
@@ -218,16 +216,13 @@ mod tests {
         let p = std::env::temp_dir().join(format!("couchlink-big-log-{}.log", std::process::id()));
         let mut text = String::new();
         for i in 0..3000 {
-            text += &format!("fixme:line {i}
-");
+            text += &format!("fixme:line {i}\n");
         }
         std::fs::write(&p, &text).unwrap();
         assert_eq!(read_end(&p, 1 << 20).unwrap(), text, "a small log is whole");
         let end = read_end(&p, 1000).unwrap();
-        assert!(end.starts_with("(the first 1 MB are left out)
-fixme:line "), "{end}");
-        assert!(end.ends_with("fixme:line 2999
-") && end.len() < 1100);
+        assert!(end.starts_with("(the first 1 MB are left out)\nfixme:line "), "{end}");
+        assert!(end.ends_with("fixme:line 2999\n") && end.len() < 1100);
         let _ = std::fs::remove_file(&p);
     }
 
