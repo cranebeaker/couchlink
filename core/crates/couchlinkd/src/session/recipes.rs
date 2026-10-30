@@ -185,6 +185,8 @@ pub fn guess_native(install_dir: &Path) -> Option<String> {
                 return false;
             }
         }
+        #[cfg(not(unix))]
+        let _ = meta; // no execute bit off Unix
         let mut magic = [0u8; 4];
         std::fs::File::open(path).and_then(|mut f| f.read_exact(&mut magic)).is_ok() && magic == *b"\x7fELF"
     }

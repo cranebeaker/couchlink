@@ -125,7 +125,7 @@ def tar_filter(info):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--version", default="0.1.0")
+    ap.add_argument("--version", default="0.1.1")
     ap.add_argument("--build-root", default="/tmp/cl-build")
     ap.add_argument("--daemon", help="a couchlinkd that is already built")
     ap.add_argument("--app-bundle", help="a Flutter Linux bundle folder that is already built")

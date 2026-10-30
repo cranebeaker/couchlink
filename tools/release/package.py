@@ -66,7 +66,7 @@ def scan(root, words):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--version", default="0.1.0")
+    ap.add_argument("--version", default="0.1.1")
     ap.add_argument("--build-root", default=r"C:\cl-build")
     ap.add_argument("--skip-build", action="store_true", help="reuse the last build in the build root")
     args = ap.parse_args()

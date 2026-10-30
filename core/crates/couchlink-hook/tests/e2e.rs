@@ -21,7 +21,6 @@ use serde_json::Value;
 #[allow(dead_code)]
 #[path = "../../couchlinkd/src/session/padfeed.rs"]
 mod padfeed;
-use padfeed::PadState;
 
 /// `COUCHLINK_SKIP_INJECT_TESTS=1` skips every test that starts a game suspended and injects the hook DLL from
 /// outside (CreateRemoteThread). Antivirus products react to exactly that; the stand-in DLL tests (`proxy_*`)
@@ -546,6 +545,12 @@ fn latest(c: &Copy) -> Value {
     serde_json::from_str(&fs::read_to_string(&c.out).unwrap()).unwrap()
 }
 
+/// A pad sample as the SDL thread builds it, from SDL units (sticks -32768..32767 with Y down, triggers 0..32767).
+fn sdl(buttons: &[couchlink_core::Button], lx: i16, ly: i16, rx: i16, ry: i16, lt: i16, rt: i16) -> couchlink_core::InputSample {
+    let f = |v: i16| (v as f32 / 32767.0).clamp(-1.0, 1.0);
+    couchlink_core::InputSample { lx: f(lx), ly: f(ly), rx: f(rx), ry: f(ry), lt: f(lt), rt: f(rt), buttons: buttons.to_vec(), out: None }
+}
+
 /// Two copies, each fed by its own (fake) SDL device through the daemon's padfeed module.
 fn feed_two_copies(arch: &str, dll: &str) {
     use couchlink_core::Button as Btn;
@@ -554,14 +559,14 @@ fn feed_two_copies(arch: &str, dll: &str) {
     let s = Scratch::new(&format!("feed-{arch}-{dll}"));
     let session = format!("t{}{arch}{dll}", std::process::id());
     let (dev_a, dev_b) = ("pad:101", "pad:102");
-    let ga = padfeed::attach(&padfeed::feed_name(&session, 0), &[dev_a.to_string()]).unwrap();
-    let gb = padfeed::attach(&padfeed::feed_name(&session, 1), &["kbm:system".to_string(), dev_b.to_string()]).unwrap();
+    let ga = padfeed::attach(&padfeed::feed_name(&session, 0), 0, &[dev_a.to_string()]).unwrap();
+    let gb = padfeed::attach(&padfeed::feed_name(&session, 1), 1, &["kbm:system".to_string(), dev_b.to_string()]).unwrap();
 
     // Values arrive in SDL units (Y down, triggers 0..32767) and must come out in XInput units.
-    let state_a = PadState::from_sdl(&[Btn::South, Btn::DpadUp, Btn::Guide], 1234, 2345, -300, 400, 12850, 6425);
-    let state_b = PadState::from_sdl(&[Btn::East], -4000, 0, 0, -32768, 25700, 0);
-    padfeed::publish(dev_a, state_a);
-    padfeed::publish(dev_b, state_b);
+    let state_a = sdl(&[Btn::South, Btn::DpadUp, Btn::Guide], 1234, 2345, -300, 400, 12850, 6425);
+    let state_b = sdl(&[Btn::East], -4000, 0, 0, -32768, 25700, 0);
+    padfeed::publish(dev_a, &state_a);
+    padfeed::publish(dev_b, &state_b);
     let (ba, bb) = ((A | DPAD_UP) as u64, B as u64); // the guide bit is not visible through XInputGetState
 
     let hook_a = feed_config(ga.name());
@@ -601,7 +606,7 @@ fn feed_two_copies(arch: &str, dll: &str) {
 
     // A change on device A reaches copy A only.
     let packet_b = user0(&rb)["packet"].as_u64().unwrap();
-    padfeed::publish(dev_a, PadState::from_sdl(&[Btn::North], 0, 0, 0, 0, 0, 32767));
+    padfeed::publish(dev_a, &sdl(&[Btn::North], 0, 0, 0, 0, 0, 32767));
     let ra2 = a.wait_until("copy A to see the new state", |r| pad_is(r, Y as u64));
     assert_eq!((user0(&ra2)["lt"].as_u64(), user0(&ra2)["rt"].as_u64()), (Some(0), Some(255)));
     assert!(user0(&ra2)["packet"].as_u64().unwrap() > user0(&ra)["packet"].as_u64().unwrap(), "packet number must advance");
@@ -619,7 +624,7 @@ fn feed_two_copies(arch: &str, dll: &str) {
     padfeed::disconnect(dev_a);
     a.wait_until("copy A to lose its pad", |r| r["pads"].is_array() && user0(r)["get_state"] == NOT_CONNECTED);
     assert!(pad_is(&latest(&b), bb));
-    padfeed::publish(dev_a, state_a);
+    padfeed::publish(dev_a, &state_a);
     a.wait_until("copy A to get its pad back", |r| pad_is(r, ba));
 
     let st = a.status();
@@ -633,7 +638,7 @@ fn feed_two_copies(arch: &str, dll: &str) {
     drop(ga);
     drop(gb);
     // Feeds that were removed no longer receive anything; publishing afterwards is harmless.
-    padfeed::publish(dev_a, state_a);
+    padfeed::publish(dev_a, &state_a);
     assert_eq!(padfeed::take_rumble(dev_a), None);
 }
 
