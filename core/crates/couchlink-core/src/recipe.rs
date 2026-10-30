@@ -598,7 +598,9 @@ pub fn check_relative(p: &str) -> Result<(), String> {
     if path.is_absolute() || p.starts_with('/') || p.starts_with('\\') || p.contains(':') {
         return Err(format!("{p:?} must be relative to the game folder"));
     }
-    if path.components().any(|c| matches!(c, Component::ParentDir | Component::Prefix(_) | Component::RootDir)) {
+    // Recipes write Windows paths; a backslash separates folders on every OS.
+    let unified = p.replace('\\', "/");
+    if Path::new(&unified).components().any(|c| matches!(c, Component::ParentDir | Component::Prefix(_) | Component::RootDir)) {
         return Err(format!("{p:?} must stay inside the game folder"));
     }
     Ok(())

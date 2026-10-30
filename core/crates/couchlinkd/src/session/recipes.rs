@@ -194,13 +194,22 @@ pub fn try_recipe(app_id: u32, name: &str, exe: &str) -> Option<Recipe> {
     Recipe::parse(&v.to_string()).ok()
 }
 
+/// The program a "Try it" recipe starts: on macOS the game's app bundle when it has one (`recipes_macos.rs`).
+fn guess_game(install_dir: &Path) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    if let Some(app) = super::recipes_macos::guess_app(install_dir) {
+        return Some(app);
+    }
+    guess_exe(install_dir)
+}
+
 /// "Try it" recipes for every installed Steam game no recipe covers.
 pub fn try_recipes(known: &[Recipe]) -> Vec<Recipe> {
     let covered: std::collections::HashSet<u32> = known.iter().filter_map(|r| r.matching.steam_app_id).collect();
     let mut out: Vec<Recipe> = couchlink_steam::installed_apps()
         .into_iter()
         .filter(|a| !covered.contains(&a.app_id) && !is_tool(&a.name))
-        .filter_map(|a| try_recipe(a.app_id, &a.name, &guess_exe(&a.install_dir)?))
+        .filter_map(|a| try_recipe(a.app_id, &a.name, &guess_game(&a.install_dir)?))
         .collect();
     out.sort_by(|a, b| a.game.to_lowercase().cmp(&b.game.to_lowercase()));
     out
@@ -296,10 +305,19 @@ pub fn locate(locators: &[Locator], recipe: &Recipe) -> Option<PathBuf> {
         return None;
     }
     let exe = &recipe.launch.exe;
-    if !exe.contains('$') && !dir.join(exe).is_file() && !Path::new(exe).is_file() {
+    if !exe.contains('$') && !runnable(&dir.join(exe)) && !runnable(Path::new(exe)) {
         return None;
     }
     Some(dir)
+}
+
+/// A program file, or on macOS an app bundle with its program inside.
+fn runnable(p: &Path) -> bool {
+    #[cfg(target_os = "macos")]
+    if p.is_dir() {
+        return super::launch_macos::resolve_app(p).is_file();
+    }
+    p.is_file()
 }
 
 pub fn game_info(locators: &[Locator], r: &Recipe) -> GameInfo {

@@ -1,6 +1,6 @@
 //! Window placement: find a copy's top-level window, strip its borders, move it onto the seat's region
-//! of the desktop, keep it there, and put everything back at the end. Windows only; elsewhere every
-//! call reports that it is not supported.
+//! of the desktop, keep it there, and put everything back at the end. Windows here, macOS in `window_macos.rs`;
+//! elsewhere every call reports that it is not supported.
 
 use couchlink_core::session::Rect;
 
@@ -9,6 +9,8 @@ use couchlink_core::session::Rect;
 pub struct Placer {
     #[cfg(windows)]
     seats: std::collections::HashMap<usize, win::Placed>,
+    #[cfg(target_os = "macos")]
+    mac: mac::Seats,
 }
 
 impl Placer {
@@ -29,7 +31,11 @@ impl Placer {
         {
             Ok(win::place(&mut self.seats, seat, root_pid, rect, borderless))
         }
-        #[cfg(not(windows))]
+        #[cfg(target_os = "macos")]
+        {
+            mac::place(&mut self.mac, seat, root_pid, rect, borderless)
+        }
+        #[cfg(not(any(windows, target_os = "macos")))]
         {
             let _ = (seat, root_pid, rect, borderless);
             Err("window placement is only supported on Windows".to_string())
@@ -41,7 +47,9 @@ impl Placer {
     pub fn maintain(&mut self, seat: usize, root_pid: u32, rect: Rect, borderless: bool) {
         #[cfg(windows)]
         win::maintain(&mut self.seats, seat, root_pid, rect, borderless);
-        #[cfg(not(windows))]
+        #[cfg(target_os = "macos")]
+        mac::maintain(&mut self.mac, seat, root_pid, rect, borderless);
+        #[cfg(not(any(windows, target_os = "macos")))]
         let _ = (seat, root_pid, rect, borderless);
     }
 
@@ -49,6 +57,8 @@ impl Placer {
     pub fn restore_all(&mut self) {
         #[cfg(windows)]
         win::restore_all(&mut self.seats);
+        #[cfg(target_os = "macos")]
+        mac::restore_all(&mut self.mac);
     }
 }
 
@@ -93,7 +103,11 @@ pub fn find_window_process(root: u32, wanted: &str, since: std::time::SystemTime
         let procs = win::processes();
         pick_process(&procs, root, wanted, &|pid| win::started_after(pid, since), claimed)
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        mac::find_window_process(root, wanted, since, claimed)
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         let _ = (root, wanted, since, claimed);
         None
@@ -106,7 +120,11 @@ pub fn process_alive(pid: u32) -> bool {
     {
         win::alive(pid)
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        mac::alive(pid)
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         let _ = pid;
         false
@@ -117,7 +135,9 @@ pub fn process_alive(pid: u32) -> bool {
 pub fn kill_process(pid: u32) {
     #[cfg(windows)]
     win::kill(pid);
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    mac::kill(pid);
+    #[cfg(not(any(windows, target_os = "macos")))]
     let _ = pid;
 }
 
@@ -127,7 +147,11 @@ pub fn window_titled(text: &str) -> bool {
     {
         win::titled(text)
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        mac::titled(text)
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         let _ = text;
         false
@@ -138,9 +162,15 @@ pub fn window_titled(text: &str) -> bool {
 pub fn close_windows(root_pid: u32) {
     #[cfg(windows)]
     win::close_windows(root_pid);
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    mac::close_windows(root_pid);
+    #[cfg(not(any(windows, target_os = "macos")))]
     let _ = root_pid;
 }
+
+#[cfg(target_os = "macos")]
+#[path = "window_macos.rs"]
+mod mac;
 
 #[cfg(windows)]
 mod win {

@@ -102,6 +102,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
 
 [[package]]
+name = "core-foundation-sys"
+version = "0.8.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
+
+[[package]]
 name = "couchlink-core"
 version = "0.1.0"
 dependencies = [
@@ -116,6 +122,7 @@ name = "couchlink-hook"
 version = "0.1.0"
 dependencies = [
  "couchlink-core",
+ "libc",
  "serde",
  "serde_json",
  "windows-sys 0.61.2",
@@ -159,6 +166,7 @@ dependencies = [
 name = "couchlinkd"
 version = "0.1.0"
 dependencies = [
+ "core-foundation-sys",
  "couchlink-core",
  "couchlink-hook",
  "couchlink-sign",
@@ -167,6 +175,7 @@ dependencies = [
  "embed-resource",
  "futures-util",
  "getrandom 0.3.4",
+ "libc",
  "reqwest",
  "sdl3",
  "serde",

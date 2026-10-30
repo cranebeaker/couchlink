@@ -507,6 +507,15 @@ impl Worker {
     /// Linux and macOS only. Video is initialised here, after the ready signal.
     #[cfg(not(windows))]
     fn poll_displays(&mut self) {
+        // macOS: SDL video only works on the main thread; CoreGraphics works anywhere (displays_macos.rs).
+        #[cfg(target_os = "macos")]
+        {
+            if let Some(list) = self.displays.update(crate::displays_macos::read()) {
+                let _ = self.events.send(SdlEvent::Displays(list));
+            }
+            return;
+        }
+        #[allow(unreachable_code)]
         if self.video.is_none() && !self.video_failed {
             match self.sdl.video() {
                 Ok(v) => self.video = Some(v),

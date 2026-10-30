@@ -15,7 +15,19 @@
 pub mod copies;
 pub mod edits;
 pub mod launch;
+#[cfg(not(target_os = "macos"))]
 pub mod hook;
+#[cfg(target_os = "macos")]
+#[path = "hook_macos.rs"]
+pub mod hook;
+#[cfg(target_os = "macos")]
+pub mod copies_macos;
+#[cfg(target_os = "macos")]
+pub mod launch_macos;
+#[cfg(all(test, target_os = "macos"))]
+mod isolation_macos;
+#[cfg(target_os = "macos")]
+mod recipes_macos;
 pub mod padfeed;
 pub mod rawkbm;
 pub mod recipes;

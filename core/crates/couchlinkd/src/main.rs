@@ -3,6 +3,8 @@
 mod accounts;
 mod catalog;
 mod displays;
+#[cfg(target_os = "macos")]
+mod displays_macos;
 mod hub;
 mod profiles;
 mod sdl;

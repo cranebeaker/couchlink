@@ -8,6 +8,7 @@
 //! in hook/src/kbmfeed.h (128 byte header, then 1024 events of 16 bytes, little endian). One writer, any number of
 //! readers: every hooked process of the copy (a launcher and the game it starts) keeps its own read position.
 
+#[cfg_attr(target_os = "macos", allow(unused_imports))]
 use crate::error::{HookError, Result};
 
 pub const KBM_MAGIC: u32 = 0x4D4B_4C43;
@@ -282,7 +283,13 @@ mod imp {
 #[cfg(windows)]
 pub use imp::KbmFeed;
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+#[path = "kbmfeed_macos.rs"]
+mod macos;
+#[cfg(target_os = "macos")]
+pub use macos::KbmFeed;
+
+#[cfg(not(any(windows, target_os = "macos")))]
 mod stub {
     use super::*;
 
@@ -322,7 +329,7 @@ mod stub {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 pub use stub::KbmFeed;
 
 #[cfg(test)]

@@ -231,6 +231,18 @@ impl Run {
                 continue;
             }
             let seat = self.seats[idx].plan.seat;
+            // On macOS every file of a copy is an APFS clone and symbolic links are kept (copies_macos.rs).
+            #[cfg(target_os = "macos")]
+            {
+                let _ = &copy;
+                match super::copies_macos::sync(&self.plan.game_dir, &instances, seat, &exclude, &self.stop) {
+                    Ok(_) => self.seats[idx].dir = copies::seat_dir(&instances, seat),
+                    Err(_) if self.stopped() => return Ok(()),
+                    Err(e) => return Err(self.seat_failed(idx, Step::Copy, e)),
+                }
+                continue;
+            }
+            #[cfg(not(target_os = "macos"))]
             match copies::sync(&self.plan.game_dir, &instances, seat, &copy, &exclude, &self.stop) {
                 Ok(_) => self.seats[idx].dir = copies::seat_dir(&instances, seat),
                 Err(e) if self.stopped() => {
@@ -489,6 +501,11 @@ impl Run {
             spec.exe = exe.clone();
             spec.args = args.clone();
             spec.cwd = cwd.clone();
+        }
+        // A recipe may name a Mac app bundle; the copy starts the program inside it.
+        #[cfg(target_os = "macos")]
+        {
+            spec.exe = super::launch_macos::resolve_app(&spec.exe);
         }
         if !spec.exe.is_file() {
             let msg = format!("{} was not found", spec.exe.display());

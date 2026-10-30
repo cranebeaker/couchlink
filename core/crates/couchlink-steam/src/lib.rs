@@ -17,6 +17,8 @@ pub mod error;
 pub mod goldberg;
 pub mod interfaces;
 pub mod library;
+#[cfg(target_os = "macos")]
+mod library_macos;
 pub mod options;
 pub mod pe;
 pub mod prepare;

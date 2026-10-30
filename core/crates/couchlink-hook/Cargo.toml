@@ -26,6 +26,9 @@ windows-sys = { version = "0.61", features = [
     "Wdk_System_Threading",
 ] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 couchlink-core = { path = "../couchlink-core" }
 # The Win32_UI_Input, Win32_Devices_HumanInterfaceDevice, Win32_Graphics_Gdi and Win32_System_LibraryLoader features are
