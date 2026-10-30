@@ -411,11 +411,17 @@ impl Run {
         let exe_path = resolve(&expand(exe, vars)?, dir);
         let args = split_args(args).iter().map(|a| expand(a, vars)).collect::<Result<Vec<_>, _>>()?;
         // The recipe's environment is for the game copies; a helper brings its own.
-        let env = if seat.is_some() {
+        let mut env = if seat.is_some() {
             recipe.launch.env.iter().map(|(k, v)| Ok((k.clone(), expand(v, vars)?))).collect::<Result<BTreeMap<_, _>, String>>()?
         } else {
             BTreeMap::new()
         };
+        // A game on the player's own Steam that is started outside Steam asks Steam to start it again and quits
+        // (SteamAPI_RestartAppIfNecessary), unless the variables Steam sets for a game it launched are there.
+        if let (Some(_), Some(id), SteamMode::Shared | SteamMode::Accounts) = (seat, recipe.matching.steam_app_id, recipe.steam) {
+            env.entry("SteamAppId".into()).or_insert_with(|| id.to_string());
+            env.entry("SteamGameId".into()).or_insert_with(|| id.to_string());
+        }
         let cwd = match (&recipe.launch.cwd, seat) {
             (Some(c), Some(_)) => resolve(&expand(c, vars)?, dir),
             _ => exe_path.parent().map(Path::to_path_buf).unwrap_or_else(|| dir.to_path_buf()),

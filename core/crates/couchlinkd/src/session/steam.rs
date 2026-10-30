@@ -14,7 +14,10 @@ impl Prepare for SteamPrepare {
     fn prepare_seat(&self, ctx: &PrepareCtx, journal: &mut Journal) -> Result<SeatPrep, String> {
         let mode = match ctx.recipe.steam {
             SteamMode::Goldberg => couchlink_steam::SteamMode::Goldberg,
-            SteamMode::Accounts | SteamMode::Shared => return own_account(ctx),
+            SteamMode::Accounts | SteamMode::Shared => {
+                steam_appid_file(ctx, journal)?;
+                return own_account(ctx);
+            }
             _ => return Ok(SeatPrep::default()),
         };
         let app_id = ctx.recipe.matching.steam_app_id.ok_or_else(|| format!("{} uses Goldberg but its recipe has no match.steamAppId", ctx.recipe.game))?;
@@ -54,6 +57,29 @@ impl Prepare for SteamPrepare {
         }
         Ok(prep)
     }
+}
+
+/// A game on the player's own Steam, started outside Steam, quits and asks Steam to start it instead unless
+/// `steam_appid.txt` sits next to its exe (`SteamAPI_RestartAppIfNecessary`). Put one there for the session (the journal
+/// takes it away again); a file the game already has is left alone, so a hardlinked copy never writes through to the
+/// install.
+fn steam_appid_file(ctx: &PrepareCtx, journal: &mut Journal) -> Result<(), String> {
+    let Some(app_id) = ctx.recipe.matching.steam_app_id else { return Ok(()) };
+    let exe = expand(&ctx.recipe.launch.exe, &ctx.vars)?;
+    let exe = std::path::Path::new(&exe);
+    let exe = if exe.is_absolute() { exe.to_path_buf() } else { ctx.copy_dir.join(exe) };
+    let Some(dir) = exe.parent().filter(|d| d.is_dir()) else { return Ok(()) };
+    if dir.join("steam_appid.txt").exists() {
+        return Ok(());
+    }
+    let seat = couchlink_steam::SeatSteam { seat: ctx.seat.seat as u8, name: ctx.seat.player.clone(), app_id, party: ctx.party };
+    let opts = couchlink_steam::PrepareOptions { steam_appid_dir: Some(dir.to_path_buf()), ..couchlink_steam::PrepareOptions::default() };
+    let prepared = couchlink_steam::prepare_full(ctx.copy_dir, couchlink_steam::SteamMode::Shared, &seat, &ctx.cache_dir, &opts).map_err(|e| e.user_message())?;
+    for u in &prepared.undos {
+        let data = serde_json::to_value(u).map_err(|e| e.to_string())?;
+        journal.record_external(KIND, data).map_err(|e| format!("could not write the journal: {e}"))?;
+    }
+    Ok(())
 }
 
 /// How long a seat's own Steam gets to start before its game copy is launched.
