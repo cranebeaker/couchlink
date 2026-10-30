@@ -57,7 +57,9 @@ impl Placer {
     pub fn show_all(&mut self, front: bool) {
         #[cfg(windows)]
         win::show_all(&self.seats, front);
-        #[cfg(not(windows))]
+        #[cfg(target_os = "linux")]
+        linux::show_all(&mut self.linux, front);
+        #[cfg(not(any(windows, target_os = "linux")))]
         let _ = front;
     }
 
