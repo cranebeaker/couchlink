@@ -1004,6 +1004,8 @@ mod tests {
         test_reset();
     }
 
+    // The feed is shared memory read by the Windows hook.
+    #[cfg(windows)]
     #[test]
     fn attached_devices_feed_their_seat_and_do_not_join() {
         let _l = test_lock();

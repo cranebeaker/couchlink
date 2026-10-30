@@ -1,4 +1,4 @@
-//! testgame: a tiny window app that stands in for a real game in automated tests.
+//! testgame: a tiny window app that stands in for a real game in automated tests (on Linux it runs without a window).
 //!
 //! It opens one ordinary window (with a title bar, so a launcher has something to strip) and writes
 //! a JSON status file every 200 ms: pid, seat, window rect, style, whether it is the foreground
@@ -160,6 +160,8 @@ fn write_status(window: Option<&WindowFacts>, alive: bool) {
     } else {
         s.push_str(",\"window\":null,\"focused\":false");
     }
+    #[cfg(not(windows))]
+    s.push_str(&sandbox_facts());
     s.push(',');
     s.push_str(&i.reported);
     s.push_str(",\"args\":[");
@@ -236,10 +238,24 @@ fn serve(port: u16) {
     }
 }
 
+/// Without Windows there is no window: the status file is written as if one were open, so a session can run it.
 #[cfg(not(windows))]
 fn run_window() {
-    eprintln!("testgame: the window mode only exists on Windows");
-    std::process::exit(2);
+    loop {
+        write_status(None, true);
+        if info().exit_after.is_some_and(|d| info().started.elapsed() >= d) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+}
+
+/// What a copy can see of the machine on Linux: its home, and the entries of its `/dev/input`.
+#[cfg(not(windows))]
+fn sandbox_facts() -> String {
+    let mut nodes: Vec<String> = std::fs::read_dir("/dev/input").map(|d| d.flatten().map(|e| esc(&e.file_name().to_string_lossy())).collect()).unwrap_or_default();
+    nodes.sort();
+    format!(",\"home\":{},\"input_nodes\":[{}]", esc(&std::env::var("HOME").unwrap_or_default()), nodes.join(","))
 }
 
 #[cfg(windows)]

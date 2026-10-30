@@ -119,6 +119,8 @@ mod tests {
         let game = GameLaunch { exe: PathBuf::from("D:\\Games\\X\\x.exe"), args: String::new(), run_dir: None };
         let t = cold_client_loader_ini(copy, &game, 0, &GoldbergOptions::default());
         assert!(t.contains("Exe=D:\\Games\\X\\x.exe\nExeRunDir=\nExeCommandLine=\nAppId=\n"));
-        assert_eq!(loader_path(copy, Path::new("C:\\inst\\copy1\\a\\b.exe")), "a\\b.exe");
+        if cfg!(windows) {
+            assert_eq!(loader_path(copy, Path::new("C:\\inst\\copy1\\a\\b.exe")), "a\\b.exe");
+        }
     }
 }

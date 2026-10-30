@@ -16,6 +16,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 #[path = "integration/session.rs"]
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 mod session;
 
 type Ws = WebSocketStream<MaybeTlsStream<TcpStream>>;
@@ -460,7 +461,7 @@ async fn run() -> u32 {
         seat_devices(s, 0) == [p2.clone()] && seat_devices(s, 1) == [p1.clone()] && s["seats"][0]["color"] == "#0A84FF" && s["seats"][1]["color"] == "#FF6B5B",
     );
     c.check("custom name travelled with its player", s["seats"][1]["name"] == "Ada" && s["seats"][0]["name"] == "Player 1");
-    let r = cl.request(json!({"cmd": "swap", "a": 0, "b": 4})).await;
+    let r = cl.request(json!({"cmd": "swap", "a": 0, "b": 8})).await;
     c.check("swap with a bad seat is an error", r["ok"] == false);
 
     // Assign.
@@ -812,7 +813,10 @@ async fn run() -> u32 {
     drop(cl);
 
     // Game sessions run against their own daemon and state folder.
+    #[cfg(not(target_os = "linux"))]
     session::run(&mut c, &fx).await;
+    #[cfg(target_os = "linux")]
+    session::linux::run(&mut c, &fx).await;
 
     // Idle exit: without --stay the daemon leaves 10 s after the last client.
     let idle = start("idle", &["--dev", "--virtual-pads", "0"], &fx);

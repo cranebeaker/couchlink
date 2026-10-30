@@ -329,7 +329,10 @@ mod tests {
     fn save_paths_are_redirected_by_whole_components() {
         let saves = vec![(PathBuf::from("C:/Users/x/AppData/Local/Game"), PathBuf::from("D:/inst/0/saves/Game"))];
         assert_eq!(redirect(Path::new("C:/Users/x/AppData/Local/Game"), &saves), Some(PathBuf::from("D:/inst/0/saves/Game")));
-        assert_eq!(redirect(Path::new("c:\\users\\X\\appdata\\local\\game\\Config\\s.ini"), &saves), Some(PathBuf::from("D:/inst/0/saves/Game").join("Config").join("s.ini")));
+        // Backslashes separate folders only on Windows, where the hook hands over such paths.
+        if cfg!(windows) {
+            assert_eq!(redirect(Path::new("c:\\users\\X\\appdata\\local\\game\\Config\\s.ini"), &saves), Some(PathBuf::from("D:/inst/0/saves/Game").join("Config").join("s.ini")));
+        }
         assert_eq!(redirect(Path::new("C:/Users/x/AppData/Local/Game2/s.ini"), &saves), None, "another folder with the same start");
         assert_eq!(redirect(Path::new("C:/Users/x/AppData/Local"), &saves), None);
     }
