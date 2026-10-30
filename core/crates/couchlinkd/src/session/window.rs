@@ -65,6 +65,21 @@ impl Placer {
         let _ = (front, on_top);
     }
 
+    /// Every copy gets the same, slightly raised priority and no Windows power throttling ("Efficiency mode"), so a
+    /// copy in the background runs as well as the one in front. Safe to call again.
+    pub fn even_out(&mut self) {
+        #[cfg(windows)]
+        win::even_out(&self.seats);
+    }
+
+    /// Give the keyboard focus to the desktop, so no game copy is the foreground one: Windows favours the window in
+    /// front, and with none in front every copy runs alike (the Nucleus FAQ's fix for a lagging second copy). Only for
+    /// sessions where nobody plays on the desktop's own keyboard and mouse.
+    pub fn release_focus(&mut self) {
+        #[cfg(windows)]
+        win::release_focus();
+    }
+
     /// Give every window back its original borders and position.
     pub fn restore_all(&mut self) {
         #[cfg(windows)]
@@ -506,6 +521,50 @@ mod win {
         if front && let Some((_, p)) = order.first() {
             // SAFETY: as above; player 1's window gets the focus.
             unsafe { SetForegroundWindow(p.hwnd) };
+        }
+    }
+
+    pub fn even_out(seats: &HashMap<usize, Placed>) {
+        use windows_sys::Win32::System::Threading::{
+            ABOVE_NORMAL_PRIORITY_CLASS, OpenProcess, PROCESS_POWER_THROTTLING_EXECUTION_SPEED, PROCESS_POWER_THROTTLING_STATE,
+            PROCESS_SET_INFORMATION, ProcessPowerThrottling, SetPriorityClass, SetProcessInformation,
+        };
+        for p in seats.values() {
+            let mut pid = 0u32;
+            // SAFETY: plain query on a window this session placed.
+            unsafe { GetWindowThreadProcessId(p.hwnd, &mut pid) };
+            if pid == 0 {
+                continue;
+            }
+            // SAFETY: a handle we open and close here; the state struct outlives the call.
+            unsafe {
+                let h = OpenProcess(PROCESS_SET_INFORMATION, 0, pid);
+                if h.is_null() {
+                    continue;
+                }
+                SetPriorityClass(h, ABOVE_NORMAL_PRIORITY_CLASS);
+                // ControlMask names the setting, StateMask 0 switches the throttling off.
+                let state = PROCESS_POWER_THROTTLING_STATE { Version: 1, ControlMask: PROCESS_POWER_THROTTLING_EXECUTION_SPEED, StateMask: 0 };
+                SetProcessInformation(h, ProcessPowerThrottling, &state as *const _ as *const core::ffi::c_void, std::mem::size_of::<PROCESS_POWER_THROTTLING_STATE>() as u32);
+                CloseHandle(h);
+            }
+        }
+    }
+
+    pub fn release_focus() {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput, VK_MENU};
+        // SAFETY: plain calls; the input array lives through SendInput.
+        unsafe {
+            let shell = GetShellWindow();
+            if shell.is_null() || SetForegroundWindow(shell) != 0 {
+                return;
+            }
+            // Windows lets a background process change the foreground window only right after a key press: send an
+            // Alt down and up (no menu opens for a lone tap that is not seen by a window), then try again.
+            let key = |flags| INPUT { r#type: INPUT_KEYBOARD, Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: VK_MENU, wScan: 0, dwFlags: flags, time: 0, dwExtraInfo: 0 } } };
+            let inputs = [key(0), key(KEYEVENTF_KEYUP)];
+            SendInput(inputs.len() as u32, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32);
+            SetForegroundWindow(shell);
         }
     }
 

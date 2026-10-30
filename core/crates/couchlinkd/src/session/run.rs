@@ -744,10 +744,21 @@ impl Run {
                     self.placer.maintain(s.plan.seat, pid, s.plan.rect, borderless);
                 }
             }
+            // A copy that replaced its window (splash screen to game) keeps the same priority as the others.
+            self.placer.even_out();
         }
     }
 
     /// Act on a front or hide request from the shortcuts (`request_windows`). While hidden, windows are left alone.
+    /// Every copy runs alike: the same priority, no power throttling, and, when nobody plays on the desktop's own
+    /// keyboard and mouse (`kbm:system`), no copy left in the foreground for Windows to favour.
+    fn even_out_copies(&mut self) {
+        self.placer.even_out();
+        if !self.seats.iter().any(|s| s.plan.devices.iter().any(|d| d == "kbm:system")) {
+            self.placer.release_focus();
+        }
+    }
+
     /// The front shortcut toggles "games above every other window" (as Nucleus's Ctrl+T does); after hide it brings
     /// them back on top. Hide minimises them, and while hidden the session leaves them alone.
     fn window_request(&mut self) {
@@ -756,6 +767,7 @@ impl Run {
                 self.on_top = self.hidden || !self.on_top;
                 self.hidden = false;
                 self.placer.show_all(true, self.on_top);
+                self.even_out_copies();
             }
             2 => {
                 self.hidden = true;
@@ -771,6 +783,7 @@ impl Run {
         }
         // The games start above every other window, as with Nucleus; the front shortcut switches that off and on.
         self.placer.show_all(true, self.on_top);
+        self.even_out_copies();
         loop {
             if self.stopped() || self.seats.iter().all(|s| s.exited) {
                 return Outcome::Done;
