@@ -3,6 +3,13 @@
 # gamescope (mode "gamescope") or with Proton through umu-launcher (mode "proton"). Arch packages both; Ubuntu does not.
 set -euo pipefail
 mode="$1"
+# The workspace belongs to the runner; give it back however the run ends.
+owner=$(stat -c %u:%g .)
+trap 'chown -R "$owner" "$PWD"' EXIT
+# Temporary folders on the runner's own disk: the container's root is an overlayfs, which the kernel will not put
+# another overlay on, so copies made there could not be layered.
+export TMPDIR=/w/.tmp
+mkdir -p "$TMPDIR"
 
 grep -q '^\[multilib\]' /etc/pacman.conf || printf '\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n' >> /etc/pacman.conf
 packages=(git rust cmake make ninja pkgconf gcc python gamescope xcursor-themes adwaita-cursors vulkan-swrast
@@ -38,7 +45,7 @@ chown -R player: /home/player "$PWD"
 chmod 0666 /dev/udmabuf 2>/dev/null || true
 install -d -m 0700 -o player /tmp/xdg-runtime
 status=0
-runuser -u player -- env HOME=/home/player USER=player XDG_RUNTIME_DIR=/tmp/xdg-runtime \
+runuser -u player -- env HOME=/home/player USER=player XDG_RUNTIME_DIR=/tmp/xdg-runtime TMPDIR="$TMPDIR" \
   CARGO_TERM_COLOR=never COUCHLINK_SKIP_INJECT_TESTS=1 COUCHLINK_REQUIRE_SANDBOX_TEST=1 \
   COUCHLINK_REQUIRE_GAMESCOPE_TEST=1 COUCHLINK_TEST_GAMESCOPE_HEADLESS=1 \
   COUCHLINK_REQUIRE_PROTON_TEST=1 COUCHLINK_TEST_WINPROBE=/tmp/winprobe.exe \

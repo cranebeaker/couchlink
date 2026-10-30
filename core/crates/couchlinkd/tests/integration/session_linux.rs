@@ -190,6 +190,10 @@ pub async fn run(c: &mut Checks, fx: &Fixture) {
             &format!("linux: seat {seat}'s copy is a layer over the install, minus excluded folders"),
             (layered || !required) && inside.join("data").join("big.pak").is_file() && !inside.join("logs").exists(),
         );
+        if required {
+            // Made by the kernel inside the seat's own sandbox: nothing of it shows outside.
+            c.check(&format!("linux: seat {seat}'s layer exists only inside its sandbox"), layered && !mounted_in(std::process::id() as u64, &copy));
+        }
     }
     if host_nodes == 0 {
         println!("NOTE this machine has no /dev/input nodes, so the sandbox check above cannot fail");

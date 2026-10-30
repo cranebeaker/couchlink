@@ -321,7 +321,17 @@ mod tests {
     #[ignore]
     fn test_holder() {
         if std::env::var("COUCHLINK_TEST_HOLDER").is_ok_and(|v| v == "1") {
-            std::process::exit(holder_main());
+            // libtest runs this on a thread of its own, and only a process with one thread may make a user namespace,
+            // so the holder is a fork (couchlinkd's real holder is single-threaded already).
+            // SAFETY: the child only runs the holder and exits; the parent waits for it.
+            let pid = unsafe { libc::fork() };
+            if pid == 0 {
+                std::process::exit(holder_main());
+            }
+            let mut status = 0;
+            // SAFETY: waiting for our own child.
+            unsafe { libc::waitpid(pid, &mut status, 0) };
+            std::process::exit(if libc::WIFEXITED(status) { libc::WEXITSTATUS(status) } else { 1 });
         }
     }
 
