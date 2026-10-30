@@ -1,4 +1,4 @@
-# Windows build: the release zip (couchlinkd, the input hook for x64 and x86, the Flutter app), built by
+# Windows build (windows-2022: the hook builds with Visual Studio 2022): the release zip (couchlinkd, the input hook for x64 and x86, the Flutter app), built by
 # tools/release/package.py from a neutral folder. Tags (v*) keep it as the release artifact; pull requests check it builds.
 name: Windows
 
@@ -14,7 +14,7 @@ permissions:
 jobs:
   package:
     name: Release zip
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
