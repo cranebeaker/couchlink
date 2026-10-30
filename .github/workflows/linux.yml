@@ -112,6 +112,47 @@ jobs:
           mkdir -p -m 0700 "$XDG_RUNTIME_DIR"
           cargo test -p couchlinkd --test integration --locked -- --nocapture
 
+  proton:
+    # A Windows program through umu-launcher (Proton) in gamescope in the sandbox, two seats with a prefix each.
+    name: Proton end to end
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:latest
+      options: --privileged
+    steps:
+      - name: Packages
+        run: |
+          sed -i '/^#\[multilib\]/,+1 s/^#//' /etc/pacman.conf
+          pacman -Syu --noconfirm --needed git rust cmake make ninja pkgconf gcc python gamescope bubblewrap fuse-overlayfs \
+            vulkan-swrast lib32-vulkan-swrast ttf-dejavu umu-launcher mingw-w64-gcc libx11 libxext libxrandr libxi libxfixes \
+            libxcursor libxss libxtst wayland libxkbcommon dbus alsa-lib libpulse systemd-libs
+          umu-run --version || true
+
+      - uses: actions/checkout@v4
+
+      - name: umu's runtime and Proton (cached)
+        uses: actions/cache@v4
+        with:
+          path: |
+            /github/home/.local/share/umu
+            /github/home/.local/share/Steam/compatibilitytools.d
+            /github/home/.cache/umu
+          key: umu-${{ runner.os }}-v1
+
+      - name: Windows probe
+        run: x86_64-w64-mingw32-gcc -O2 -o /tmp/winprobe.exe core/crates/couchlinkd/tests/winprobe.c
+
+      - name: Integration test with Proton
+        working-directory: core
+        env:
+          COUCHLINK_REQUIRE_PROTON_TEST: "1"
+          COUCHLINK_TEST_WINPROBE: /tmp/winprobe.exe
+          COUCHLINK_TEST_GAMESCOPE_HEADLESS: "1"
+          XDG_RUNTIME_DIR: /tmp/xdg-runtime
+        run: |
+          mkdir -p -m 0700 "$XDG_RUNTIME_DIR"
+          cargo test -p couchlinkd --test integration --locked -- --nocapture
+
   windows-check:
     # The Linux port edits shared session files; this keeps the Windows build compiling.
     name: Windows still compiles

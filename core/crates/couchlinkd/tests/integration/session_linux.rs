@@ -68,7 +68,27 @@ pub async fn run(c: &mut Checks, fx: &Fixture) {
         in_gamescope["linux"]["gamescope_args"] = json!("--backend headless");
     }
     std::fs::write(state.join("recipes").join("testgame-gamescope.json"), in_gamescope.to_string()).unwrap();
-    let games = json!({"testgame-linux": game.display().to_string(), "testgame-gamescope": game.display().to_string()});
+    let mut games = json!({"testgame-linux": game.display().to_string(), "testgame-gamescope": game.display().to_string()});
+    // A Windows program through Proton (umu), when CI built one (COUCHLINK_TEST_WINPROBE is its path).
+    let winprobe = std::env::var_os("COUCHLINK_TEST_WINPROBE").map(PathBuf::from).filter(|p| p.is_file());
+    if let Some(exe) = &winprobe {
+        let wgame = root.join("wingame");
+        std::fs::create_dir_all(&wgame).unwrap();
+        std::fs::copy(exe, wgame.join("winprobe.exe")).unwrap();
+        let mut gamescope_args = String::new();
+        if gamescope_headless() {
+            gamescope_args = "--backend headless".into();
+        }
+        let r = json!({
+            "schema": 1, "id": "winprobe", "game": "Couchlink Proton probe", "players": [1, 4], "steam": "none",
+            "launch": {"exe": "winprobe.exe", "env": {"COUCHLINK_SEAT": "$SEAT"}},
+            "files": {"link": "all"},
+            "window": {"borderless": true, "settle_ms": 3000, "wait_ms": 20000},
+            "linux": {"gamescope_args": gamescope_args}
+        });
+        std::fs::write(state.join("recipes").join("winprobe.json"), r.to_string()).unwrap();
+        games["winprobe"] = json!(wgame.display().to_string());
+    }
     std::fs::write(state.join("games.json"), games.to_string()).unwrap();
 
     let recipes = recipes_dir();
@@ -160,6 +180,7 @@ pub async fn run(c: &mut Checks, fx: &Fixture) {
     }
     c.check("linux: the install is untouched", snapshot(&game) == before);
     gamescope(c, cl, &state, &table.display).await;
+    proton(c, cl, &state, winprobe.is_some()).await;
     drop(table);
     drop(daemon);
     let _ = std::fs::remove_dir_all(&root);
@@ -275,4 +296,53 @@ async fn gamescope(c: &mut Checks, cl: &mut Client, state: &Path, display: &Valu
     let events = session_until(cl, Duration::from_secs(30), |e| e["state"] == "idle" || e["state"] == "failed").await;
     let last = events.last().cloned().unwrap_or(Value::Null);
     c.check("gamescope: the session ends idle", last["state"] == "idle");
+}
+
+/// Two copies of a Windows program through umu-launcher (Proton), in gamescope, in the sandbox: each runs under Wine
+/// with a prefix of its own. Needs umu-run and the probe CI builds with mingw; COUCHLINK_REQUIRE_PROTON_TEST=1 makes it
+/// required. The first run downloads umu's runtime and Proton, so the waits are long.
+async fn proton(c: &mut Checks, cl: &mut Client, state: &Path, have_probe: bool) {
+    let required = std::env::var("COUCHLINK_REQUIRE_PROTON_TEST").is_ok_and(|v| v == "1");
+    if !have_probe || !installed("umu-run") {
+        if required {
+            c.check("proton: umu-run and the Windows probe are there", false);
+        } else {
+            println!("SKIP Proton checks (no umu-run or no Windows probe)");
+        }
+        return;
+    }
+    cl.backlog.clear();
+    let r = cl.request(json!({"cmd": "start_session", "recipe": "winprobe"})).await;
+    if !c.check("proton: start_session accepted", r["ok"] == true) {
+        println!("  start_session: {}", r["error"]);
+    }
+    let events = session_until(cl, Duration::from_secs(120), |e| e["state"] == "running" || e["state"] == "failed").await;
+    let last = events.last().cloned().unwrap_or(Value::Null);
+    c.check("proton: the session reaches running", last["state"] == "running");
+    let inst = state.join("instances").join("winprobe");
+    let log = |seat: usize| std::fs::read_to_string(inst.join(".seats").join(seat.to_string()).join("copy.log")).unwrap_or_default();
+    if last["state"] == "failed" {
+        println!("  session failed: {}", last["error"]);
+    }
+    for seat in 0..2usize {
+        let status = inst.join(seat.to_string()).join("status.json");
+        let s = wait_status(&status, Duration::from_secs(600), |s| s["alive"] == true).await;
+        let ran = s.as_ref().is_some_and(|s| s["wine"].as_str().is_some_and(|w| !w.is_empty()) && s["seat"] == seat.to_string());
+        if !c.check(&format!("proton: seat {seat}'s Windows program runs under Wine with its seat"), ran) {
+            let l = log(seat);
+            println!("  seat {seat} copy.log (end):\n{}", l.lines().rev().take(40).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n"));
+        }
+        c.check(
+            &format!("proton: seat {seat} has a Wine prefix of its own"),
+            inst.join(".seats").join(seat.to_string()).join("prefix").join("drive_c").is_dir(),
+        );
+    }
+    let r = cl.request(json!({"cmd": "stop_session"})).await;
+    c.check("proton: stop_session accepted", r["ok"] == true);
+    let events = session_until(cl, Duration::from_secs(60), |e| e["state"] == "idle" || e["state"] == "failed").await;
+    let last = events.last().cloned().unwrap_or(Value::Null);
+    c.check("proton: the session ends idle", last["state"] == "idle");
+    if last["state"] == "failed" {
+        println!("  stop failed: {}", last["error"]);
+    }
 }
