@@ -347,6 +347,12 @@ impl Hub {
                 "dir": crate::logfile::dir(),
                 "text": crate::logfile::report(self.session_info.recipe.as_deref()),
             })),
+            Command::SaveReport => {
+                let state = serde_json::to_value(self.model.state()).unwrap_or_default();
+                let session = serde_json::to_value(&self.session_info).unwrap_or_default();
+                let path = crate::logfile::save_report(&state, &session)?;
+                Ok(json!({ "path": path }))
+            }
             Command::GetCatalog => {
                 let catalog = self.catalog.clone().unwrap_or_else(Catalog::empty);
                 Ok(json!({ "catalog": catalog, "refreshing": self.fetching }))

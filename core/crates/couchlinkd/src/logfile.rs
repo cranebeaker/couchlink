@@ -69,6 +69,85 @@ pub fn report(recipe: Option<&str>) -> String {
     out
 }
 
+/// "Save full report": one text file in the log folder with what this PC is (OS, display session, the Linux tools
+/// Couchlink uses and their versions), Couchlink's state (`state`, `session`), and every log in full. The home folder
+/// shows as `~`, so a player can send it without their user name in it. Returns the file.
+pub fn save_report(state: &serde_json::Value, session: &serde_json::Value) -> Result<PathBuf, String> {
+    let mut out = format!("Couchlink {} full report, {} UTC\n", env!("CARGO_PKG_VERSION"), utc_now());
+    out += &format!("\n== system ==\n{}\n", system_info());
+    out += &format!("\n== state ==\n{}\n", serde_json::to_string_pretty(state).unwrap_or_default());
+    out += &format!("\n== session ==\n{}\n", serde_json::to_string_pretty(session).unwrap_or_default());
+    let mut logs: Vec<PathBuf> = std::fs::read_dir(dir())
+        .map(|rd| rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "log")).collect())
+        .unwrap_or_default();
+    // Linux 0.1.2 and older wrote each copy's output next to its home.
+    if let Ok(games) = std::fs::read_dir(couchlink_core::paths::state_dir().join("instances")) {
+        for g in games.flatten() {
+            for seat in std::fs::read_dir(g.path().join(".seats")).into_iter().flatten().flatten() {
+                let log = seat.path().join("copy.log");
+                if log.is_file() {
+                    logs.push(log);
+                }
+            }
+        }
+    }
+    logs.sort();
+    for log in &logs {
+        let text = std::fs::read(log).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_else(|e| format!("(cannot read: {e})"));
+        out += &format!("\n== {} ==\n{}\n", log.display(), text.trim_end());
+    }
+    if logs.is_empty() {
+        out += "\n(no log files yet)\n";
+    }
+    if let Some(home) = home_dir().filter(|h| h.len() > 3) {
+        out = out.replace(&home, "~");
+    }
+    let _ = std::fs::create_dir_all(dir());
+    let stamp: String = utc_now().chars().filter(char::is_ascii_digit).collect();
+    let path = dir().join(format!("couchlink-report-{stamp}.txt"));
+    std::fs::write(&path, out).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+    Ok(path)
+}
+
+fn home_dir() -> Option<String> {
+    std::env::var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).ok()
+}
+
+/// A command's output, or why it did not run.
+fn run(program: &str, args: &[&str]) -> String {
+    match std::process::Command::new(program).args(args).output() {
+        Ok(o) => format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr)).trim().to_string(),
+        Err(e) => format!("({program}: {e})"),
+    }
+}
+
+fn system_info() -> String {
+    let mut s = format!("os: {} {}\n", std::env::consts::OS, std::env::consts::ARCH);
+    if cfg!(windows) {
+        s += &format!("windows: {}\n", run("cmd", &["/c", "ver"]));
+        return s;
+    }
+    let release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
+    let pretty = release.lines().find_map(|l| l.strip_prefix("PRETTY_NAME=")).unwrap_or("?").trim_matches('"');
+    s += &format!("distribution: {pretty}\nkernel: {}\n", run("uname", &["-r"]));
+    for var in ["XDG_SESSION_TYPE", "XDG_CURRENT_DESKTOP", "WAYLAND_DISPLAY", "DISPLAY", "XDG_RUNTIME_DIR"] {
+        s += &format!("{var}: {}\n", std::env::var(var).unwrap_or_else(|_| "(not set)".into()));
+    }
+    s += &format!("user id: {}\n", run("id", &["-u"]));
+    // gamescope makes its X display in this folder, and refuses one it does not own.
+    s += &format!("/tmp/.X11-unix:\n{}\n", run("ls", &["-lan", "/tmp/.X11-unix"]));
+    for f in ["/proc/sys/kernel/unprivileged_userns_clone", "/proc/sys/kernel/apparmor_restrict_unprivileged_userns", "/proc/sys/user/max_user_namespaces"] {
+        if let Ok(v) = std::fs::read_to_string(f) {
+            s += &format!("{f}: {}\n", v.trim());
+        }
+    }
+    for tool in ["gamescope", "bwrap", "umu-run", "fuse-overlayfs", "steam"] {
+        s += &format!("{tool}: {}\n", run("sh", &["-c", &format!("command -v {tool} || echo '(not found)'")]));
+    }
+    s += &format!("gamescope --version: {}\n", run("sh", &["-c", "gamescope --version 2>&1 | head -n 3"]));
+    s
+}
+
 /// `YYYY-MM-DD HH:MM:SS` in UTC (the civil-from-days algorithm; no date crate needed for one line).
 fn utc_now() -> String {
     let secs = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs()) as i64;
@@ -99,7 +178,13 @@ mod tests {
         write("error", "the game stopped\nsecond line");
         std::fs::write(copy_log("drg", 1), "line 1\nfatal: no window\n").unwrap();
         let r = report(Some("drg"));
+        let full = save_report(&serde_json::json!({"displays": []}), &serde_json::json!({"state": "failed"})).unwrap();
         unsafe { std::env::remove_var("COUCHLINK_STATE_DIR") };
+        let full = std::fs::read_to_string(full).unwrap();
+        for part in ["full report", "== system ==", "== state ==", "\"state\": \"failed\"", "fatal: no window", "the game stopped"] {
+            assert!(full.contains(part), "{part} missing from the report:
+{full}");
+        }
         assert!(r.starts_with("Couchlink "), "{r}");
         assert!(r.contains("error the game stopped\n      second line"), "{r}");
         assert!(r.contains("== drg, player 2 ==\nline 1\nfatal: no window"), "{r}");
