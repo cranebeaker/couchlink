@@ -110,7 +110,29 @@ fn claim_single_instance() -> bool {
     }
 }
 
-#[cfg(not(windows))]
+/// Takes a lock file in `XDG_RUNTIME_DIR` (else the state folder), named after the state folder, for the life of the
+/// process; false when another couchlinkd holds it.
+#[cfg(target_os = "linux")]
+fn claim_single_instance() -> bool {
+    use std::os::unix::io::IntoRawFd;
+    let state = paths::state_dir();
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in state.display().to_string().bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).filter(|d| d.is_dir()).unwrap_or_else(|| state.clone());
+    let _ = std::fs::create_dir_all(&dir);
+    let Ok(file) = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(dir.join(format!("couchlinkd-{h:016x}.lock"))) else {
+        return true;
+    };
+    // The descriptor stays open (and locked) until the process exits.
+    let fd = file.into_raw_fd();
+    // SAFETY: flock on a descriptor this process owns.
+    unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) == 0 }
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 fn claim_single_instance() -> bool {
     true
 }
@@ -122,6 +144,11 @@ fn random_token() -> Result<String, String> {
 }
 
 fn main() {
+    // A seat's sandbox holder (session/ns_linux.rs): a short-lived child of the daemon, not a daemon.
+    #[cfg(target_os = "linux")]
+    if std::env::args().nth(1).as_deref() == Some(session::ns_linux::HOLDER_ARG) {
+        std::process::exit(session::ns_linux::holder_main());
+    }
     // The elevated half of setting up or removing a seat's own Steam account (see accounts.rs).
     if let Some(code) = accounts::cli(&std::env::args().collect::<Vec<_>>()) {
         std::process::exit(code);

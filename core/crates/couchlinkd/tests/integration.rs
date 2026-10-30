@@ -19,6 +19,12 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 mod session;
 
+/// Virtual input devices (shared with the daemon's unit tests).
+#[cfg(target_os = "linux")]
+#[path = "../src/session/uinput_test.rs"]
+#[allow(dead_code)]
+mod uinput;
+
 type Ws = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 const DAEMON: &str = env!("CARGO_BIN_EXE_couchlinkd");

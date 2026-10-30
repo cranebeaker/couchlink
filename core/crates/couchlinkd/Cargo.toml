@@ -43,7 +43,7 @@ windows-sys = { version = "0.61", features = [
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
-x11rb = "0.13"
+x11rb = { version = "0.13", features = ["xtest"] }
 
 [build-dependencies]
 embed-resource = "3"

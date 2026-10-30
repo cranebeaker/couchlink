@@ -4,9 +4,12 @@
 //! `<state>/instances/<recipe>/.layers/<seat>/` and are kept between sessions, so saves stay. Each mount is journalled
 //! before it is made and unmounted when the session ends, or on the next start after a crash.
 //!
-//! Without fuse-overlayfs the session falls back to the hardlink copies of `copies.rs`.
+//! [`prepare_seat`] is the copy step on Linux: a kernel overlay inside the seat's own namespace (`ns_linux.rs`) when
+//! the system allows it, else fuse-overlayfs when it is installed, else the hardlink copies of `copies.rs`.
 
 use super::copies::{seat_dir, Excludes};
+use super::ns_linux::{Config, Overlay, SeatNs};
+use std::sync::atomic::AtomicBool;
 use couchlink_core::{Journal, Undoers};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -99,6 +102,61 @@ pub fn mount(game_dir: &Path, instances: &Path, seat: usize, exclude: &Excludes,
         remove_excluded(&merged, Path::new(""), exclude)?;
     }
     Ok(merged)
+}
+
+/// The copy step for one seat on Linux: its folder (as the daemon reaches it) and its sandbox holder, when the system
+/// allows one (else the launcher sandboxes the copy with bwrap). `layered` is false for `files.link: none`, where the
+/// seat plays from the install itself; `pads` are its controllers' device paths, which its sandbox keeps.
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_seat(
+    game_dir: &Path,
+    instances: &Path,
+    seat: usize,
+    layered: bool,
+    copy: &[String],
+    exclude: &Excludes,
+    pads: &[String],
+    journal: &mut Journal,
+    stop: &AtomicBool,
+) -> Result<(PathBuf, Option<SeatNs>), String> {
+    let exe = std::env::current_exe().map_err(|e| format!("cannot find couchlinkd itself: {e}"))?;
+    let own = super::sandbox_linux::own_nodes(pads);
+    let all = super::sandbox_linux::input_nodes();
+    let plain = Config { overlay: None, own: own.clone(), all: all.clone() };
+    if !layered {
+        return Ok((game_dir.to_path_buf(), holder(&exe, &plain, seat)));
+    }
+    let target = seat_dir(instances, seat);
+    let (upper, work) = layer_dirs(instances, seat);
+    for dir in [&target, &upper, &work] {
+        std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    }
+    // A copy an older version left mounted with fuse-overlayfs is taken down first.
+    unmount(&target)?;
+    let cfg = Config { overlay: Some(Overlay { lower: game_dir.to_path_buf(), upper, work, target: target.clone() }), own, all };
+    match SeatNs::start(&exe, &cfg) {
+        Ok(ns) if ns.overlay => {
+            let dir = ns.view(&target);
+            if !exclude.is_empty() {
+                remove_excluded(&dir, Path::new(""), exclude)?;
+            }
+            return Ok((dir, Some(ns)));
+        }
+        Ok(ns) => eprintln!("couchlinkd: seat {seat}: the kernel cannot layer the copy ({}); using another way", ns.overlay_error),
+        Err(e) => eprintln!("couchlinkd: seat {seat}: no sandbox of its own ({e}); bwrap is used if it is installed"),
+    }
+    let dir = if fuse_overlayfs().is_some() {
+        mount(game_dir, instances, seat, exclude, journal)?
+    } else {
+        super::copies::sync(game_dir, instances, seat, copy, exclude, stop)?;
+        target
+    };
+    Ok((dir, holder(&exe, &plain, seat)))
+}
+
+/// A holder for the input sandbox alone, when the system allows one.
+fn holder(exe: &Path, cfg: &Config, seat: usize) -> Option<SeatNs> {
+    SeatNs::start(exe, cfg).map_err(|e| eprintln!("couchlinkd: seat {seat}: no sandbox of its own ({e}); bwrap is used if it is installed")).ok()
 }
 
 fn remove_excluded(root: &Path, rel: &Path, exclude: &Excludes) -> Result<(), String> {

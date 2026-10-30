@@ -86,81 +86,43 @@ jobs:
           if-no-files-found: error
 
   gamescope:
-    # Ubuntu does not package gamescope; Arch does. Runs the integration test with the copies inside a real gamescope
-    # (headless backend, software Vulkan), so the gamescope command line and the game inside it are checked for real.
+    # Ubuntu does not package gamescope; Arch does. The integration test with the copies inside a real gamescope
+    # (headless backend, software Vulkan), each player with a virtual keyboard of their own.
     name: gamescope end to end
     runs-on: ubuntu-24.04
-    container:
-      image: archlinux:latest
-      options: --privileged
     steps:
-      - name: Packages
-        run: |
-          pacman -Syu --noconfirm --needed git rust cmake make ninja pkgconf gcc python gamescope xorg-server-xvfb xcursor-themes adwaita-cursors             vulkan-swrast bubblewrap fuse-overlayfs libx11 libxext libxrandr libxi libxfixes libxcursor libxss libxtst             wayland libxkbcommon dbus alsa-lib libpulse systemd-libs
-          gamescope --version || true
-
       - uses: actions/checkout@v4
 
-      - name: Integration test in gamescope
-        working-directory: core
-        env:
-          COUCHLINK_REQUIRE_GAMESCOPE_TEST: "1"
-          # gamescope's window backend needs Vulkan present-wait, which software Vulkan lacks: run it headless.
-          COUCHLINK_TEST_GAMESCOPE_HEADLESS: "1"
-          XDG_RUNTIME_DIR: /tmp/xdg-runtime
+      - name: Let the container make virtual devices and sandboxes
         run: |
-          mkdir -p -m 0700 "$XDG_RUNTIME_DIR"
-          cargo test -p couchlinkd --test integration --locked -- --nocapture
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          sudo modprobe uinput
+
+      - name: Integration test in an Arch container
+        run: |
+          docker run --rm --privileged -v /dev:/dev -v "$GITHUB_WORKSPACE:/w" -w /w archlinux:latest             bash .github/scripts/arch-e2e.sh gamescope
 
   proton:
     # A Windows program through umu-launcher (Proton) in gamescope in the sandbox, two seats with a prefix each.
     name: Proton end to end
     runs-on: ubuntu-24.04
-    container:
-      image: archlinux:latest
-      options: --privileged
     steps:
-      - name: Packages
-        run: |
-          grep -q '^\[multilib\]' /etc/pacman.conf || printf '\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n' >> /etc/pacman.conf
-          pacman -Syu --noconfirm --needed git rust cmake make ninja pkgconf gcc python gamescope bubblewrap fuse-overlayfs xcursor-themes adwaita-cursors \
-            vulkan-swrast lib32-vulkan-swrast ttf-dejavu umu-launcher mingw-w64-gcc libx11 libxext libxrandr libxi libxfixes \
-            libxcursor libxss libxtst wayland libxkbcommon dbus alsa-lib libpulse systemd-libs
-          umu-run --version || true
-
       - uses: actions/checkout@v4
 
-      - name: A player account (umu-launcher refuses to run as root)
-        run: |
-          useradd -m player
-          # The host limits user namespaces for unprivileged users (Ubuntu's AppArmor rule); bwrap needs them.
-          echo 0 > /proc/sys/kernel/apparmor_restrict_unprivileged_userns || true
-          # Software Vulkan shares gamescope's buffers through udmabuf, which only root may open by default.
-          ls -l /dev/udmabuf /dev/dri 2>&1 || true
-          chmod 0666 /dev/udmabuf || true
-          chown -R player: "$GITHUB_WORKSPACE"
+      - name: Let the container make sandboxes
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       - name: umu's runtime and Proton (cached)
         uses: actions/cache@v4
         with:
-          path: |
-            /home/player/.local/share/umu
-            /home/player/.local/share/Steam/compatibilitytools.d
-            /home/player/.cache/umu
-          key: umu-${{ runner.os }}-v1
+          path: ${{ runner.temp }}/umu-cache
+          key: umu-${{ runner.os }}-v2
 
-      - name: Windows probe
+      - name: Integration test with Proton in an Arch container
         run: |
-          x86_64-w64-mingw32-gcc -O2 -o /tmp/winprobe.exe core/crates/couchlinkd/tests/winprobe.c
-          chown -R player: /home/player
-
-      - name: Integration test with Proton
-        run: |
-          install -d -m 0700 -o player /tmp/xdg-runtime
-          runuser -u player -- env HOME=/home/player USER=player XDG_RUNTIME_DIR=/tmp/xdg-runtime \
-            COUCHLINK_REQUIRE_PROTON_TEST=1 COUCHLINK_TEST_WINPROBE=/tmp/winprobe.exe COUCHLINK_TEST_GAMESCOPE_HEADLESS=1 \
-            CARGO_TERM_COLOR=never COUCHLINK_SKIP_INJECT_TESTS=1 \
-            sh -c 'cd core && cargo test -p couchlinkd --test integration --locked -- --nocapture'
+          mkdir -p "$RUNNER_TEMP/umu-cache"
+          docker run --rm --privileged -v /dev:/dev -v "$GITHUB_WORKSPACE:/w" -v "$RUNNER_TEMP/umu-cache:/umu-cache" -w /w             archlinux:latest bash .github/scripts/arch-e2e.sh proton
+          sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/umu-cache"
 
   windows-check:
     # The Linux port edits shared session files; this keeps the Windows build compiling.

@@ -25,6 +25,8 @@ pub mod copies_linux;
 #[cfg(target_os = "linux")]
 pub mod launch_linux;
 #[cfg(target_os = "linux")]
+pub mod ns_linux;
+#[cfg(target_os = "linux")]
 pub mod sandbox_linux;
 pub mod padfeed;
 pub mod rawkbm;

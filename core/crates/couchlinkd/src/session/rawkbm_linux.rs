@@ -2,8 +2,9 @@
 //! (relative X and Y, a left button) is listed; the nodes of one physical device are one device, grouped the way
 //! `sandbox_linux.rs` groups a controller's nodes, so a gaming keyboard's extra interfaces join with it. Ids hash
 //! that physical device's sysfs path, so a keyboard keeps its id while it stays in the same port. Enter on a
-//! keyboard asks for a seat, as on Windows. A seat's own keyboards and mice reach its game copy through
-//! gamescope-kbm (`launch_linux.rs`), which takes them for itself while the copy runs.
+//! keyboard asks for a seat, as on Windows. While a seat's copy runs in gamescope, the seat's own keyboards and mice
+//! are taken from the desktop (`EVIOCGRAB`) and their keys, buttons and movement go into that copy's gamescope display
+//! with XTEST ([`attach_x`]), so each player types and aims in their own window only, whichever window has the focus.
 //!
 //! Reading `/dev/input/event*` needs the `input` group (or a udev rule); without it there are no keyboard seats,
 //! and `start` says so. Software devices (`/sys/devices/virtual`, such as uinput) are left out, except in tests.
@@ -117,17 +118,152 @@ fn devices_of(found: &[Found]) -> Vec<RawDevice> {
     out
 }
 
-/// Watches the keyboards and mice: picks up plugged and unplugged devices and reads Enter for press to join.
+// ---------------------------------------------------------------------------------------------- seats
+
+/// A seat whose copy runs in gamescope: its keyboards and mice go to that gamescope's X display.
+struct XSeat {
+    id: u64,
+    devices: Vec<String>,
+    /// Where the copy writes gamescope's `DISPLAY` once it runs (`launch_linux.rs`).
+    display_file: PathBuf,
+    x: Option<x11rb::rust_connection::RustConnection>,
+    /// Relative movement not sent yet (sent at each SYN_REPORT).
+    dx: i32,
+    dy: i32,
+}
+
+static X_SEATS: std::sync::Mutex<Vec<XSeat>> = std::sync::Mutex::new(Vec::new());
+static NEXT_X: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+fn x_seats() -> std::sync::MutexGuard<'static, Vec<XSeat>> {
+    X_SEATS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// While alive, the seat's keyboards and mice belong to its copy.
+pub struct XGuard(u64);
+
+impl Drop for XGuard {
+    fn drop(&mut self) {
+        x_seats().retain(|s| s.id != self.0);
+    }
+}
+
+/// Send the keyboards and mice among `devices` (seat device ids) to the X display whose name the copy writes to
+/// `display_file`. None when the seat has none of its own (the desktop's `kbm:system` stays with the desktop).
+pub fn attach_x(devices: &[String], display_file: PathBuf) -> Option<XGuard> {
+    let own: Vec<String> = devices.iter().filter(|d| super::is_kbm_id(d)).cloned().collect();
+    if own.is_empty() {
+        return None;
+    }
+    let id = NEXT_X.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    x_seats().push(XSeat { id, devices: own, display_file, x: None, dx: 0, dy: 0 });
+    Some(XGuard(id))
+}
+
+/// X button number for a mouse button code.
+fn x_button(code: u16) -> Option<u8> {
+    match code {
+        0x110 => Some(1), // left
+        0x111 => Some(3), // right
+        0x112 => Some(2), // middle
+        0x113 => Some(8), // side (back)
+        0x114 => Some(9), // extra (forward)
+        _ => None,
+    }
+}
+
+impl XSeat {
+    fn connection(&mut self) -> Option<&x11rb::rust_connection::RustConnection> {
+        if self.x.is_none() {
+            let name = std::fs::read_to_string(&self.display_file).ok()?;
+            let name = name.trim();
+            if name.is_empty() {
+                return None;
+            }
+            self.x = x11rb::connect(Some(name)).ok().map(|(c, _)| c);
+        }
+        self.x.as_ref()
+    }
+
+    /// One evdev event from one of the seat's devices, as X input.
+    fn send(&mut self, kind: u16, code: u16, value: i32) {
+        use x11rb::protocol::xproto::{BUTTON_PRESS_EVENT, BUTTON_RELEASE_EVENT, KEY_PRESS_EVENT, KEY_RELEASE_EVENT, MOTION_NOTIFY_EVENT};
+        use x11rb::protocol::xtest::ConnectionExt as _;
+        const EV_SYN: u16 = 0;
+        const EV_REL: u16 = 2;
+        const REL_WHEEL: u16 = 8;
+        const REL_HWHEEL: u16 = 6;
+        match (kind, code) {
+            (EV_REL, c) if c == REL_X as u16 => self.dx += value,
+            (EV_REL, c) if c == REL_Y as u16 => self.dy += value,
+            _ => {}
+        }
+        let (dx, dy) = (self.dx, self.dy);
+        let Some(x) = self.connection() else { return };
+        let fake = |kind: u8, detail: u8, rx: i16, ry: i16| {
+            let _ = x.xtest_fake_input(kind, detail, 0, x11rb::NONE, rx, ry, 0);
+        };
+        let mut moved = false;
+        match (kind, code) {
+            (EV_KEY, c) if value != 2 => {
+                let press = value == 1;
+                if let Some(b) = x_button(c) {
+                    fake(if press { BUTTON_PRESS_EVENT } else { BUTTON_RELEASE_EVENT }, b, 0, 0);
+                } else if c < 0xf8 {
+                    // X key codes are evdev codes plus 8.
+                    fake(if press { KEY_PRESS_EVENT } else { KEY_RELEASE_EVENT }, (c + 8) as u8, 0, 0);
+                }
+            }
+            (EV_REL, REL_WHEEL) | (EV_REL, REL_HWHEEL) if value != 0 => {
+                let b = match (code, value > 0) {
+                    (REL_WHEEL, true) => 4,
+                    (REL_WHEEL, false) => 5,
+                    (_, true) => 7,
+                    (_, false) => 6,
+                };
+                for _ in 0..value.unsigned_abs().min(10) {
+                    fake(BUTTON_PRESS_EVENT, b, 0, 0);
+                    fake(BUTTON_RELEASE_EVENT, b, 0, 0);
+                }
+            }
+            (EV_SYN, 0) if dx != 0 || dy != 0 => {
+                // detail 1: relative motion.
+                fake(MOTION_NOTIFY_EVENT, 1, dx.clamp(-32768, 32767) as i16, dy.clamp(-32768, 32767) as i16);
+                moved = true;
+            }
+            _ => {}
+        }
+        use x11rb::connection::Connection;
+        let _ = x.flush();
+        if moved {
+            self.dx = 0;
+            self.dy = 0;
+        }
+    }
+}
+
+/// EVIOCGRAB: take a device from everyone else (1) or give it back (0).
+const EVIOCGRAB: libc::c_ulong = 0x4004_4590;
+
+fn grab(f: &File, on: bool) {
+    // SAFETY: an ioctl on our own descriptor with an int argument.
+    unsafe { libc::ioctl(f.as_raw_fd(), EVIOCGRAB as _, on as libc::c_int) };
+}
+
+/// Watches the keyboards and mice: picks up plugged and unplugged devices, reads Enter for press to join, and sends
+/// seated devices' input to their copies.
 pub(super) struct Watcher {
     include_virtual: bool,
     open: BTreeMap<u64, (String, File)>,
     last_scan: Option<Instant>,
     pub denied: usize,
+    /// Devices taken for a seat's copy, by handle.
+    grabbed: std::collections::BTreeSet<u64>,
 }
 
 impl Watcher {
     pub fn new(include_virtual: bool) -> Watcher {
-        Watcher { include_virtual, open: BTreeMap::new(), last_scan: None, denied: 0 }
+        Watcher { include_virtual, open: BTreeMap::new(), last_scan: None, denied: 0, grabbed: Default::default() }
     }
 
     /// Look for plugged and unplugged devices now.
@@ -160,19 +296,33 @@ impl Watcher {
             events.extend(self.rescan());
         }
         let mut presses = Vec::new();
-        for (id, f) in self.open.values_mut() {
+        let mut seats = x_seats();
+        for (handle, (id, f)) in self.open.iter_mut() {
+            // A device of a running copy is taken from the desktop for as long as the copy runs.
+            let seat = seats.iter().position(|s| s.devices.contains(id));
+            if seat.is_some() != self.grabbed.contains(handle) {
+                grab(f, seat.is_some());
+                if seat.is_some() {
+                    self.grabbed.insert(*handle);
+                } else {
+                    self.grabbed.remove(handle);
+                }
+            }
             let mut ev = [0u8; 24];
             while let Ok(24) = f.read(&mut ev) {
                 let kind = u16::from_ne_bytes([ev[16], ev[17]]);
                 let code = u16::from_ne_bytes([ev[18], ev[19]]);
                 let value = i32::from_ne_bytes([ev[20], ev[21], ev[22], ev[23]]);
-                // Only Enter matters while no seat feed exists on Linux; autorepeat (2) is not a new press.
-                if kind == EV_KEY && (code == KEY_ENTER || code == KEY_KPENTER) && value != 2 {
+                if let Some(i) = seat {
+                    seats[i].send(kind, code, value);
+                } else if kind == EV_KEY && (code == KEY_ENTER || code == KEY_KPENTER) && value != 2 {
+                    // Enter on a device nobody plays with asks for a seat; autorepeat (2) is not a new press.
                     let flags = if value == 0 { key_flags::BREAK } else { 0 };
                     presses.push((id.clone(), Input::Key { vk: VK_RETURN, scan: code, flags }));
                 }
             }
         }
+        drop(seats);
         let mut reg = registry();
         for (id, input) in presses {
             events.extend(reg.route(&id, input));
@@ -181,7 +331,7 @@ impl Watcher {
     }
 }
 
-/// The event nodes of the keyboards and mice among `devices` (seat device ids), for that seat's copy.
+/// The event nodes of the keyboards and mice among `devices` (seat device ids).
 pub fn nodes(devices: &[String]) -> Vec<String> {
     let reg = registry();
     let mut out: Vec<String> = reg.devices.iter().filter(|d| devices.contains(&d.id)).map(|d| d.path.clone()).collect();

@@ -63,6 +63,9 @@ struct SeatRun {
     window_pid: Option<u32>,
     /// Keeps that process in a job of its own so it ends with the session.
     followed: Option<Job>,
+    /// The seat's sandbox on Linux (its namespace and layered copy); it ends when this is dropped.
+    #[cfg(target_os = "linux")]
+    ns: Option<super::ns_linux::SeatNs>,
 }
 
 struct Run {
@@ -105,6 +108,8 @@ pub fn run(plan: Plan, deps: Deps, stop: Arc<AtomicBool>, report: Report) {
             launched_at: SystemTime::now(),
             window_pid: None,
             followed: None,
+            #[cfg(target_os = "linux")]
+            ns: None,
         })
         .collect();
     let mut r = Run { plan, deps, stop, report, info, journal, seats, helpers: Vec::new(), placer: Placer::new(), last_maintain: Instant::now() };
@@ -227,26 +232,34 @@ impl Run {
         let exclude = copies::Excludes::new(&recipe.files.exclude_files, &recipe.files.exclude_dirs);
         for idx in 0..self.seats.len() {
             self.set_step(idx, Step::Copy, None);
-            if recipe.files.link == LinkMode::None {
-                continue;
-            }
             let seat = self.seats[idx].plan.seat;
-            // On Linux a copy is a layer over the install when fuse-overlayfs is there (copies_linux.rs).
+            // On Linux every seat gets a sandbox of its own, with its copy layered over the install (copies_linux.rs).
             #[cfg(target_os = "linux")]
-            if super::copies_linux::fuse_overlayfs().is_some() {
-                match super::copies_linux::mount(&self.plan.game_dir, &instances, seat, &exclude, &mut self.journal) {
-                    Ok(dir) => self.seats[idx].dir = dir,
+            {
+                let pads = super::hook::pad_nodes(&self.seats[idx].plan.devices);
+                let layered = recipe.files.link != LinkMode::None;
+                match super::copies_linux::prepare_seat(&self.plan.game_dir, &instances, seat, layered, &copy, &exclude, &pads, &mut self.journal, &self.stop) {
+                    Ok((dir, ns)) => {
+                        self.seats[idx].dir = dir;
+                        self.seats[idx].ns = ns;
+                    }
+                    Err(_) if self.stopped() => return Ok(()),
                     Err(e) => return Err(self.seat_failed(idx, Step::Copy, e)),
                 }
-                continue;
             }
-            match copies::sync(&self.plan.game_dir, &instances, seat, &copy, &exclude, &self.stop) {
-                Ok(_) => self.seats[idx].dir = copies::seat_dir(&instances, seat),
-                Err(e) if self.stopped() => {
-                    let _ = e;
-                    return Ok(());
+            #[cfg(not(target_os = "linux"))]
+            {
+                if recipe.files.link == LinkMode::None {
+                    continue;
                 }
-                Err(e) => return Err(self.seat_failed(idx, Step::Copy, e)),
+                match copies::sync(&self.plan.game_dir, &instances, seat, &copy, &exclude, &self.stop) {
+                    Ok(_) => self.seats[idx].dir = copies::seat_dir(&instances, seat),
+                    Err(e) if self.stopped() => {
+                        let _ = e;
+                        return Ok(());
+                    }
+                    Err(e) => return Err(self.seat_failed(idx, Step::Copy, e)),
+                }
             }
         }
         Ok(())
@@ -573,6 +586,10 @@ impl Run {
             rect: s.plan.rect,
             borderless: recipe.window.borderless,
             data_dir: self.plan.state_dir.join("instances").join(&recipe.id).join(".seats").join(s.plan.seat.to_string()),
+            #[cfg(target_os = "linux")]
+            sandbox_pid: s.ns.as_ref().map(|n| n.pid),
+            #[cfg(not(target_os = "linux"))]
+            sandbox_pid: None,
         }))
     }
 

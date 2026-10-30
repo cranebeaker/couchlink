@@ -255,13 +255,19 @@ fn run_window() {
     }
 }
 
-/// What a copy can see of the machine on Linux: its home, and the entries of its `/dev/input`.
+/// X key codes the Linux window got, in order (reported as `keys`).
+#[cfg(not(windows))]
+static KEYS: std::sync::Mutex<Vec<u8>> = std::sync::Mutex::new(Vec::new());
+
+/// What a copy can see of the machine on Linux: its home, its display, the entries of its `/dev/input`, and the keys
+/// its window got.
 #[cfg(not(windows))]
 fn sandbox_facts() -> String {
     let mut nodes: Vec<String> = std::fs::read_dir("/dev/input").map(|d| d.flatten().map(|e| esc(&e.file_name().to_string_lossy())).collect()).unwrap_or_default();
     nodes.sort();
     let var = |v: &str| esc(&std::env::var(v).unwrap_or_default());
-    format!(",\"home\":{},\"display\":{},\"input_nodes\":[{}]", var("HOME"), var("DISPLAY"), nodes.join(","))
+    let keys: Vec<String> = KEYS.lock().map(|k| k.iter().map(u8::to_string).collect()).unwrap_or_default();
+    format!(",\"home\":{},\"display\":{},\"input_nodes\":[{}],\"keys\":[{}]", var("HOME"), var("DISPLAY"), nodes.join(","), keys.join(","))
 }
 
 #[cfg(windows)]
@@ -291,7 +297,7 @@ mod x11 {
         let (w, h) = pair("--size", 'x').unwrap_or((640, 360));
         let (x, y) = pair("--at", ',').unwrap_or((100, 100));
         let win = conn.generate_id().ok()?;
-        let aux = CreateWindowAux::new().background_pixel(screen.black_pixel).event_mask(EventMask::STRUCTURE_NOTIFY);
+        let aux = CreateWindowAux::new().background_pixel(screen.black_pixel).event_mask(EventMask::STRUCTURE_NOTIFY | EventMask::KEY_PRESS);
         conn.create_window(x11rb::COPY_DEPTH_FROM_PARENT, win, screen.root, x as i16, y as i16, w.max(1) as u16, h.max(1) as u16, 0, WindowClass::INPUT_OUTPUT, 0, &aux)
             .ok()?;
         let pid_atom = conn.intern_atom(false, b"_NET_WM_PID").ok()?.reply().ok()?.atom;
@@ -301,7 +307,13 @@ mod x11 {
         conn.map_window(win).ok()?;
         conn.flush().ok()?;
         loop {
-            while let Ok(Some(_)) = conn.poll_for_event() {}
+            while let Ok(Some(ev)) = conn.poll_for_event() {
+                if let x11rb::protocol::Event::KeyPress(k) = ev
+                    && let Ok(mut keys) = super::KEYS.lock()
+                {
+                    keys.push(k.detail);
+                }
+            }
             let facts = (|| {
                 let g = conn.get_geometry(win).ok()?.reply().ok()?;
                 let t = conn.translate_coordinates(win, screen.root, 0, 0).ok()?.reply().ok()?;
