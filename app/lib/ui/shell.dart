@@ -552,7 +552,8 @@ class PartyBar extends StatelessWidget {
                     key: const ValueKey('party-seats'),
                     onTap: () => scope.ui.go(AppView.players),
                     leading: Row(mainAxisSize: MainAxisSize.min, children: [
-                      for (var i = 0; i < 4; i++)
+                      // Four dots, or one per seat once a fifth player is in.
+                      for (var i = 0; i < (st.takenSeats.any((t) => t >= 4) ? st.seats.length : 4); i++)
                         Container(
                           width: 10,
                           height: 10,

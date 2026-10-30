@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../daemon/client.dart';
+import '../daemon/fake_client.dart' show kMaxSeats;
 import '../daemon/models.dart';
 import '../theme/tokens.dart';
 import 'app_state.dart';
@@ -51,7 +52,7 @@ class PlayersView extends StatefulWidget {
 
 class _PlayersViewState extends State<PlayersView> with SingleTickerProviderStateMixin {
   late final AnimationController _breath = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
-  final List<ValueNotifier<int>> _pulse = List.generate(4, (_) => ValueNotifier(0));
+  final List<ValueNotifier<int>> _pulse = List.generate(kMaxSeats, (_) => ValueNotifier(0));
   CouchClient? _client;
 
   @override
@@ -106,7 +107,7 @@ class _PlayersViewState extends State<PlayersView> with SingleTickerProviderStat
             ),
             const SectionLabel('Devices', sub: 'found on this PC', top: 4),
             _DevicesRow(state: st, breath: _breath),
-            SectionLabel('Seats', sub: '${st.takenSeats.length} of 4 taken'),
+            SectionLabel('Seats', sub: '${st.takenSeats.length} of ${shownSeats(st)} taken'),
             LayoutBuilder(builder: (context, box) {
               final cols = box.maxWidth >= 840 ? 4 : 2;
               const gap = 14.0;
@@ -115,7 +116,7 @@ class _PlayersViewState extends State<PlayersView> with SingleTickerProviderStat
                 spacing: gap,
                 runSpacing: gap,
                 children: [
-                  for (var i = 0; i < 4; i++) SizedBox(width: w, height: 318, child: _SeatSlot(index: i, state: st, pulse: _pulse[i])),
+                  for (var i = 0; i < shownSeats(st); i++) SizedBox(width: w, height: 318, child: _SeatSlot(index: i, state: st, pulse: _pulse[i])),
                 ],
               );
             }),
@@ -134,6 +135,13 @@ class _PlayersViewState extends State<PlayersView> with SingleTickerProviderStat
 }
 
 // ------------------------------------------------------------------ devices
+
+/// Seat cards to show: four, and all of them once the first four are taken (or someone sits further back).
+int shownSeats(DaemonState st) {
+  final all = st.seats.length < kMaxSeats ? st.seats.length : kMaxSeats;
+  final busy = st.takenSeats.length >= 4 || st.takenSeats.any((i) => i >= 4);
+  return busy ? all : (all < 4 ? all : 4);
+}
 
 /// The devices to show. The shared "Keyboard and mouse" (`kbm:system`) stands for the PC's keyboard and mouse
 /// together; once Couchlink lists the real ones one by one it is left out, unless someone is seated with it.

@@ -381,7 +381,7 @@ async fn run() -> u32 {
     let state = state.unwrap();
     c.check("state.dev is true", state["dev"] == true);
     c.check("kbm:system always present", state["devices"].as_array().unwrap().iter().any(|d| d["id"] == "kbm:system" && d["kind"] == "kbm"));
-    c.check("four seats, all free", state["seats"].as_array().unwrap().len() == 4 && state["seats"].as_array().unwrap().iter().all(Value::is_null));
+    c.check("eight seats, all free", state["seats"].as_array().unwrap().len() == 8 && state["seats"].as_array().unwrap().iter().all(Value::is_null));
     let pads = pad_ids(&state);
     let (p1, p2) = (pads[0].clone(), pads[1].clone());
 

@@ -41,7 +41,7 @@ A recipe is one JSON file that tells Couchlink how to run a game. The full forma
 }
 ```
 
-- **Template variables** in `args`, `env` and most paths: `$SEAT` (0 to 3), `$PLAYER`, `$WIDTH` `$HEIGHT` `$X` `$Y` (the
+- **Template variables** in `args`, `env` and most paths: `$SEAT` (0 to 7), `$PLAYER`, `$WIDTH` `$HEIGHT` `$X` `$Y` (the
   copy's region in desktop pixels), `$GAMEDIR` (this copy's folder), `$USERPROFILE` `$DOCUMENTS` `$APPDATA` `$LOCALAPPDATA`,
   plus the recipe's own `vars`, `find` results and `options`.
 - **`steam`**: `none` (no Steam), `shared` (every copy under the player's one Steam account) or `goldberg` (each copy
@@ -135,5 +135,5 @@ Keep the MIT notice and `hook/THIRD_PARTY.md` with anything you ship.
 ## Limits
 
 - Windows 10 and 11 only.
-- Up to 4 players per session in this release.
+- Up to 8 players per session.
 - Separate real Steam accounts per player are not in this release; `shared` and `goldberg` cover one-account play.

@@ -637,7 +637,7 @@ impl Hub {
                 self.broadcast(&Event::Joined { seat, device: device.to_string() });
                 self.broadcast_state();
             }
-            Err(SeatError::NoFreeSeat) => self.log(LogLevel::Info, "All four seats are taken"),
+            Err(SeatError::NoFreeSeat) => self.log(LogLevel::Info, "All seats are taken"),
             Err(e) => self.log(LogLevel::Warn, e.to_string()),
         }
     }

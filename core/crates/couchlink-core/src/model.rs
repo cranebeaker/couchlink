@@ -153,7 +153,7 @@ mod tests {
         let s = m.state();
         assert_eq!(s.devices.len(), 1);
         assert_eq!(s.devices[0].id, "kbm:system");
-        assert_eq!(s.seats.len(), 4);
+        assert_eq!(s.seats.len(), crate::MAX_SEATS);
         assert!(s.seats.iter().all(Option::is_none));
         assert!(s.dev);
         assert_eq!(s.layout, Layout::Auto);

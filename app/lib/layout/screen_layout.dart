@@ -49,6 +49,10 @@ const Map<int, List<String>> shapesFor = {
   2: ['lr', 'tb'],
   3: ['top', 'left', 'cols', 'rows'],
   4: ['grid', 'big', 'cols', 'rows'],
+  5: ['grid', 'cols', 'rows'],
+  6: ['grid', 'cols', 'rows'],
+  7: ['grid', 'cols', 'rows'],
+  8: ['grid', 'cols', 'rows'],
 };
 
 const Map<String, String> shapeNames = {
@@ -59,7 +63,7 @@ const Map<String, String> shapeNames = {
   'left': 'One on the left',
   'cols': 'Columns',
   'rows': 'Rows',
-  'grid': 'Four corners',
+  'grid': 'Grid',
   'big': 'One big, three small',
 };
 
@@ -86,6 +90,17 @@ Node buildShape(String shape, int n) {
       return Split(true, [l(0), l(1), l(2), l(3)]);
     case (4, 'rows'):
       return Split(false, [l(0), l(1), l(2), l(3)]);
+    case (_, 'cols') when n > 4:
+      return Split(true, [for (var i = 0; i < n; i++) l(i)]);
+    case (_, 'rows') when n > 4:
+      return Split(false, [for (var i = 0; i < n; i++) l(i)]);
+    case (_, _) when n > 4:
+      // Two rows: the top row gets the extra player when the count is odd.
+      final top = (n + 1) ~/ 2;
+      return Split(false, [
+        Split(true, [for (var i = 0; i < top; i++) l(i)]),
+        Split(true, [for (var i = top; i < n; i++) l(i)]),
+      ]);
     default:
       return Split(false, [Split(true, [l(0), l(1)]), Split(true, [l(2), l(3)])]);
   }

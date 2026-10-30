@@ -1,11 +1,32 @@
 import 'package:couchlink/daemon/models.dart';
 import 'package:couchlink/layout/layout_math.dart';
+import 'package:couchlink/layout/screen_layout.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 DisplayInfo disp(String id, int x, int y, int w, int h, {bool primary = false, bool used = false}) =>
     DisplayInfo(id: id, name: id, x: x, y: y, w: w, h: h, primary: primary, used: used);
 
 void main() {
+  test('five to eight players tile in two rows, and every count has shapes', () {
+    final seven = tilePlan(Shape.grid, [0, 1, 2, 3, 4, 5, 6]);
+    expect(seven.cols, 4);
+    expect(seven.rows, 2);
+    expect(seven.cells, [0, 1, 2, 3, 4, 5, 6, null]);
+    expect(tilePlan(Shape.grid, [0, 1, 2]).cols, 2, reason: 'up to four stays two by two');
+    for (var n = 1; n <= 8; n++) {
+      expect(shapesFor[n], isNotEmpty, reason: '$n players');
+      for (final shape in shapesFor[n]!) {
+        final leaves = <LeafBox>[];
+        walk(buildShape(shape, n), const Box(0, 0, 1, 1), leaves, []);
+        expect(leaves.map((l) => l.slot).toSet().length, n, reason: '$shape with $n players has a tile each');
+      }
+    }
+    final six = <LeafBox>[];
+    walk(buildShape('grid', 6), const Box(0, 0, 1, 1), six, []);
+    expect(six.where((l) => l.box.y == 0).length, 3, reason: 'three on top, three below');
+  });
+
+
   group('effectiveShape', () {
     test('auto picks by player count', () {
       expect(effectiveShape(LayoutMode.auto, 0), Shape.one);

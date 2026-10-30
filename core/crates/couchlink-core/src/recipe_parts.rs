@@ -43,7 +43,7 @@ impl SeatSel {
     pub fn parse(s: &str) -> Result<SeatSel, String> {
         let s = s.trim();
         let bad = || format!("{s:?} is not a seat selector (use \"all\", \"1+\" or \"0,2\")");
-        let seat = |t: &str| t.trim().parse::<u8>().ok().filter(|n| *n < 4).ok_or_else(bad);
+        let seat = |t: &str| t.trim().parse::<u8>().ok().filter(|n| (*n as usize) < crate::MAX_SEATS).ok_or_else(bad);
         if s.eq_ignore_ascii_case("all") {
             return Ok(SeatSel::All);
         }
@@ -748,7 +748,7 @@ mod tests {
         let list = SeatSel::parse("2, 0").unwrap();
         assert_eq!(list, SeatSel::List(vec![0, 2]));
         assert!(list.matches(2) && !list.matches(1));
-        assert!(SeatSel::parse("4").is_err() && SeatSel::parse("x").is_err() && SeatSel::parse("").is_err());
+        assert!(SeatSel::parse("7").is_ok() && SeatSel::parse("8").is_err() && SeatSel::parse("x").is_err() && SeatSel::parse("").is_err());
         assert_eq!(serde_json::to_value(&from).unwrap(), json!("1+"));
         assert_eq!(serde_json::from_value::<SeatSel>(json!(2)).unwrap(), SeatSel::List(vec![2]));
         assert_eq!(serde_json::from_value::<SeatSel>(json!("0,2")).unwrap().to_string(), "0,2");

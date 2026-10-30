@@ -101,7 +101,7 @@ Data only. Built-ins live in `recipes/`; imported ones (SplitScreen.Me) and user
 }
 ```
 
-Template variables: `$SEAT` (0..3), `$PLAYER` (name), `$WIDTH` `$HEIGHT` `$X` `$Y` (region in desktop pixels), `$GAMEDIR`
+Template variables: `$SEAT` (0..7), `$PLAYER` (name), `$WIDTH` `$HEIGHT` `$X` `$Y` (region in desktop pixels), `$GAMEDIR`
 (this copy's folder), `$NITROX` (recipe-specific paths resolved by the runner), `$STEAMID` (goldberg), `$USERPROFILE`
 `$DOCUMENTS` `$APPDATA` `$LOCALAPPDATA` (folders of this PC), the recipe's `vars` and `find` names, and every option name.
 `$$` is a literal dollar sign. A template that is the same for every seat (a shared edit, a shared registry value, a shared

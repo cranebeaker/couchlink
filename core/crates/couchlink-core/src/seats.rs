@@ -1,4 +1,4 @@
-//! Device list and the four seats, with all the seating rules.
+//! Device list and the seats (up to `MAX_SEATS`), with all the seating rules.
 
 use crate::types::{Device, Seat};
 use crate::{default_seat_name, MAX_NAME_CHARS, MAX_SEATS, SEAT_COLORS};
@@ -29,7 +29,7 @@ impl fmt::Display for SeatError {
 
 impl std::error::Error for SeatError {}
 
-/// Owns the device list and the four seat slots. A seat keeps its slot (and
+/// Owns the device list and the seat slots. A seat keeps its slot (and
 /// name) when its last device is unplugged; it only goes away through `leave`
 /// or when `assign` moves its last device elsewhere.
 #[derive(Debug, Clone, Default)]
@@ -375,15 +375,16 @@ mod tests {
     }
 
     #[test]
-    fn max_four_seats() {
-        let mut m = mgr(&[1, 2, 3, 4]);
-        for p in 1..=3 {
+    fn max_eight_seats() {
+        let mut m = mgr(&[1, 2, 3, 4, 5, 6, 7, 8]);
+        for p in 1..=7 {
             m.join(&format!("pad:{p}")).unwrap();
         }
-        assert_eq!(m.join("kbm:system"), Ok(3));
         assert_eq!(m.seats()[3].as_ref().unwrap().color, "#FFD60A");
-        assert_eq!(m.seats()[3].as_ref().unwrap().name, "Player 4");
-        assert_eq!(m.join("pad:4"), Err(SeatError::NoFreeSeat));
+        assert_eq!(m.join("kbm:system"), Ok(7));
+        assert_eq!(m.seats()[7].as_ref().unwrap().color, "#FF375F");
+        assert_eq!(m.seats()[7].as_ref().unwrap().name, "Player 8");
+        assert_eq!(m.join("pad:8"), Err(SeatError::NoFreeSeat));
     }
 
     #[test]
@@ -443,13 +444,13 @@ mod tests {
 
     #[test]
     fn a_full_table_with_an_empty_seat_still_accepts_a_join() {
-        let mut m = mgr(&[1, 2, 3, 4, 5]);
-        for p in 1..=4 {
+        let mut m = mgr(&[1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        for p in 1..=8 {
             m.join(&format!("pad:{p}")).unwrap();
         }
-        assert_eq!(m.join("pad:5"), Err(SeatError::NoFreeSeat));
+        assert_eq!(m.join("pad:9"), Err(SeatError::NoFreeSeat));
         m.remove_device("pad:2");
-        assert_eq!(m.join("pad:5"), Ok(1));
+        assert_eq!(m.join("pad:9"), Ok(1));
     }
 
     #[test]
@@ -462,7 +463,7 @@ mod tests {
         assert_eq!(m.device("pad:1").unwrap().seat, None);
         assert_eq!(m.device("kbm:system").unwrap().seat, None);
         assert_eq!(m.leave(0), Err(SeatError::SeatEmpty(0)));
-        assert_eq!(m.leave(4), Err(SeatError::BadSeat(4)));
+        assert_eq!(m.leave(8), Err(SeatError::BadSeat(8)));
     }
 
     #[test]
@@ -522,8 +523,8 @@ mod tests {
         let mut m = mgr(&[1]);
         assert_eq!(m.swap(0, 1), Ok(())); // both empty
         assert_eq!(m.swap(2, 2), Ok(()));
-        assert_eq!(m.swap(0, 4), Err(SeatError::BadSeat(4)));
-        assert_eq!(m.swap(7, 0), Err(SeatError::BadSeat(7)));
+        assert_eq!(m.swap(0, 8), Err(SeatError::BadSeat(8)));
+        assert_eq!(m.swap(9, 0), Err(SeatError::BadSeat(9)));
     }
 
     #[test]
@@ -568,7 +569,7 @@ mod tests {
     #[test]
     fn assign_errors() {
         let mut m = mgr(&[1]);
-        assert_eq!(m.assign("pad:1", 4), Err(SeatError::BadSeat(4)));
+        assert_eq!(m.assign("pad:1", 8), Err(SeatError::BadSeat(8)));
         assert_eq!(m.assign("pad:9", 0), Err(SeatError::UnknownDevice("pad:9".into())));
     }
 

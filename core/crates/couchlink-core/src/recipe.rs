@@ -323,8 +323,8 @@ impl Recipe {
             return Err("game must not be empty".to_string());
         }
         let [min, max] = self.players;
-        if min < 1 || max > 4 || min > max {
-            return Err(format!("players [{min}, {max}] must satisfy 1 <= min <= max <= 4"));
+        if min < 1 || max > crate::MAX_SEATS as u8 || min > max {
+            return Err(format!("players [{min}, {max}] must satisfy 1 <= min <= max <= {}", crate::MAX_SEATS));
         }
         if self.launch.exe.trim().is_empty() {
             return Err("launch.exe must not be empty".to_string());
@@ -836,7 +836,8 @@ mod tests {
         assert!(broken(|v| v["id"] = json!("Bad Id")).contains("id"));
         assert!(broken(|v| v["id"] = json!("../x")).contains("id"));
         assert!(broken(|v| v["players"] = json!([3, 2])).contains("players"));
-        assert!(broken(|v| v["players"] = json!([1, 5])).contains("players"));
+        assert!(broken(|v| v["players"] = json!([1, 9])).contains("players"));
+        assert!(Recipe::parse(&{ let mut v = nitrox(); v["players"] = json!([2, 8]); v.to_string() }).is_ok(), "eight players fit");
         assert!(broken(|v| v["steam"] = json!("maybe")).contains("steam"));
         assert!(broken(|v| v["launch"]["exe"] = json!("")).contains("launch.exe"));
         assert!(broken(|v| v["launch"]["args"] = json!("$NOPE")).contains("$NOPE"));
@@ -1081,7 +1082,7 @@ mod tests {
         assert!(rich_broken(|v| v["registry"][0]["value"] = json!("$PLAYER")).contains("not a number"));
         assert!(rich_broken(|v| v["registry"][0]["per_seat"] = json!(false)).contains("per_seat"));
         assert!(rich_broken(|v| v["registry"][1]["key"] = json!("HKLM\\Software\\$SEAT")).contains("HKCU"));
-        assert!(rich_broken(|v| v["registry"][1]["seats"] = json!("5")).contains("registry"));
+        assert!(rich_broken(|v| v["registry"][1]["seats"] = json!("9")).contains("registry"));
         assert!(rich_broken(|v| v["registry"][2]["seats"] = json!("1")).contains("seats needs per_seat"));
         assert!(rich_broken(|v| v["registry"][0]["value"] = json!("$NOPE")).contains("$NOPE"));
         let r = Recipe::parse(&rich().to_string()).unwrap();

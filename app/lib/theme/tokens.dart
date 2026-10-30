@@ -60,7 +60,10 @@ class CouchTokens extends ThemeExtension<CouchTokens> {
     accent: Color(0xFF0A84FF),
     accentInk: Color(0xFFFFFFFF),
     glass: Color(0xB81C1D23),
-    seat: [Color(0xFF0A84FF), Color(0xFFFF6B5B), Color(0xFF30D158), Color(0xFFFFD60A)],
+    seat: [
+      Color(0xFF0A84FF), Color(0xFFFF6B5B), Color(0xFF30D158), Color(0xFFFFD60A),
+      Color(0xFFBF5AF2), Color(0xFF64D2FF), Color(0xFFFF9F0A), Color(0xFFFF375F),
+    ],
     ok: Color(0xFF30D158),
     warn: Color(0xFFFFB340),
     danger: Color(0xFFFF6B6B),
@@ -84,7 +87,10 @@ class CouchTokens extends ThemeExtension<CouchTokens> {
     accent: Color(0xFF007AFF),
     accentInk: Color(0xFFFFFFFF),
     glass: Color(0xBFFFFFFF),
-    seat: [Color(0xFF007AFF), Color(0xFFF2503F), Color(0xFF23A94A), Color(0xFFD9A400)],
+    seat: [
+      Color(0xFF007AFF), Color(0xFFF2503F), Color(0xFF23A94A), Color(0xFFD9A400),
+      Color(0xFFA144D6), Color(0xFF1E9FCF), Color(0xFFE08600), Color(0xFFE0304F),
+    ],
     ok: Color(0xFF23A94A),
     warn: Color(0xFFC97A00),
     danger: Color(0xFFD93A3A),

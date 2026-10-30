@@ -401,11 +401,11 @@ fn assemble(b: &mut Builder) -> Value {
         .or_else(|| b.meta.as_ref().map(|m| m.max_players as u64).filter(|n| *n > 0))
         .unwrap_or(2)
         .max(1);
-    // Couchlink seats at most four players on one PC; the handler's own limit is kept as a note.
-    if max_players > 4 {
-        b.note(format!("The handler allows up to {max_players} players; Couchlink seats four on one PC."));
+    // Couchlink seats at most eight players on one PC; the handler's own limit is kept as a note.
+    if max_players > 8 {
+        b.note(format!("The handler allows up to {max_players} players; Couchlink seats eight on one PC."));
     }
-    let max_players = max_players.min(4);
+    let max_players = max_players.min(8);
     let min_players = if max_players < 2 { 1 } else { 2 };
     recipe.insert("players".into(), json!([min_players, max_players]));
     recipe.insert("mode".into(), json!("instances"));

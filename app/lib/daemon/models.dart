@@ -182,7 +182,7 @@ class ScreenArrangement {
 class DaemonState {
   const DaemonState({
     this.devices = const [],
-    this.seats = const [null, null, null, null],
+    this.seats = const [null, null, null, null, null, null, null, null],
     this.displays = const [],
     this.screens = const [],
     this.layout = 'auto',

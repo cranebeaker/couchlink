@@ -64,8 +64,8 @@ pub fn validate(screens: &[Screen], occupied: &[bool]) -> Result<(), String> {
         if !s.on && !s.seats.is_empty() {
             return Err(format!("{} is off but has players", s.display));
         }
-        if s.seats.len() > 4 {
-            return Err(format!("{} has more than four players", s.display));
+        if s.seats.len() > crate::MAX_SEATS {
+            return Err(format!("{} has more than {} players", s.display, crate::MAX_SEATS));
         }
         for (i, (&seat, r)) in s.seats.iter().zip(&s.regions).enumerate() {
             let idx = seat as usize;

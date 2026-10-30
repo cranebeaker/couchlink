@@ -405,7 +405,7 @@ mod tests {
         assert_eq!(keys, ["dev", "devices", "displays", "layout", "screens", "seats"]);
         assert_eq!(s["layout"], "auto");
         assert_eq!(s["dev"], false);
-        assert_eq!(s["seats"], json!([null, null, null, null]));
+        assert_eq!(s["seats"], json!(vec![serde_json::Value::Null; crate::MAX_SEATS]));
         let kbm = &s["devices"][0];
         assert_eq!(
             kbm,

@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../daemon/models.dart';
+import '../daemon/fake_client.dart' show kMaxSeats;
 import '../layout/screen_layout.dart';
 import '../theme/tokens.dart';
 import 'app_state.dart';
@@ -353,7 +354,7 @@ class _DropHint extends StatelessWidget {
     final seat = ctl.dragging ?? ctl.picked!;
     final name = ctl.state.seats[seat]?.name ?? 'them';
     final here = edit.seats.contains(seat);
-    final full = !here && edit.seats.length >= 4;
+    final full = !here && edit.seats.length >= kMaxSeats;
     final text = full ? 'This screen is full' : here ? '$name is already here' : ctl.dragging != null ? 'Drop to add $name' : 'Put $name here';
     return IgnorePointer(
       child: Container(
@@ -645,7 +646,7 @@ class _AddPlayerButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.c;
-    final enabled = others.isNotEmpty && edit.seats.length < 4;
+    final enabled = others.isNotEmpty && edit.seats.length < kMaxSeats;
     return MenuAnchor(
       style: MenuStyle(
         backgroundColor: WidgetStatePropertyAll(c.pane),

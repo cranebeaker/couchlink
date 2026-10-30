@@ -257,7 +257,7 @@ fn metadata_only_gives_a_low_confidence_skeleton() {
     assert!(d.confidence <= 0.15, "{}", d.confidence);
     assert_eq!(d.recipe["source"], "splitscreenme:SXxys76eLF6BC36PF");
     assert_eq!(d.recipe["game"], "Subnautica");
-    assert_eq!(d.recipe["players"], serde_json::json!([2, 4]));
+    assert_eq!(d.recipe["players"], serde_json::json!([2, 5]));
     assert!(d.recipe["match"].get("exe").is_none());
     assert!(has_note(&d, "Only hub metadata"));
     assert!(has_note(&d, "ExecutableName"));
@@ -314,7 +314,7 @@ fn subnautica_nitrox() {
     assert_eq!(r["game"], "Subnautica Nitrox");
     assert_eq!(r["match"]["steamAppId"], 264710);
     assert_eq!(r["match"]["exe"], "Subnautica.exe");
-    assert_eq!(r["players"], serde_json::json!([2, 4]));
+    assert_eq!(r["players"], serde_json::json!([2, 5]));
     assert_eq!(r["steam"], "shared");
     assert_eq!(r["files"]["link"], "none"); // SymlinkGame = false
     assert_eq!(r["launch"]["env"]["SteamAppId"], "264710");
@@ -417,7 +417,7 @@ fn left_4_dead_2_args_and_mutex() {
     );
     assert!(has_note(&d, "2 variant(s)"));
     assert!(has_note(&d, "+cl_mouselook 1"));
-    assert_eq!(r["players"], serde_json::json!([2, 4]));
+    assert_eq!(r["players"], serde_json::json!([2, 8]));
     assert_eq!(strings(&r["files"]["copy"]), ["config.cfg", "video.txt", "debug.log", "360controller.cfg"]);
     assert_eq!(r["input"]["rawinput"], true);
     assert_eq!(r["window"]["title"], "Left 4 Dead 2 - Direct3D 9");
@@ -515,7 +515,7 @@ fn terraria_documents_saves_and_no_goldberg() {
     let r = &d.recipe;
     assert_eq!(r["steam"], "shared");
     assert_eq!(r["match"]["steamAppId"], 105600);
-    assert_eq!(r["players"], serde_json::json!([2, 4]));
+    assert_eq!(r["players"], serde_json::json!([2, 8]));
     // Documents config and the Players folder inside it collapse to the outer folder
     assert_eq!(strings(&r["files"]["saves"]), ["$DOCUMENTS/My Games/Terraria"]);
     assert_eq!(strings(&r["files"]["copy"]), ["steam_api.dll"]);
@@ -593,7 +593,7 @@ Game.SteamID = 0x10;
     assert_eq!(d.recipe["match"]["exe"], "after.exe");
     assert_eq!(d.recipe["match"]["steamAppId"], 16);
     assert_eq!(d.recipe["game"], "Unknown game"); // ternary is not evaluated
-    assert_eq!(d.recipe["players"], serde_json::json!([2, 4]));
+    assert_eq!(d.recipe["players"], serde_json::json!([2, 6]));
 }
 
 #[test]

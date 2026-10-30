@@ -32,9 +32,9 @@ pub use types::{Connection, Device, DeviceKind, Display, Family, Layout, Profile
 /// Protocol version spoken by this build.
 pub const PROTOCOL_VERSION: u32 = 1;
 /// Number of seats. Fixed by the protocol.
-pub const MAX_SEATS: usize = 4;
+pub const MAX_SEATS: usize = 8;
 /// Fixed seat colours, indexed by seat.
-pub const SEAT_COLORS: [&str; MAX_SEATS] = ["#0A84FF", "#FF6B5B", "#30D158", "#FFD60A"];
+pub const SEAT_COLORS: [&str; MAX_SEATS] = ["#0A84FF", "#FF6B5B", "#30D158", "#FFD60A", "#BF5AF2", "#64D2FF", "#FF9F0A", "#FF375F"];
 /// Longest allowed seat name, in characters.
 pub const MAX_NAME_CHARS: usize = 24;
 /// Id of the always-present keyboard and mouse device.

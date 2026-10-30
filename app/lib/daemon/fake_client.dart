@@ -10,7 +10,10 @@ import 'profile.dart';
 import 'sample_catalog.dart';
 import 'sample_games.dart';
 
-const List<String> kSeatColors = ['#0A84FF', '#FF6B5B', '#30D158', '#FFD60A'];
+const List<String> kSeatColors = ['#0A84FF', '#FF6B5B', '#30D158', '#FFD60A', '#BF5AF2', '#64D2FF', '#FF9F0A', '#FF375F'];
+
+/// Seats on one PC (the daemon's MAX_SEATS).
+const int kMaxSeats = 8;
 
 /// Sample state in the shape of the protocol's State object.
 Map<String, dynamic> sampleStateJson() => {
@@ -23,8 +26,7 @@ Map<String, dynamic> sampleStateJson() => {
       'seats': [
         {'name': 'Maya', 'color': kSeatColors[0], 'devices': ['pad:1']},
         {'name': 'Theo', 'color': kSeatColors[1], 'devices': ['pad:2']},
-        null,
-        null,
+        for (var i = 2; i < kMaxSeats; i++) null,
       ],
       'displays': [
         {'id': 'disp:1', 'name': 'DELL U2720Q', 'x': 0, 'y': 0, 'w': 2560, 'h': 1440, 'scale': 1.5, 'hz': 144, 'primary': true, 'used': true},
@@ -239,7 +241,7 @@ class FakeClient extends CouchClient {
 
   // ---- controller profiles, kept in memory
 
-  final List<Profile> _seatProfiles = List.generate(4, (_) => builtinProfiles().first);
+  final List<Profile> _seatProfiles = List.generate(kMaxSeats, (_) => builtinProfiles().first);
   final Map<String, Profile> _saved = {};
 
   /// Tests: the saved (non built-in) profiles.
@@ -253,7 +255,7 @@ class FakeClient extends CouchClient {
   /// Puts the seats' profile labels into the state again.
   void _relabel() {
     final seats = [
-      for (var i = 0; i < 4; i++) _state.seats[i] == null ? null : _seat(i, _state.seats[i]!.name, _state.seats[i]!.devices),
+      for (var i = 0; i < _state.seats.length; i++) _state.seats[i] == null ? null : _seat(i, _state.seats[i]!.name, _state.seats[i]!.devices),
     ];
     _set(_normalize(seats));
   }
@@ -280,7 +282,7 @@ class FakeClient extends CouchClient {
     var p = Profile.fromJson(profile).copyWith(builtin: false);
     if (builtinProfiles().any((b) => b.id == p.id)) p = p.copyWith(id: '${p.id}-seat$seat');
     _saved[p.id] = p;
-    for (var i = 0; i < 4; i++) {
+    for (var i = 0; i < _state.seats.length; i++) {
       if (_seatProfiles[i].id == p.id) _seatProfiles[i] = p;
     }
     _seatProfiles[seat] = p;
@@ -302,7 +304,7 @@ class FakeClient extends CouchClient {
   Future<String?> deleteProfile(String profileId) async {
     if (builtinProfiles().any((b) => b.id == profileId)) return 'built-in profiles cannot be deleted';
     if (_saved.remove(profileId) == null) return 'there is no saved profile "$profileId"';
-    for (var i = 0; i < 4; i++) {
+    for (var i = 0; i < _state.seats.length; i++) {
       if (_seatProfiles[i].id == profileId) _seatProfiles[i] = builtinProfiles().first;
     }
     _relabel();
@@ -395,7 +397,7 @@ class FakeClient extends CouchClient {
       if (s.seats.length != s.regions.length) return '${s.display}: seats and regions do not match.';
       if (!s.on && s.seats.isNotEmpty) return '${s.display} is off but has players.';
       for (final seat in s.seats) {
-        if (seat < 0 || seat > 3 || _state.seats[seat] == null) return 'Seat ${seat + 1} has no player.';
+        if (seat < 0 || seat >= _state.seats.length || _state.seats[seat] == null) return 'Seat ${seat + 1} has no player.';
         if (!seen.add(seat)) return 'Seat ${seat + 1} is on more than one screen.';
       }
     }
@@ -458,7 +460,7 @@ class FakeClient extends CouchClient {
     if (_state.device(device) == null) return 'Unknown device.';
     if (seat < 0 || seat > 3) return 'No such seat.';
     final seats = [..._state.seats];
-    for (var i = 0; i < 4; i++) {
+    for (var i = 0; i < _state.seats.length; i++) {
       final s = seats[i];
       if (s != null && s.devices.contains(device)) {
         final left = s.devices.where((d) => d != device).toList();
@@ -473,7 +475,7 @@ class FakeClient extends CouchClient {
 
   @override
   Future<String?> rename(int seat, String name) async {
-    final s = seat >= 0 && seat < 4 ? _state.seats[seat] : null;
+    final s = seat >= 0 && seat < _state.seats.length ? _state.seats[seat] : null;
     if (s == null) return 'That seat is free.';
     if (name.isEmpty || name.length > 24) return 'Names are 1 to 24 characters.';
     final seats = [..._state.seats];
@@ -484,7 +486,7 @@ class FakeClient extends CouchClient {
 
   @override
   Future<String?> identify(int seat) async {
-    final s = seat >= 0 && seat < 4 ? _state.seats[seat] : null;
+    final s = seat >= 0 && seat < _state.seats.length ? _state.seats[seat] : null;
     if (s == null) return 'That seat is free.';
     for (final d in s.devices) {
       _burst(d, 12);

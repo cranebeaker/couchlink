@@ -131,10 +131,15 @@ mod tests {
     fn seat_choices_round_trip() {
         let s = store("b");
         assert!(s.load_seats().iter().all(Option::is_none));
-        s.save_seats(&["default".into(), "shooter".into(), "default".into(), "mine".into()]).unwrap();
+        let mut picks: [String; couchlink_core::MAX_SEATS] = std::array::from_fn(|_| "default".to_string());
+        picks[1] = "shooter".into();
+        picks[3] = "mine".into();
+        picks[7] = "eighth".into();
+        s.save_seats(&picks).unwrap();
         let back = s.load_seats();
         assert_eq!(back[1].as_deref(), Some("shooter"));
         assert_eq!(back[3].as_deref(), Some("mine"));
+        assert_eq!(back[7].as_deref(), Some("eighth"));
         let _ = std::fs::remove_dir_all(s.dir.parent().unwrap());
     }
 }

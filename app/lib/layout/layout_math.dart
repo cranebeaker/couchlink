@@ -85,7 +85,9 @@ TilePlan tilePlan(Shape shape, List<int> seats) {
       return TilePlan(1, r, _pad(seats, r));
     case Shape.grid:
     case Shape.one:
-      return TilePlan(2, 2, _pad(seats, 4));
+      // Two by two up to four players, then two rows of up to four.
+      final c = n <= 4 ? 2 : (n + 1) ~/ 2;
+      return TilePlan(c, 2, _pad(seats, c * 2));
   }
 }
 
