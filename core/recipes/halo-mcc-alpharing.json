@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "id": "halo-mcc-alpharing",
+  "game": "Halo: The Master Chief Collection (AlphaRing split-screen)",
+  "match": { "steamAppId": 976730, "exe": "MCC/Binaries/Win64/MCC-Win64-Shipping.exe" },
+  "players": [1, 4],
+  "mode": "native",
+  "steam": "shared",
+  "present": "window",
+  "launch": {
+    "exe": "MCC/Binaries/Win64/MCC-Win64-Shipping.exe",
+    "args": "-no-eac -nosplash -windowed -ResX=$WIDTH -ResY=$HEIGHT"
+  },
+  "files": { "copy": [], "link": "none", "saves": [] },
+  "locks": [],
+  "input": { "xinput": false, "dinput": false, "rawinput": false },
+  "window": { "borderless": true, "settle_ms": 8000, "wait_ms": 180000 },
+  "requires": [
+    {
+      "file": "MCC/Binaries/Win64/WTSAPI32.dll",
+      "hint": "install the AlphaRing mod: put its WTSAPI32.dll in MCC/Binaries/Win64, next to MCC-Win64-Shipping.exe. In the game, press F4, add the players, give each one a controller, click Enable, then press F4 again to close it. Anti-cheat is off while it runs, so play the campaign or custom games, not online matchmaking."
+    }
+  ]
+}

@@ -30,6 +30,23 @@ bool before((double, double) a, (double, double) b) => a.$1 < b.$1 || (a.$1 == b
 
 void main() {
   group('Library', () {
+    testWidgets('the search box narrows every section to the games that match', (tester) async {
+      final fake = fastFake();
+      await pumpApp(tester, fake, view: AppView.library);
+      expect(byKey('game-l4d2'), findsOneWidget);
+      await tester.enterText(byKey('library-search'), 'dead 4');
+      await settle(tester);
+      expect(byKey('game-l4d2'), findsOneWidget, reason: 'every word matches, in any order');
+      expect(byKey('game-fnv'), findsNothing);
+      expect(byKey('section-installed'), findsNothing);
+      await tester.enterText(byKey('library-search'), 'zzz');
+      await settle(tester);
+      expect(find.textContaining('No game matches'), findsOneWidget);
+      await tester.enterText(byKey('library-search'), '');
+      await settle(tester);
+      expect(byKey('game-fnv'), findsOneWidget);
+    });
+
     testWidgets('lists the daemon games, installed first, the others dimmed and marked', (tester) async {
       final fake = fastFake();
       await pumpApp(tester, fake, view: AppView.library);
@@ -120,6 +137,39 @@ void main() {
     await tester.tap(byKey('game-try-steam-4000'));
     await settle(tester);
     expect(find.textContaining('own Steam account'), findsWidgets);
+  });
+
+  testWidgets('Add a game takes any program, shows it under Try it, and Remove forgets it', (tester) async {
+    final fake = fastFake(games: const []);
+    await pumpApp(tester, fake, view: AppView.library, size: const Size(1400, 1300));
+    final ui = scopeOf(tester).ui;
+    String? next;
+    ui.pickGame = () async => next;
+
+    // Cancelled: nothing happens.
+    await tester.tap(byKey('add-game'));
+    await settle(tester);
+    expect(fake.addedGames, isEmpty);
+
+    next = 'D:/Games/Old Game/OldGame.exe';
+    await tester.tap(byKey('add-game'));
+    await settle(tester);
+    expect(fake.addedGames, ['D:/Games/Old Game/OldGame.exe']);
+    expect(find.descendant(of: byKey('toast'), matching: find.text('Game added')), findsOneWidget);
+    expect(find.descendant(of: byKey('section-try'), matching: find.text('1 game')), findsOneWidget);
+    expect(byKey('game-try-own-1'), findsOneWidget);
+    expect(find.text('OldGame'), findsWidgets, reason: 'the added game is the one picked');
+
+    await tester.tap(byKey('remove-game'));
+    await settle(tester);
+    expect(byKey('game-try-own-1'), findsNothing);
+    expect(find.descendant(of: byKey('toast'), matching: find.text('Removed from Couchlink. Its files stay where they are.')), findsOneWidget);
+
+    // A daemon error shows in its own words.
+    next = 'nowhere';
+    await tester.tap(byKey('add-game'));
+    await settle(tester);
+    expect(find.descendant(of: byKey('toast'), matching: find.text('nowhere does not exist')), findsOneWidget);
   });
 
   group('missing Steam games', () {
@@ -273,6 +323,40 @@ void main() {
       expect(fake.session.state, 'idle');
       expect(find.text('Play with 2'), findsOneWidget);
       await tester.pump(const Duration(seconds: 3));
+    });
+
+    testWidgets('every error offers the logs: Copy log puts them on the clipboard', (tester) async {
+      String? copied;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') copied = (call.arguments as Map)['text'] as String?;
+        return null;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+
+      // A copy that fails: the card has both log buttons.
+      final fake = fastFake()..launchFailure = 'exited with code 1 before showing a window';
+      await pumpApp(tester, fake, view: AppView.library);
+      await tester.tap(byKey('play'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+      await tester.pump(_step * 2);
+      await settle(tester);
+      expect(byKey('launch-open-logs'), findsOneWidget);
+      await tester.tap(byKey('launch-copy-log'));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(copied, contains('exited with code 1 before showing a window'));
+      expect(find.descendant(of: byKey('toast'), matching: find.text('Log copied. Paste it into your message.')), findsOneWidget);
+      await tester.tap(byKey('launch-close'));
+      await settle(tester);
+
+      // A daemon error toast has them too, and a plain toast does not.
+      fake.startError = 'the game folder is missing';
+      await tester.tap(byKey('play'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.descendant(of: byKey('toast'), matching: byKey('toast-copy-log')), findsOneWidget);
+      expect(find.descendant(of: byKey('toast'), matching: byKey('toast-open-logs')), findsOneWidget);
+      await tester.pump(const Duration(seconds: 16));
     });
 
     testWidgets('an old failure does not show on the next launch', (tester) async {

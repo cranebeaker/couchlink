@@ -3,7 +3,7 @@
 
 use super::copies;
 use super::edits::{save_redirects, SeatFiles};
-use super::launch::{job::Job, wait_for, LaunchSpec, PORT_WAIT};
+use super::launch::{job::Job, wait_for, LaunchSpec, LinuxSeat, PORT_WAIT};
 use super::window::{close_windows, find_window_process, kill_process, process_alive, Placer};
 use super::{Deps, PrepareCtx};
 use couchlink_core::recipe::{expand, split_args, LinkMode, SteamMode, Wait};
@@ -34,6 +34,8 @@ pub struct Plan {
     pub state_dir: PathBuf,
     /// The value of every option of the recipe: what the player chose, else the default.
     pub options: BTreeMap<String, String>,
+    /// Frames per second the copies are held to: the player's limit, else the recipe's (`window.fps_limit`).
+    pub fps_limit: Option<u32>,
 }
 
 /// Called with the new picture every time something changes.
@@ -63,6 +65,12 @@ struct SeatRun {
     window_pid: Option<u32>,
     /// Keeps that process in a job of its own so it ends with the session.
     followed: Option<Job>,
+    /// The seat's sandbox on Linux (its namespace and layered copy); it ends when this is dropped.
+    #[cfg(target_os = "linux")]
+    ns: Option<super::ns_linux::SeatNs>,
+    /// The seat's virtual pads on Linux, which its copy plays with: one, or every player's for a native game.
+    #[cfg(target_os = "linux")]
+    vpads: Vec<super::uipad_linux::PadGuard>,
 }
 
 struct Run {
@@ -105,6 +113,10 @@ pub fn run(plan: Plan, deps: Deps, stop: Arc<AtomicBool>, report: Report) {
             launched_at: SystemTime::now(),
             window_pid: None,
             followed: None,
+            #[cfg(target_os = "linux")]
+            ns: None,
+            #[cfg(target_os = "linux")]
+            vpads: Vec::new(),
         })
         .collect();
     let mut r = Run { plan, deps, stop, report, info, journal, seats, helpers: Vec::new(), placer: Placer::new(), last_maintain: Instant::now() };
@@ -227,29 +239,63 @@ impl Run {
         let exclude = copies::Excludes::new(&recipe.files.exclude_files, &recipe.files.exclude_dirs);
         for idx in 0..self.seats.len() {
             self.set_step(idx, Step::Copy, None);
-            if recipe.files.link == LinkMode::None {
-                continue;
-            }
             let seat = self.seats[idx].plan.seat;
+            // On Linux every seat gets a sandbox of its own, with its copy layered over the install (copies_linux.rs).
+            #[cfg(target_os = "linux")]
+            {
+                // The copy plays with a virtual pad each player's controller drives through their profile (one player,
+                // or every player of a native game, in seat order); without /dev/uinput it gets the real controllers.
+                let owned: Vec<(String, usize)> = self.seats[idx].plan.player_pads().into_iter().map(|(d, s)| (d.to_string(), s)).collect();
+                let mut pads = if owned.is_empty() { super::hook::pad_nodes(&self.seats[idx].plan.devices) } else { Vec::new() };
+                for (dev, player) in owned {
+                    match super::uipad_linux::create_in(&dev, player, seat) {
+                        Ok(g) => {
+                            pads.push(g.node.display().to_string());
+                            self.seats[idx].vpads.push(g);
+                        }
+                        Err(e) => {
+                            eprintln!("couchlinkd: seat {player}: {e}; the copy gets the real controller, without pad remaps");
+                            pads.extend(super::hook::pad_nodes(std::slice::from_ref(&dev)));
+                            self.seats[idx].vpads.push(super::uipad_linux::keys_only(&dev, player, seat));
+                        }
+                    }
+                }
+                let layered = recipe.files.link != LinkMode::None;
+                match super::copies_linux::prepare_seat(&self.plan.game_dir, &instances, seat, layered, &copy, &exclude, &pads, &mut self.journal, &self.stop) {
+                    Ok((dir, ns)) => {
+                        self.seats[idx].dir = dir;
+                        self.seats[idx].ns = ns;
+                    }
+                    Err(_) if self.stopped() => return Ok(()),
+                    Err(e) => return Err(self.seat_failed(idx, Step::Copy, e)),
+                }
+            }
             // On macOS every file of a copy is an APFS clone and symbolic links are kept (copies_macos.rs).
             #[cfg(target_os = "macos")]
             {
+                if recipe.files.link == LinkMode::None {
+                    continue;
+                }
                 let _ = &copy;
                 match super::copies_macos::sync(&self.plan.game_dir, &instances, seat, &exclude, &self.stop) {
                     Ok(_) => self.seats[idx].dir = copies::seat_dir(&instances, seat),
                     Err(_) if self.stopped() => return Ok(()),
                     Err(e) => return Err(self.seat_failed(idx, Step::Copy, e)),
                 }
-                continue;
             }
-            #[cfg(not(target_os = "macos"))]
-            match copies::sync(&self.plan.game_dir, &instances, seat, &copy, &exclude, &self.stop) {
-                Ok(_) => self.seats[idx].dir = copies::seat_dir(&instances, seat),
-                Err(e) if self.stopped() => {
-                    let _ = e;
-                    return Ok(());
+            #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+            {
+                if recipe.files.link == LinkMode::None {
+                    continue;
                 }
-                Err(e) => return Err(self.seat_failed(idx, Step::Copy, e)),
+                match copies::sync(&self.plan.game_dir, &instances, seat, &copy, &exclude, &self.stop) {
+                    Ok(_) => self.seats[idx].dir = copies::seat_dir(&instances, seat),
+                    Err(e) if self.stopped() => {
+                        let _ = e;
+                        return Ok(());
+                    }
+                    Err(e) => return Err(self.seat_failed(idx, Step::Copy, e)),
+                }
             }
         }
         Ok(())
@@ -404,6 +450,8 @@ impl Run {
             saves,
             hook_children: false,
             run_as: None,
+            linux: None,
+            log: seat.map(|i| crate::logfile::copy_log(&recipe.id, self.seats[i].plan.seat)),
         })
     }
 
@@ -469,6 +517,8 @@ impl Run {
             saves: Vec::new(),
             hook_children: false,
             run_as: None,
+            linux: None,
+            log: None,
         };
         let launched = self.deps.launcher.launch(&spec)?;
         self.helpers.push(launched.child);
@@ -491,9 +541,18 @@ impl Run {
         self.set_step(idx, Step::Launch, None);
         let vars = self.vars(idx).map_err(|e| self.seat_failed(idx, Step::Launch, e))?;
         let dir = self.seats[idx].dir.clone();
-        let mut spec = self.spec(Some(idx), &recipe.launch.exe, &recipe.launch.args, &dir, &vars).map_err(|e| self.seat_failed(idx, Step::Launch, e))?;
+        let (exe, args) = launch_line(recipe, self.seats[idx].plan.seat);
+        let mut spec = self.spec(Some(idx), exe, args, &dir, &vars).map_err(|e| self.seat_failed(idx, Step::Launch, e))?;
+        spec.linux = self.linux_seat(idx, &vars).map_err(|e| self.seat_failed(idx, Step::Launch, format!("linux: {e}")))?;
         let prep = &self.seats[idx].prep;
         spec.env.extend(prep.env.clone());
+        // The FPS limit for games that render through DXVK or VKD3D (Proton, and those builds on Windows); on Linux
+        // gamescope holds every game to it as well (launch_linux.rs). The recipe's own value wins.
+        if let Some(fps) = self.plan.fps_limit {
+            for var in ["DXVK_FRAME_RATE", "VKD3D_FRAME_RATE"] {
+                spec.env.entry(var.to_string()).or_insert_with(|| fps.to_string());
+            }
+        }
         // A recipe whose window belongs to another exe, or a loader that starts the game, runs through a launcher.
         spec.hook_children = recipe.window.exe.is_some() || prep.follow.is_some();
         spec.run_as = prep.run_as.clone();
@@ -559,6 +618,30 @@ impl Run {
         }
         self.set_step(idx, Step::Running, None);
         Ok(())
+    }
+
+    /// What the copy needs on Linux (none elsewhere): the recipe's `linux` settings expanded for this seat.
+    fn linux_seat(&self, idx: usize, vars: &BTreeMap<String, String>) -> Result<Option<LinuxSeat>, String> {
+        if !cfg!(target_os = "linux") {
+            return Ok(None);
+        }
+        let recipe = &self.plan.recipe;
+        let mut opts = recipe.linux.clone().unwrap_or_default();
+        opts.env = opts.env.iter().map(|(k, v)| Ok((k.clone(), expand(v, vars)?))).collect::<Result<_, String>>()?;
+        opts.gamescope_args = expand(&opts.gamescope_args, vars)?;
+        let s = &self.seats[idx];
+        Ok(Some(LinuxSeat {
+            game_id: opts.game_id(recipe.matching.steam_app_id),
+            opts,
+            rect: s.plan.rect,
+            borderless: recipe.window.borderless,
+            fps_limit: self.plan.fps_limit,
+            data_dir: self.plan.state_dir.join("instances").join(&recipe.id).join(".seats").join(s.plan.seat.to_string()),
+            #[cfg(target_os = "linux")]
+            sandbox_pid: s.ns.as_ref().map(|n| n.pid),
+            #[cfg(not(target_os = "linux"))]
+            sandbox_pid: None,
+        }))
     }
 
     /// For `window.exe`: find the process that owns the seat's window and take it into a job of its own, so
@@ -729,6 +812,19 @@ impl Run {
         self.seats.clear();
         self.helpers.clear();
     }
+}
+
+/// The program and arguments seat `seat`'s copy starts: the recipe's `linux.exe` (and `linux.args`) on Linux when it
+/// has one, and the seat's own `launch.seat_args` when the recipe has some for it.
+fn launch_line(recipe: &Recipe, seat: usize) -> (&str, &str) {
+    let args = recipe.launch.args_for(seat);
+    if cfg!(target_os = "linux")
+        && let Some(l) = &recipe.linux
+        && let Some(exe) = &l.exe
+    {
+        return (exe, l.args.as_deref().unwrap_or(args));
+    }
+    (&recipe.launch.exe, args)
 }
 
 /// A path from a recipe: absolute as it is, relative to `dir` otherwise.

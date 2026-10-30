@@ -10,6 +10,7 @@ pub mod process;
 pub mod profile;
 pub mod protocol;
 pub mod recipe;
+pub mod recipe_linux;
 pub mod recipe_parts;
 pub mod screens;
 pub mod seats;

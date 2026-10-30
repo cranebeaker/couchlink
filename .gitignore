@@ -14,6 +14,7 @@ target-*/
 
 # Hub handler scripts are third-party work: local test fixtures only, never published
 /core/crates/couchlink-nucleus/tests/fixtures/
+/.tmp/
 
 # Python bytecode (holds the full source path)
 __pycache__/

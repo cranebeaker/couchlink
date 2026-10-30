@@ -181,7 +181,20 @@ pub fn prepare_full(
             find_steam_dlls(copy_dir, 0, &mut dlls)?;
             let use_sc = wants_steamclient(&dlls, opts);
             if !use_sc && dlls.is_empty() {
-                return Err(SteamError::NoSteamApiDll(copy_dir.to_path_buf()));
+                // A native Linux game: gbe_fork's Linux build in place of its libsteam_api.so.
+                let mut sos = Vec::new();
+                find_steam_sos(copy_dir, 0, &mut sos)?;
+                if sos.is_empty() {
+                    return Err(SteamError::NoSteamApiDll(copy_dir.to_path_buf()));
+                }
+                let files = crate::goldberg_linux::ensure_goldberg_linux(cache_dir)?;
+                if let Err(e) = prepare_native(copy_dir, seat, &files, opts, &mut out.undos) {
+                    let _ = undo_all(&out.undos);
+                    return Err(e);
+                }
+                out.env = app_id_env(app_id);
+                out.notes.push("Steam emulator: libsteam_api.so replaced".to_string());
+                return Ok(out);
             }
             if use_sc && opts.game_launch.is_none() {
                 return Err(SteamError::Unsupported(
@@ -370,6 +383,41 @@ fn write_settings(
         let saves = dll_dir.join(SAVES_DIR);
         std::fs::create_dir_all(&saves).map_err(|e| SteamError::io(format!("creating {}", saves.display()), e))?;
     }
+    Ok(())
+}
+
+/// Native Linux games: each `libsteam_api.so` in the copy is replaced by gbe_fork's library of the same bitness, with
+/// the seat's `steam_settings` beside it.
+pub fn prepare_native(copy_dir: &Path, seat: &SeatSteam, files: &crate::goldberg_linux::LinuxFiles, opts: &PrepareOptions, undos: &mut Vec<Undo>) -> Result<()> {
+    let app_ini = configs_app_ini(&dlc_entries(&opts.dlc_source, seat.app_id, &opts.goldberg.dlc));
+    let mut sos = Vec::new();
+    find_steam_sos(copy_dir, 0, &mut sos)?;
+    for so in sos {
+        let src = if crate::goldberg_linux::elf_is_64(&so)? { &files.so_x64 } else { &files.so_x86 };
+        place_file_from(&so, src, undos)?;
+        write_settings(so.parent().unwrap_or(copy_dir), seat, opts, &app_ini, None, undos)?;
+    }
+    Ok(())
+}
+
+/// Every libsteam_api.so under `dir` (no symlinks followed).
+fn find_steam_sos(dir: &Path, depth: u32, out: &mut Vec<PathBuf>) -> Result<()> {
+    if depth > 12 {
+        return Ok(());
+    }
+    let rd = std::fs::read_dir(dir).map_err(|e| SteamError::io(format!("reading {}", dir.display()), e))?;
+    for e in rd.flatten() {
+        let Ok(ft) = e.file_type() else { continue };
+        if ft.is_symlink() {
+            continue;
+        }
+        if ft.is_dir() {
+            find_steam_sos(&e.path(), depth + 1, out)?;
+        } else if ft.is_file() && e.file_name().to_string_lossy() == "libsteam_api.so" {
+            out.push(e.path());
+        }
+    }
+    out.sort();
     Ok(())
 }
 
@@ -1127,5 +1175,34 @@ mod tests {
         assert!(err.user_message().contains("antivirus"));
         assert_eq!(snapshot(&sc.copy), before);
         std::fs::remove_dir_all(&sc.tmp).unwrap();
+    }
+
+    /// A native Linux game: each libsteam_api.so becomes gbe_fork's of the same bitness, with the seat's settings
+    /// beside it, and the journal's undo puts the game's own back.
+    #[test]
+    fn native_libraries_are_swapped_by_bitness_and_undone() {
+        use crate::goldberg_linux::tests::elf;
+        let tmp = std::env::temp_dir().join(format!("couchlink-native-gbe-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let (copy, lib) = (tmp.join("copy"), tmp.join("gbe"));
+        for d in [copy.join("lib64"), copy.join("lib32"), lib.join("x64"), lib.join("x32")] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let (own64, own32) = ([elf(true), b"OWN".to_vec()].concat(), [elf(false), b"OWN".to_vec()].concat());
+        std::fs::write(copy.join("lib64/libsteam_api.so"), &own64).unwrap();
+        std::fs::write(copy.join("lib32/libsteam_api.so"), &own32).unwrap();
+        let files = crate::goldberg_linux::LinuxFiles { dir: lib.clone(), so_x64: lib.join("x64/libsteam_api.so"), so_x86: lib.join("x32/libsteam_api.so") };
+        std::fs::write(&files.so_x64, b"GBE64").unwrap();
+        std::fs::write(&files.so_x86, b"GBE32").unwrap();
+        let mut undos = Vec::new();
+        prepare_native(&copy, &seat(1, 0), &files, &t_opts(), &mut undos).unwrap();
+        assert_eq!(std::fs::read(copy.join("lib64/libsteam_api.so")).unwrap(), b"GBE64");
+        assert_eq!(std::fs::read(copy.join("lib32/libsteam_api.so")).unwrap(), b"GBE32");
+        assert!(std::fs::read_to_string(copy.join("lib64/steam_settings/configs.user.ini")).unwrap().contains("account_name=Player1"));
+        undo_all(&undos).unwrap();
+        assert_eq!(std::fs::read(copy.join("lib64/libsteam_api.so")).unwrap(), own64);
+        assert_eq!(std::fs::read(copy.join("lib32/libsteam_api.so")).unwrap(), own32);
+        assert!(!copy.join("lib64/steam_settings").exists());
+        std::fs::remove_dir_all(&tmp).unwrap();
     }
 }

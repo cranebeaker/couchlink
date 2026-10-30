@@ -8,14 +8,14 @@ with it. Sources are listed at the end; numbers in brackets point there.
 
 | Part | State | Tested how |
 |---|---|---|
-| Daemon builds and runs, protocol, seats, catalog | works | `cargo test --workspace` (integration test: 102 checks) |
+| Daemon builds and runs, protocol, seats, catalog | works | `cargo test --workspace` (374 tests; integration test: 102 checks) |
 | State folder `~/Library/Application Support/Couchlink` | works | unit test, and the app and daemon find each other |
 | Display list (CoreGraphics) | works | integration display checks; a built-in Retina display reports 3024x1964, scale 2, 120 Hz |
 | Copies (APFS clones, symbolic links kept) | works | unit tests with an app bundle and a framework |
 | Launching (process groups, `.app` bundles) | works | unit tests: a copy's children die with it; a bundle starts its program |
 | Steam library scan (`~/Library/Application Support/Steam`) | works | a Mac game installed through Steam shows up as a "Try it" entry |
 | Each copy sees only its own controller and keyboard (native games that load the input library) | works for the mechanism | automated test with two copies of a probe program, fed by the daemon's routing (see Testing) |
-| Window placement (Accessibility API) | written, not tested end to end | an opt-in test places a real window and restores it; it needs the Accessibility permission and has not run (see Testing) |
+| Window placement (Accessibility API) | works | opt-in test with the permission granted: a real window placed on each quarter of a four-player split, every side checked, then put back |
 | Keyboard and mouse listener with seizing (IOKit HID) | written, not tested with hardware | needs Input Monitoring and a person pressing keys |
 | Windows games through Wine | launches through Wine with one prefix per seat; input isolation not done | unit test of the error when Wine is missing |
 | Flutter app | builds (`flutter build macos`), `flutter test` passes, starts the daemon | started once from the build folder |
@@ -116,6 +116,17 @@ biggest standard window from `AXWindows`, then `AXPosition` and `AXSize` [5]. Po
 the top left of the main display [5]. The original frame is kept and put back at the end. A window in native full
 screen is taken out of it first. Calls to a hung game give up after half a second.
 
+Two things macOS does, found by testing with real windows:
+
+- It refuses a size that would push the window past the bottom of the screen from where the window is now, and a
+  position that would do the same with its current size. So the frame is set size, position, size.
+- It never lets a titled window sit under the menu bar: a window asked to go to y=0 lands just below it, and a top
+  row would overlap the bottom row. On a display that shows a menu bar the whole split is therefore fitted into the
+  area below it (the menu bar's height comes from the window list, which needs no permission): every region keeps
+  its share of the height, and nothing overlaps. On a 14-inch MacBook Pro the menu bar is 33 points, so a four-way
+  split gets windows of 756 x 474 points instead of 756 x 491. A display without a menu bar (a second display, or
+  an auto-hidden menu bar) uses its full height. Windows may go under the Dock.
+
 The protocol speaks physical pixels. A display's size in pixels is its size in points times its backing scale; its
 origin is its point origin times the largest scale of any display, so displays with different scales never overlap in
 pixel space (`displays_macos.rs`). Placement converts a region back through the display it lies on.
@@ -181,9 +192,11 @@ script). Any hit stops the build.
   and sees no fed controller.
   What it does not prove: that a particular physical controller or keyboard is read correctly (no person and no
   hardware take part), and that a given commercial game honours the library.
-- Window placement: `cargo test -p couchlinkd -- --ignored placing_a_window` opens a window, places it on the bottom
-  left quarter of the main display, checks its frame and puts it back. It needs the Accessibility permission for the
-  program that runs the tests, so it is marked ignored and has not been run for this port.
+- Window placement: `cargo test -p couchlinkd -- --ignored placing_a_window` opens a window, places it on each quarter
+  of a four-player split of the main display, checks all four sides each time (within 2 points; macOS rounds to
+  whole points) and puts it back. It needs the Accessibility permission for the program that runs the tests, so it
+  is marked ignored; it passed with the permission granted. When the tests run inside another program (an editor,
+  the Claude app), that program's own engine may need the permission rather than the app itself.
 - `flutter test` and `flutter build macos`.
 - The Windows session checks in the integration test (testgame.exe windows, registry edits) are skipped on macOS.
 

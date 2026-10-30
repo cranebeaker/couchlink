@@ -15,6 +15,7 @@ pub mod accounts;
 pub mod dlc;
 pub mod error;
 pub mod goldberg;
+pub mod goldberg_linux;
 pub mod interfaces;
 pub mod library;
 #[cfg(target_os = "macos")]
@@ -26,7 +27,7 @@ pub mod steamclient;
 pub mod vdf;
 
 pub use accounts::{
-    AccountsConfig, LaunchedAs, Step, accounts_apply, accounts_launch, accounts_plan, accounts_ready, accounts_remove,
+    AccountsConfig, LaunchedAs, Step, accounts_apply, accounts_home, accounts_launch, accounts_plan, accounts_ready, accounts_remove,
     accounts_start_steam, accounts_steam_running, merge_env, seat_config,
 };
 pub use dlc::{DlcEntry, DlcSource, dlc_entries, installed_dlc_ids};

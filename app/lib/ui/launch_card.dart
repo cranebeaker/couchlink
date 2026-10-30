@@ -38,7 +38,7 @@ Future<void> playGame(BuildContext context, LibraryGame game) async {
   }
   final err = await scope.client.startSession(game.recipe);
   if (err != null) {
-    scope.toaster.show(err, long: true);
+    scope.toaster.show(err, error: true);
     return;
   }
   scope.ui.openLaunch();
@@ -377,6 +377,11 @@ class _Failed extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
+            // What went wrong is in the logs: one click to put them on the clipboard, or to open their folder.
+            CButton(key: const ValueKey('launch-copy-log'), label: t('Copy log'), small: true, onTap: () => copyLog(scope)),
+            const SizedBox(width: 8),
+            CButton(key: const ValueKey('launch-open-logs'), label: t('Open log folder'), small: true, onTap: () => openLogFolder(scope)),
+            const Spacer(),
             CButton(
               key: const ValueKey('launch-close'),
               label: t('Close'),

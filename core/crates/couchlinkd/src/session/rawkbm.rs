@@ -465,6 +465,39 @@ pub fn attach_shared(name: &str, devices: &[String], share_with: Option<&str>) -
     Ok(KbmGuard { id, name: name.to_string() })
 }
 
+/// The device id a seat's pad-made keys and mouse input carry in its feed.
+pub const PAD_KBM_DEVICE: &str = "pad-kbm";
+
+/// A feed for a seat whose pad sends keys or mouse input through its profile (a seat without a keyboard or mouse of
+/// its own). `push_pad` writes into it.
+pub fn attach_pad(name: &str, share_with: Option<&str>) -> Result<KbmGuard, String> {
+    let feed = KbmFeed::create_shared(name, share_with).map_err(|e| format!("cannot create the keyboard and mouse feed: {e}"))?;
+    let mut reg = registry();
+    reg.next_seat_id += 1;
+    let id = reg.next_seat_id;
+    reg.seats.push(Seat { id, name: name.to_string(), feed, devices: vec![PAD_KBM_DEVICE.to_string()] });
+    reg.update_handles();
+    Ok(KbmGuard { id, name: name.to_string() })
+}
+
+/// Input a seat's pad made through its profile, into the feed named `name` (its first device's slot).
+pub fn push_pad(name: &str, inputs: &[Input]) {
+    let mut reg = registry();
+    let Some(seat) = reg.seats.iter_mut().find(|s| s.name == name) else { return };
+    for input in inputs {
+        match *input {
+            Input::Key { vk, scan, flags } => seat.feed.push_key(0, vk, scan, flags),
+            Input::Mouse { dx, dy, flags, wheel } => seat.feed.push_mouse(0, dx, dy, flags, wheel),
+        }
+    }
+}
+
+/// Events written to the feed named `name` so far (tests).
+#[cfg(test)]
+pub fn feed_head(name: &str) -> Option<u32> {
+    registry().seats.iter().find(|s| s.name == name).map(|s| s.feed.head())
+}
+
 /// Current fake cursor of an attached seat as its copy reports it: client position, whether the game shows it.
 pub fn seat_cursor(name: &str) -> Option<(i32, i32, bool)> {
     registry().seats.iter().find(|s| s.name == name).map(|s| s.feed.cursor())
@@ -477,15 +510,23 @@ pub fn start() -> Result<(), String> {
     {
         win::start()
     }
+    #[cfg(target_os = "linux")]
+    {
+        linux::start()
+    }
     #[cfg(target_os = "macos")]
     {
         mac::start()
     }
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
     {
-        Err("own keyboards and mice per seat are only available on Windows and macOS".to_string())
+        Err("own keyboards and mice per seat are only available on Windows, Linux and macOS".to_string())
     }
 }
+
+#[cfg(target_os = "linux")]
+#[path = "rawkbm_linux.rs"]
+pub mod linux;
 
 // ---------------------------------------------------------------------------------------------- windows
 
@@ -1027,6 +1068,8 @@ mod tests {
         test_reset();
     }
 
+    // The feed is shared memory read by the Windows hook.
+    #[cfg(windows)]
     #[test]
     fn attached_devices_feed_their_seat_and_do_not_join() {
         let _l = test_lock();

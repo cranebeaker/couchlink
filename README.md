@@ -40,7 +40,8 @@ way the game already supports: LAN, a co-op mod's server, or Steam. Any game tha
 - One Steam account is enough: every copy runs under yours, and Steam-only co-op games get a stand-in profile per
   copy (Goldberg emulator).
 - Want each player on their own Steam account? One click on their seat, sign in once.
-- Every other game on your PC shows up under "Try it", with safe defaults.
+- Every other game on your PC shows up under "Try it", with safe defaults: Steam, GOG, Epic (and Heroic on Linux), or
+  any game folder of your own you add in the Library.
 - Game copies take no extra disk space, and saves stay per player.
 - New co-op recipes sync into the app on their own, signed.
 
@@ -49,15 +50,19 @@ way the game already supports: LAN, a co-op mod's server, or Steam. Any game tha
   outside. Each copy sees only its own controller through XInput, DirectInput, Raw Input and HID.
 - Everything Couchlink changes on your PC is written to a journal first and put back when you stop, also after a
   crash.
-- In English and Russian: the app follows your Windows language, and the sidebar has an EN / RU switch.
+- In English and Russian: the app follows your system's language, and Settings (the cog at the bottom of the sidebar)
+  has an EN / RU switch.
 
 ## Get it
 
 | Platform | Status |
 |---|---|
 | Windows 10 and 11 (64-bit) | [Releases](https://github.com/cranebeaker/couchlink/releases): unzip, run `couchlink.exe` |
-| Linux | In the works |
+| Linux (64-bit) | [Releases](https://github.com/cranebeaker/couchlink/releases): unpack the `.tar.gz`, run `./couchlink`. Needs nothing beyond a Steam desktop; gamescope (a window per player, a keyboard and mouse per player) is recommended. `LINUX.txt` in the download says what each optional part adds |
 | macOS 12 and later | Preview, build from source: what works and what cannot is in [`docs/macos.md`](docs/macos.md) |
+
+The app opens in your system's language (English or Russian). To switch, open Settings (the cog at the bottom of the
+sidebar) and pick EN or RU under Language.
 
 Some antivirus tools are wary of any program that gives games their own controllers. Couchlink is open source and
 built from this repo; if your antivirus complains, tell us on the Discord.
@@ -88,7 +93,7 @@ cd core && cargo build --release -p couchlinkd
 cd ../app && flutter build windows --release
 ```
 
-`python -I tools/release/package.py --version 0.1.0` builds the release zip from a neutral folder and checks every file
+`python -I tools/release/package.py --version 0.1.1` builds the release zip from a neutral folder and checks every file
 before writing it. Tests: `cd core && cargo test --workspace` and `cd app && flutter test`.
 
 macOS, with Rust, Flutter, CMake and the Xcode command line tools:
@@ -136,16 +141,21 @@ Couchlink запускает отдельную копию игры для ка�
 - Хватит одного аккаунта Steam: все копии работают под вашим, а игры с кооперативом только через Steam получают
   отдельный профиль на каждую копию (эмулятор Goldberg).
 - Хотите, чтобы у каждого игрока был свой аккаунт Steam? Один клик по его месту и один вход.
-- Все остальные игры на вашем ПК появляются в разделе «Try it» с безопасными настройками.
+- Все остальные игры на вашем ПК появляются в разделе «Try it» с безопасными настройками: Steam, GOG, Epic (и Heroic
+  на Linux) или любая папка с игрой, которую вы добавите в библиотеке.
 - Копии игры не занимают лишнего места на диске, сохранения у каждого игрока свои.
 - Новые кооп-рецепты сами подтягиваются в приложение, с подписью.
-- Приложение на русском: язык берётся из Windows, а в боковой панели есть переключатель EN / RU.
+- Приложение на русском: язык берётся из системы, а в настройках (шестерёнка внизу боковой панели) есть
+  переключатель EN / RU.
 
 **Скачать**
 - Windows 10 и 11 (64-бит): [Releases](https://github.com/cranebeaker/couchlink/releases), распакуйте и запустите
   `couchlink.exe`.
+- Linux (64-бит): [Releases](https://github.com/cranebeaker/couchlink/releases), распакуйте `.tar.gz` и запустите
+  `./couchlink`. Кроме Steam ничего не нужно; gamescope (своё окно и своя клавиатура с мышью у каждого игрока) рекомендуется.
 - macOS: предварительная версия, сборка из исходников, подробности в [`docs/macos.md`](docs/macos.md).
-- Linux: в работе.
+- Как включить русский: если система на русском, приложение сразу откроется на русском. Если нет, нажмите
+  шестерёнку внизу боковой панели и выберите RU в разделе «Язык».
 
 **Для разработчиков**
 

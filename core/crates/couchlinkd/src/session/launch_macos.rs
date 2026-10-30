@@ -142,7 +142,8 @@ impl Launcher for MacLauncher {
             }
             Command::new(&exe)
         };
-        cmd.args(&spec.args).envs(&env).current_dir(&spec.cwd).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        let (out, err) = super::launch::log_outputs(spec.log.as_deref(), spec);
+        cmd.args(&spec.args).envs(&env).current_dir(&spec.cwd).stdin(Stdio::null()).stdout(out).stderr(err);
         if std::env::var_os("COUCHLINK_TRACE").is_some() {
             cmd.stdout(Stdio::inherit()).stderr(Stdio::inherit());
         }
@@ -213,6 +214,8 @@ mod tests {
             saves: vec![],
             hook_children: false,
             run_as: None,
+            linux: None,
+            log: None,
         }
     }
 

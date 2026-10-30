@@ -131,6 +131,8 @@ Where the change goes: a file in the copy is replaced by a new file (the hardlin
 journalled (the original is kept as `<name>.couchlink-orig`) and restored at the end. Edits without `per_seat` are made once up front, with `per_seat` right before each
 seat's launch with that seat's variables (so a shared file is rewritten for each seat in turn, for games that read it at start). A missing file is an error that says to start the game once, unless `optional` (skip) or `create` (make it).
 
+**mode**: `instances` (the default) runs one copy of the game per player. `native` runs one copy for every player, for a game that splits the screen itself (its own split-screen, or a mod that unlocks it, like AlphaRing for Halo: The Master Chief Collection): it starts from the real game folder (`files.link` is `none`) on player 1's whole screen, gets every player's controller in seat order, and runs without the input hook, so the game sees all the pads. `players` is how many the game's split-screen takes. Example: `recipes/halo-mcc-alpharing.json`.
+
 **files**: `copy` and `copy_dirs` (real copies, not links; a folder copies everything under it), `exclude_files` / `exclude_dirs` (left out of the copy; a bare name matches at
 any depth, a path matches only there; a file in both lists is refused), `per_seat`: `[{"path": "user.ini", "content": "fov=$FOV\n"}]` writes a real file into each seat's copy (without `content`, a fresh copy of the game's file),
 `saves`: relative paths, or paths under `$USERPROFILE`, `$DOCUMENTS`, `$APPDATA`, `$LOCALAPPDATA`. A machine path in `saves` is given to the hook as a redirect (the game's path, `<state>/instances/<recipe>/<seat>/saves/<path>`);
@@ -146,6 +148,20 @@ or an anti-cheat or copy protection component (EasyAntiCheat, BattlEye, Vanguard
 `port:N` (a TCP or UDP port on this PC is open; a helper whose first wait is a port that is already open is left alone, it counts as already running), `delay:MS`, `file:PATH`, `window:TEXT` (a visible window on the PC has TEXT in its title), `exit` (the helper ends by itself, up to 5 minutes).
 Waits may use variables. `at` is `start` (default, before any copy), `first_copy` (once the first copy has its window) or `placed` (once every copy has its window). `launch.per_seat_helpers` has the same fields plus `seats`, started for every seat with that seat's variables:
 `at: start` before that seat's copy launches, `placed` once its window is placed. Helpers run in the session's job: they end with the session, or when the daemon dies.
+**launch.seat_args**: arguments for some seats instead of `launch.args`, for a host and the players who join it:
+`"seat_args": [{"seats": "0", "args": "-host"}]` (the first entry whose `seats` holds the seat wins; `seats` as above).
+
+**window.fps_limit**: frames per second the copies are held to when the player set no limit in Screens (10 to 360):
+`"window": {"fps_limit": 30}`. Linux: gamescope's `--framerate-limit`; both systems: `DXVK_FRAME_RATE` and
+`VKD3D_FRAME_RATE` for games that draw through DXVK or VKD3D (the recipe's own `launch.env` wins).
+
+**controls**: pad controls for a game without (good) pad support, as a controller profile (the format of
+`couchlink-core/src/profile.rs`, with its own `id` and `name`): buttons may send keys (`{"type": "key", "value": "E"}`)
+or mouse buttons, a stick may move the mouse (`"sticks": {"right": {"as": "mouse"}}`) or act as WASD. While the game
+runs, every seat whose player kept the default profile plays these controls; a player who chose a profile of their own
+keeps theirs. Keys and mouse reach the copy through the hook's keyboard and mouse feed on Windows and through XTEST into
+the seat's gamescope on Linux. The Library shows such games with a "Pad controls" tag.
+
 **window.exe**: for a launcher that starts the game and exits, or a game whose window belongs to another process than the one launched. `"window": {"exe": "Game.exe"}`: the process is looked for by exe name among the processes the launch started, then among all processes that began after the launch
 (and that no other seat has taken). The window is placed, kept in place and the seat's end watched on that process, and it is put in a job of its own so it ends with the session.
 
@@ -163,6 +179,65 @@ otherwise it is set once up front. Each write journals the value it replaces.
 7. **Place**: find the copy's top-level window, strip borders, move it onto its region with SetWindowPos (desktop coordinates of the display from `State.displays` + region fractions from `State.screens`), keep it there while the session runs (games move themselves after splash screens). `present: virtual` is a later mode (virtual display per seat).
 8. **Run**: watchdog per copy; status events per seat; `stop_session` or all copies exiting ends it.
 9. **End**: close copies, replay the journal (registry restored, DLLs back, windows released), keep saves.
+
+## Session pipeline (Linux)
+
+The same pipeline, with the Linux parts in `session/*_linux.rs` (Windows code is untouched). Nothing beyond a Steam
+desktop is needed; gamescope is recommended.
+
+1. **Sandbox and copy** (`ns_linux.rs`, `copies_linux.rs`): every seat gets a small holder process
+   (`couchlinkd --seat-namespace`) with a user and mount namespace of its own. Inside it the seat's copy is a kernel
+   overlay (Linux 5.11 and later): the install below, `<state>/instances/<recipe>/.layers/<seat>/upper` on top, mounted
+   at `<state>/instances/<recipe>/<seat>/`; `/dev/input` is an empty tmpfs holding only the seat's own nodes, and every
+   `/dev/hidraw*` the seat does not own is covered by `/dev/null`. The daemon writes into the copy through
+   `/proc/<holder>/root`; the copies join the holder's namespaces when they start. The holder ends with the session or
+   with the daemon (`PR_SET_PDEATHSIG`), and its mounts with it, so a crash leaves nothing mounted. `files.exclude_*` are
+   deleted in the copy (a whiteout in the upper layer). Where unprivileged user namespaces are off (Ubuntu 24.04 and
+   later, unless allowed), the copy is made with fuse-overlayfs or hardlinks and the copy runs in bwrap instead.
+2. **Pad** (`uipad_linux.rs`): each seat's controller drives a virtual uinput pad laid out like the kernel's xpad
+   (vendor 045e, product 028e) through the seat's profile (`couchlink_core::process`: remaps, layers, stick and trigger
+   shaping), and the seat's sandbox holds only that pad. Rumble the game uploads goes back to the real pad. couchlinkd's
+   own SDL thread ignores these pads. Without `/dev/uinput` the copy gets the real pad's nodes (no remaps). A seat
+   owns every node under the same HID device (or USB interface) as its pad, so all nodes of one controller go together.
+3. **Launch** (`launch_linux.rs`): `gamescope --backend sdl -W w -H h -w w -h h [-b] -- <game>` when gamescope is
+   installed, else the game itself (its own X11 window is placed); every copy in a process group of its own. Windows
+   games run through umu-run when it is installed (`WINEPREFIX=<state>/instances/<recipe>/.seats/<seat>/prefix`,
+   `GAMEID`), else through Steam's own Proton (`proton waitforexitandrun`, `STEAM_COMPAT_DATA_PATH=.seats/<seat>/compat`);
+   native games get `HOME` and `XDG_*` under `.seats/<seat>/home` (with `~/.steam` linked in, so they reach Steam).
+   Output goes to `.seats/<seat>/copy.log`. Before the first Proton copy the launcher checks that a sandbox may be
+   made inside the seat's (Proton's runtime does that) and says what to do when AppArmor forbids it.
+4. **Keyboard and mouse** (`rawkbm_linux.rs`): every evdev keyboard (letters and Enter) and mouse (relative X/Y, a left
+   button) is a device, one per physical device; Enter on one asks for a seat. While a seat's copy runs in gamescope,
+   its keyboards and mice are taken from the desktop (`EVIOCGRAB`) and their keys, buttons, motion and wheel go into
+   that copy's gamescope X display with XTEST (the copy writes the display name to `.seats/<seat>/display`), so each
+   player types and aims in their own window whatever has the focus. Reading `/dev/input` needs the `input` group.
+   Software devices are left out unless `COUCHLINK_KBM_VIRTUAL=1` (tests).
+5. **Place** (`window_linux.rs`): the copy's window (gamescope's, or the game's own) is found over X11 by `_NET_WM_PID`
+   and moved onto the seat's region; gamescope runs with `SDL_VIDEODRIVER=x11` so this works on Wayland desktops through
+   XWayland. Without an X display the desktop places the windows.
+6. **Own Steam account** (`couchlink-steam/src/accounts_linux.rs`): no helper user. An extra seat's Steam runs with a
+   home of its own (`~/.local/share/couchlink/steam-seat-<n>`), and the seat's copy runs with that home, so it talks to
+   that Steam (for Proton copies `XDG_DATA_HOME` stays the user's, so umu's runtime is shared). Setup and removal need
+   no administrator rights.
+7. **Goldberg for native games** (`couchlink-steam/src/goldberg_linux.rs`): `libsteam_api.so` in the copy is replaced by
+   gbe_fork's Linux build of the same pinned release (32 or 64-bit by ELF class), with the seat's `steam_settings`.
+
+Also: couchlinkd runs once per state folder (a `flock` in `XDG_RUNTIME_DIR`), the Linux app is a unique GTK
+application (a second launch shows the open window), displays are read live through SDL, "Try it" finds native Linux
+builds (an executable ELF program) as well as Windows ones. Copies get `PROTON_ENABLE_HIDRAW=1` and gamescope
+`ENABLE_GAMESCOPE_WSI=0`, as PartyDeck does. `/tmp` stays shared on purpose (the desktop's X11 socket).
+
+**Recipe `linux` object** (optional; `couchlink-core/src/recipe_linux.rs`; Windows ignores it):
+
+| Field | Default | Meaning |
+|---|---|---|
+| `runner` | `auto` | `auto`: Proton for `.exe`/`.bat`/`.msi`, the program itself otherwise; `proton`; `native` |
+| `proton` | empty | empty: umu-launcher's own UMU-Proton; `GE-Proton`: the newest GE build; a folder name in Steam's `compatibilitytools.d` or `steamapps/common` (`GE-Proton9-20`, `Proton 9.0`); or an absolute path |
+| `umu_id` | `umu-<steamAppId>` | umu-launcher's GAMEID, which picks umu's fixes for the game |
+| `exe`, `args` | `launch.exe`, `launch.args` | a native Linux build to start instead (templates) |
+| `env` | | environment on Linux only, after `launch.env` (templates) |
+| `gamescope` | `true` | `false` starts the copy without gamescope and places its own X11 window |
+| `gamescope_args` | | extra gamescope arguments (`--force-grab-cursor`) |
 
 ## Protocol additions (session runner owns)
 
@@ -215,10 +290,19 @@ A copy is two layers: the **base** is the real install, shared read-only; the **
   `files.copy` are real copies. The hook adds copy-on-write: when the game opens a linked file for writing, the hook swaps
   in a private copy first, so one player can never change another's files. Saves go to a per-seat folder by redirecting
   the game's save path (Documents\My Games\..., AppData) through `HookConfig.saves`.
-- Linux (later): a real overlay (fuse-overlayfs) with the install as the lower layer and a per-seat upper layer, plus a per-seat HOME.
+- Linux: a real overlay (fuse-overlayfs) with the install as the lower layer and a per-seat upper layer, plus a per-seat
+  Proton prefix or HOME (see "Session pipeline (Linux)").
 
 ## Tests (automated, no human playtests)
 
 - Unit: recipe parsing and validation, template expansion, region to pixel maths, journal replay, Goldberg config files, hub mapping.
+- Linux (CI, `.github/workflows/linux.yml`, with `COUCHLINK_REQUIRE_SANDBOX_TEST=1` so nothing passes by skipping): unit tests
+  for the holder's kernel overlay, the bwrap sandbox, virtual pads (a profile remap reaching the uinput pad), virtual keyboards
+  and mice, Goldberg's Linux build; the integration test runs two testgame copies through the daemon (own sandbox, own virtual
+  pad and nothing else, own home, layered copy only inside the sandbox, X11 window on its region under Xvfb, undo). In Arch
+  containers: the copies inside a real gamescope (headless backend; software Vulkan lacks what its window backend needs),
+  each player with a virtual keyboard whose key reaches only their copy through XTEST, and a Windows program through
+  Proton (umu) in two seats with a prefix each.
+- Linux sandbox (`sandbox_linux.rs`): two copies of a probe program, each in its own seat's sandbox with one uinput virtual pad, each must list only its own pad and get only its own presses. CI makes it required (`COUCHLINK_REQUIRE_SANDBOX_TEST=1`); the layered copies test runs there too.
 - Integration with `testgame`: start a session of 2 to 4 testgame copies through couchlinkd, check each window lands on its region, each sees only its own (virtual SDL or synthetic) pad via the hook, unfocused copies keep running, and everything is restored after `stop_session` and after a simulated crash.
 - Real game (manual run only when the PC is unlocked and the owner is not playing): Nitrox with 2 copies on one screen.

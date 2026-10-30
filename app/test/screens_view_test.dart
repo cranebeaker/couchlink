@@ -264,4 +264,16 @@ void main() {
     await tester.pump();
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('the frame rate choice holds every game copy to 30 fps and back', (tester) async {
+    final fake = newFake();
+    await pumpApp(tester, fake, view: AppView.screens);
+    expect((fake.state as DaemonState).fpsLimit, 0);
+    await tester.tap(byKey('fps-30'));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect((fake.state as DaemonState).fpsLimit, 30);
+    await tester.tap(byKey('fps-0'));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect((fake.state as DaemonState).fpsLimit, 0);
+  });
 }

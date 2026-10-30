@@ -9,7 +9,7 @@ import 'locate.dart';
 import 'models.dart';
 import 'profile.dart';
 
-const String appVersion = '0.1.0';
+const String appVersion = '0.1.3';
 
 /// Start of the `log` warning couchlinkd sends when a catalog download fails.
 const String catalogFailurePrefix = 'Game catalog could not be refreshed';
@@ -273,6 +273,9 @@ class DaemonClient extends CouchClient {
         notifyListeners();
         // Game folders can change while a session runs (a first run installs a mod), so look again at the end.
         if (_session.state == 'idle') unawaited(listGames());
+      case 'games_changed':
+        // New live recipes arrived after the list this client already has.
+        unawaited(listGames());
       case 'log':
         final text = j['text'];
         if (text is String) {
@@ -323,6 +326,8 @@ class DaemonClient extends CouchClient {
   Future<String?> identify(int seat) => _cmd('identify', {'seat': seat});
   @override
   Future<String?> setLayout(String layout) => _cmd('set_layout', {'layout': layout});
+  @override
+  Future<String?> setFpsLimit(int fps) => _cmd('set_fps_limit', {'fps': fps});
   @override
   Future<String?> setDisplayUsed(String display, bool used) => _cmd('set_display_used', {'display': display, 'used': used});
   @override
@@ -378,6 +383,35 @@ class DaemonClient extends CouchClient {
     _gameProblems = list.errors;
     notifyListeners();
     return null;
+  }
+
+  @override
+  Future<({String? recipe, String? error})> addGame(String path) async {
+    final r = await _request('add_game', {'path': path});
+    if (r['ok'] != true) return (recipe: null, error: _errorOf(r));
+    await listGames();
+    return (recipe: r['recipe'] as String?, error: null);
+  }
+
+  @override
+  Future<({String text, String dir, String? error})> getLog() async {
+    final r = await _request('get_log', {});
+    if (r['ok'] != true) return (text: '', dir: '', error: _errorOf(r));
+    return (text: r['text'] as String? ?? '', dir: r['dir'] as String? ?? '', error: null);
+  }
+
+  @override
+  Future<({String? path, String? error})> saveReport() async {
+    final r = await _request('save_report', {}, timeout: const Duration(seconds: 20));
+    if (r['ok'] != true) return (path: null, error: _errorOf(r));
+    return (path: r['path'] as String?, error: null);
+  }
+
+  @override
+  Future<String?> removeGame(String recipe) async {
+    final err = await _cmd('remove_game', {'recipe': recipe});
+    if (err == null) await listGames();
+    return err;
   }
 
   @override

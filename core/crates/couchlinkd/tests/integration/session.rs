@@ -110,7 +110,7 @@ fn testgame_exe() -> Option<PathBuf> {
     let mut build = Command::new(option_env!("CARGO").unwrap_or("cargo"));
     build.args(["build", "-p", "testgame", "--quiet"]).env_remove("CMAKE_TOOLCHAIN_FILE");
     let ok = build.status().map(|s| s.success()).unwrap_or(false);
-    let exe = Path::new(DAEMON).with_file_name("testgame.exe");
+    let exe = Path::new(DAEMON).with_file_name(format!("testgame{}", std::env::consts::EXE_SUFFIX));
     (ok && exe.is_file()).then_some(exe)
 }
 
@@ -805,4 +805,10 @@ async fn features(c: &mut Checks, fx: &Fixture, state: &Path, game: &Path, args:
     }
     drop(table);
     drop(again);
+}
+
+/// The Linux session checks (`session_linux.rs`), which share the helpers above.
+#[cfg(target_os = "linux")]
+pub mod linux {
+    include!("session_linux.rs");
 }

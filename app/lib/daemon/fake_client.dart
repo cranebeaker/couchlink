@@ -159,6 +159,36 @@ class FakeClient extends CouchClient {
   Future<String?> listGames() async => null;
 
   @override
+  Future<({String text, String dir, String? error})> getLog() async =>
+      (text: 'Couchlink test log\n== couchlinkd.log ==\nseat 0: exited with code 1 before showing a window', dir: '/tmp/couchlink/logs', error: null);
+
+  @override
+  Future<({String? path, String? error})> saveReport() async => (path: '/tmp/couchlink/logs/couchlink-report-1.txt', error: null);
+
+  /// Tests: the program paths the UI added with [addGame].
+  final List<String> addedGames = [];
+
+  @override
+  Future<({String? recipe, String? error})> addGame(String path) async {
+    final parts = path.split(RegExp(r'[\\/]'));
+    if (parts.length < 2 || parts.last.isEmpty) return (recipe: null, error: '$path does not exist');
+    addedGames.add(path);
+    final recipe = 'try-own-${addedGames.length}';
+    final name = parts.last.replaceFirst(RegExp(r'\.[^.]*$'), '');
+    _games = [..._games, GameInfo(recipe: recipe, game: name, installed: true, path: parts.sublist(0, parts.length - 1).join('/'), minPlayers: 2, maxPlayers: 8, source: 'try')];
+    notifyListeners();
+    return (recipe: recipe, error: null);
+  }
+
+  @override
+  Future<String?> removeGame(String recipe) async {
+    if (!recipe.startsWith('try-own-') || !_games.any((g) => g.recipe == recipe)) return '$recipe is not a game you added';
+    _games = [for (final g in _games) if (g.recipe != recipe) g];
+    notifyListeners();
+    return null;
+  }
+
+  @override
   Future<String?> startSession(String recipe) async {
     startedRecipes.add(recipe);
     if (startError != null) return startError;
@@ -420,7 +450,7 @@ class FakeClient extends CouchClient {
           sizes: s.sizes,
         ),
     ];
-    return DaemonState(devices: devices, seats: seats, displays: displays ?? _state.displays, screens: screens, layout: layout ?? _state.layout, dev: _state.dev);
+    return DaemonState(devices: devices, seats: seats, displays: displays ?? _state.displays, screens: screens, layout: layout ?? _state.layout, fpsLimit: _state.fpsLimit, dev: _state.dev);
   }
 
   @override
@@ -436,7 +466,7 @@ class FakeClient extends CouchClient {
     }
     final used = {for (final s in screens) s.display: s.on};
     final displays = [for (final d in _state.displays) used.containsKey(d.id) ? d.copyWith(used: used[d.id]) : d];
-    _set(DaemonState(devices: _state.devices, seats: _state.seats, displays: displays, screens: screens, layout: _state.layout, dev: _state.dev));
+    _set(DaemonState(devices: _state.devices, seats: _state.seats, displays: displays, screens: screens, layout: _state.layout, fpsLimit: _state.fpsLimit, dev: _state.dev));
     return null;
   }
 
@@ -482,6 +512,7 @@ class FakeClient extends CouchClient {
           ScreenArrangement(display: s.display, on: s.on, seats: [for (final x in s.seats) x == a ? b : x == b ? a : x], regions: s.regions, shape: s.shape, custom: s.custom, sizes: s.sizes),
       ],
       layout: _state.layout,
+      fpsLimit: _state.fpsLimit,
       dev: _state.dev,
     );
     _set(_normalize(seats));
@@ -524,6 +555,14 @@ class FakeClient extends CouchClient {
     for (final d in s.devices) {
       _burst(d, 12);
     }
+    return null;
+  }
+
+  @override
+  Future<String?> setFpsLimit(int fps) async {
+    if (fps != 0 && (fps < 10 || fps > 360)) return '$fps fps is not a limit Couchlink takes (0 for none, or 10 to 360)';
+    final s = _state;
+    _set(DaemonState(devices: s.devices, seats: s.seats, displays: s.displays, screens: s.screens, layout: s.layout, fpsLimit: fps, dev: s.dev));
     return null;
   }
 

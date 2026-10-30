@@ -98,5 +98,8 @@ pub struct State {
     #[serde(default)]
     pub screens: Vec<crate::screens::Screen>,
     pub layout: Layout,
+    /// Frames per second every game copy of a session is held to; 0 means no limit (`set_fps_limit`).
+    #[serde(default)]
+    pub fps_limit: u32,
     pub dev: bool,
 }

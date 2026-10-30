@@ -443,7 +443,10 @@ class PageHead extends StatelessWidget {
     final c = context.c;
     return Padding(
       padding: const EdgeInsets.only(bottom: 22),
-      child: Wrap(
+      // Full width, so `trailing` sits at the right edge (a Wrap in a start-aligned Column shrinks to its children).
+      child: SizedBox(
+        width: double.infinity,
+        child: Wrap(
         alignment: WrapAlignment.spaceBetween,
         crossAxisAlignment: WrapCrossAlignment.end,
         spacing: 16,
@@ -463,6 +466,7 @@ class PageHead extends StatelessWidget {
           ),
           ?trailing,
         ],
+      ),
       ),
     );
   }
@@ -687,21 +691,22 @@ class SeatBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final style = txt(context, size: fontSize, weight: FontWeight.w800, color: Colors.white, display: true, height: 1.0)
+        .copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
+    // A digit stands on the baseline and is about 0.72 em tall, with nothing below it, so the text box's middle is not
+    // the digit's middle. Measure where this font puts the baseline and move the digit so its own middle is centred.
+    final painter = TextPainter(text: TextSpan(text: '$number', style: style), textDirection: TextDirection.ltr, maxLines: 1)..layout();
+    final baseline = painter.computeDistanceToActualBaseline(TextBaseline.alphabetic);
+    final shift = painter.height / 2 - (baseline - fontSize * .36);
+    painter.dispose();
     return Container(
       width: size,
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(radius)),
-      // Digits sit on the baseline with no descender, so even leading plus a small drop centres them optically.
-      child: Padding(
-        padding: EdgeInsets.only(top: fontSize * .07),
-        child: Text(
-          '$number',
-          textAlign: TextAlign.center,
-          textHeightBehavior: const TextHeightBehavior(leadingDistribution: TextLeadingDistribution.even),
-          style: txt(context, size: fontSize, weight: FontWeight.w800, color: Colors.white, display: true, height: 1.0)
-              .copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
-        ),
+      child: Transform.translate(
+        offset: Offset(0, shift),
+        child: Text('$number', textAlign: TextAlign.center, maxLines: 1, style: style),
       ),
     );
   }

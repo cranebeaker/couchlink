@@ -229,6 +229,31 @@ void main() {
     expect(c.gameProblems.single.error, contains('expected value'));
   });
 
+  test('games_changed lists the games again (live recipes that arrived after connecting)', () async {
+    final d = StubDaemon('t');
+    await d.start();
+    writeInfo(d.port, 't');
+    final c = makeClient();
+    addTearDown(() async {
+      c.dispose();
+      await d.stop();
+    });
+    await c.start();
+    await until(() => c.games != null);
+    expect(c.games!.length, 2);
+
+    d.gamesReply = {
+      'games': [
+        ...(d.gamesReply['games'] as List),
+        {'recipe': 'community-among-us', 'game': 'Among Us', 'installed': false, 'path': null, 'players': [2, 4], 'steam': 'shared', 'source': 'remote'},
+      ],
+      'errors': [],
+    };
+    d.emit({'event': 'games_changed'});
+    await until(() => c.games!.length == 3);
+    expect(c.games!.last.game, 'Among Us');
+  });
+
   test('session events update the session; start and stop are sent', () async {
     final d = StubDaemon('t');
     await d.start();

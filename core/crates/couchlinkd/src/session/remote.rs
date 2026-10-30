@@ -71,15 +71,25 @@ pub async fn refresh(state_dir: &Path, source: &Source) -> Result<String, String
     let dir = cache_dir(state_dir);
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let mut fetched = 0;
+    // One file that cannot be had (the site part way through an update) does not stop the others; the list is only
+    // taken once every file it names is here, so the next refresh tries the missing ones again.
+    let mut failed: Vec<String> = Vec::new();
     for entry in &index.recipes {
         let path = dir.join(&entry.file);
         if std::fs::read(&path).is_ok_and(|b| couchlink_sign::sha256_hex(&b) == entry.sha256) {
             continue;
         }
-        let body = get(&client, &format!("{}{}", source.base_url, entry.file)).await?;
-        couchlink_sign::check_recipe(entry, &body)?;
-        write_atomic(&path, &body)?;
-        fetched += 1;
+        let got = match get(&client, &format!("{}{}", source.base_url, entry.file)).await {
+            Ok(body) => couchlink_sign::check_recipe(entry, &body).and_then(|_| write_atomic(&path, &body)),
+            Err(e) => Err(e),
+        };
+        match got {
+            Ok(()) => fetched += 1,
+            Err(e) => failed.push(e),
+        }
+    }
+    if let Some(first) = failed.first() {
+        return Err(format!("{fetched} recipes updated, {} could not be fetched (first: {first})", failed.len()));
     }
     // Recipes the signed list no longer has are dropped.
     let mut removed = 0;
@@ -193,6 +203,29 @@ mod tests {
         let good = Source { base_url: url, public_key: couchlink_sign::to_hex(key.verifying_key().as_bytes()) };
         assert!(rt.block_on(refresh(&state, &good)).unwrap_err().contains("does not match"));
         assert!(cached(&state).is_none() && !cache_dir(&state).join("alpha.json").exists());
+    }
+
+    #[test]
+    fn a_missing_file_does_not_stop_the_others() {
+        let root = temp("missing");
+        let key = SigningKey::from_bytes(&[14u8; 32]);
+        let site = publish(&root, &key, 1, &[("alpha", "Alpha"), ("beta", "Beta"), ("gamma", "Gamma")]);
+        let source = Source { base_url: serve(site.clone()), public_key: couchlink_sign::to_hex(key.verifying_key().as_bytes()) };
+        let state = root.join("state");
+        let rt = rt();
+
+        // The site part way through an update: beta is listed but not up yet.
+        let beta = std::fs::read(site.join("beta.json")).unwrap();
+        std::fs::remove_file(site.join("beta.json")).unwrap();
+        let err = rt.block_on(refresh(&state, &source)).unwrap_err();
+        assert!(err.contains("2 recipes updated, 1 could not be fetched"), "{err}");
+        assert!(cache_dir(&state).join("alpha.json").is_file() && cache_dir(&state).join("gamma.json").is_file(), "the others are in");
+        assert!(cached(&state).is_none(), "the list waits until every file it names is here");
+
+        std::fs::write(site.join("beta.json"), beta).unwrap();
+        let msg = rt.block_on(refresh(&state, &source)).unwrap();
+        assert!(msg.contains("1 new or changed"), "{msg}");
+        assert_eq!(cached(&state).map(|i| i.recipes.len()), Some(3));
     }
 
     #[test]

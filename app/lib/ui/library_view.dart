@@ -6,6 +6,7 @@ import '../daemon/models.dart';
 import '../theme/tokens.dart';
 import 'app_state.dart';
 import 'catalog_logic.dart';
+import 'icons.dart';
 import 'kit.dart';
 import 'launch_card.dart';
 import 'library_games.dart';
@@ -28,8 +29,48 @@ class LibraryView extends StatefulWidget {
   State<LibraryView> createState() => _LibraryViewState();
 }
 
+/// True when [name] matches the search [query]: every word of it, in any order, ignoring case and punctuation.
+bool matchesGameQuery(String name, String query) {
+  String norm(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9Ѐ-ӿ]+'), ' ');
+  final hay = norm(name);
+  return norm(query).split(' ').where((w) => w.isNotEmpty).every(hay.contains);
+}
+
 class _LibraryViewState extends State<LibraryView> {
   bool _asked = false;
+  late final TextEditingController _q = TextEditingController(text: Scope.of(context).ui.libraryQuery);
+
+  @override
+  void dispose() {
+    _q.dispose();
+    super.dispose();
+  }
+
+  /// Add a game of the player's own: any program, from any store or none. Couchlink does not ask where it came from.
+  Future<void> _addGame(Scope scope) async {
+    String? path;
+    try {
+      path = await scope.ui.pickGame();
+    } catch (e) {
+      scope.toaster.show(t('Could not open the file: {e}', {'e': e}));
+      return;
+    }
+    if (path == null || !mounted) return;
+    final added = await scope.client.addGame(path);
+    if (!mounted) return;
+    if (added.error != null) {
+      scope.toaster.show(added.error!, error: true);
+      return;
+    }
+    scope.ui.selectGame(added.recipe!);
+    scope.toaster.show(t('Game added'));
+  }
+
+  Future<void> _removeGame(Scope scope, String recipe) async {
+    final err = await scope.client.removeGame(recipe);
+    if (!mounted) return;
+    scope.toaster.show(err ?? t('Removed from Couchlink. Its files stay where they are.'), error: err != null);
+  }
 
   @override
   void didChangeDependencies() {
@@ -49,7 +90,8 @@ class _LibraryViewState extends State<LibraryView> {
       listenable: Listenable.merge([ui, scope.client]),
       builder: (context, _) {
         final catalog = scope.client.catalog;
-        final all = libraryGames(scope.client);
+        final everyGame = libraryGames(scope.client);
+        final all = [for (final g in everyGame) if (matchesGameQuery(g.name, ui.libraryQuery)) g];
         final onlyHere = ui.libraryFilter == 'installed';
         final here = all.where((g) => g.installed).toList();
         final notHere = all.where((g) => !g.installed).toList();
@@ -65,8 +107,31 @@ class _LibraryViewState extends State<LibraryView> {
               PageHead(
                 title: t('Library'),
                 subtitle: t('Every game Couchlink can split, yours first. Pick one, then bring in your players.'),
-                trailing: Wrap(spacing: 8, runSpacing: 8, children: [
+                trailing: Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                  Container(
+                    width: 240,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(color: c.raised, borderRadius: BorderRadius.circular(10), border: Border.all(color: c.hair)),
+                    child: Row(children: [
+                      CIcon(iconSearch, size: 15, color: c.ink3),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          key: const ValueKey('library-search'),
+                          controller: _q,
+                          cursorColor: c.accent,
+                          onChanged: ui.setLibraryQuery,
+                          style: txt(context, size: 14, height: 1.3),
+                          decoration: InputDecoration.collapsed(
+                            hintText: t('Search {count}', {'count': countGames(everyGame.length)}),
+                            hintStyle: txt(context, size: 14, color: c.ink3, height: 1.3),
+                          ),
+                        ),
+                      ),
+                    ]),
+                  ),
                   for (final (k, l) in _filters) CChip(key: ValueKey('filter-$k'), label: l, selected: ui.libraryFilter == k, onTap: () => ui.setLibraryFilter(k)),
+                  CButton(key: const ValueKey('add-game'), label: t('Add a game'), small: true, onTap: () => _addGame(scope)),
                 ]),
               ),
               if (r != null)
@@ -107,6 +172,8 @@ class _LibraryViewState extends State<LibraryView> {
                                     },
                                   ),
                                   Tag(r.tier.label, kind: tagKind(r.tier)),
+                                  if (r.id.startsWith('try-own-'))
+                                    CButton(key: const ValueKey('remove-game'), label: t('Remove from Couchlink'), small: true, onTap: () => _removeGame(scope, r.id)),
                                 ]),
                               ],
                             ),
@@ -117,7 +184,9 @@ class _LibraryViewState extends State<LibraryView> {
                   ),
                 ),
               if (scope.client.games == null) _Note(t('Looking for your games')),
-              if (scope.client.games != null && all.isEmpty)
+              if (everyGame.isNotEmpty && all.isEmpty)
+                _Note(t('No game matches “{query}”.', {'query': ui.libraryQuery.trim()})),
+              if (scope.client.games != null && everyGame.isEmpty)
                 _Note(t('Couchlink found no game recipes yet. Add one to the recipes folder and it shows up here.')),
               if (all.isNotEmpty && here.isEmpty && onlyHere)
                 _Note(t('None of the games Couchlink supports are on this PC yet. Pick All to see them.')),
@@ -226,6 +295,7 @@ class _GameCard extends StatelessWidget {
             const SizedBox(height: 6),
             Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
               Tag(game.tier.label, kind: tagKind(game.tier)),
+              if (game.controls) const Tag('Pad controls'),
               Text(game.installed ? '${game.playersLabel} players' : t('Not installed'), style: txt(context, size: 12, color: c.ink2, height: 1.3)),
             ]),
           ],

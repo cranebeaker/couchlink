@@ -66,6 +66,9 @@ abstract class CouchClient extends ChangeNotifier {
   Future<String?> rename(int seat, String name);
   Future<String?> identify(int seat);
   Future<String?> setLayout(String layout);
+
+  /// Hold every game copy to [fps] frames a second; 0 for no limit. Null on success, else the error.
+  Future<String?> setFpsLimit(int fps);
   Future<String?> setDisplayUsed(String display, bool used);
 
   /// Replace every screen's arrangement at once (who plays on which display, and where).
@@ -102,6 +105,20 @@ abstract class CouchClient extends ChangeNotifier {
 
   /// Asks for the game list (`list_games`); [games] fills in. Returns null or an error text.
   Future<String?> listGames();
+
+  /// `add_game`: a game of the player's own, from any store or none, by its program (or folder). Returns the recipe
+  /// that now plays it, or the daemon's error text. The game list is asked for again.
+  Future<({String? recipe, String? error})> addGame(String path);
+
+  /// `remove_game`: forgets a game [addGame] added. Its files stay. Returns null or an error text.
+  Future<String?> removeGame(String recipe);
+
+  /// `get_log`: the log folder and the end of the logs (Couchlink's own and each game copy's), for "Copy log"
+  /// and "Open log folder" after an error. [error] is set when the service could not be asked.
+  Future<({String text, String dir, String? error})> getLog();
+
+  /// `save_report`: one file in the log folder with every log in full and this PC's details. Returns its path.
+  Future<({String? path, String? error})> saveReport();
 
   /// `start_session`: replies at once, then `session` events show the progress. Returns the
   /// daemon's error text (already written for players), or null when the launch began.

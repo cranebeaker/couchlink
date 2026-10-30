@@ -25,7 +25,7 @@ impl Prepare for SteamPrepare {
         let mut vars = ctx.vars.clone();
         vars.insert("STEAMID".to_string(), steam_id.clone());
         let exe = expand(&ctx.recipe.launch.exe, &vars)?;
-        let args = split_args(&ctx.recipe.launch.args).iter().map(|a| expand(a, &vars)).collect::<Result<Vec<_>, _>>()?;
+        let args = split_args(ctx.recipe.launch.args_for(ctx.seat.seat)).iter().map(|a| expand(a, &vars)).collect::<Result<Vec<_>, _>>()?;
         let goldberg = match &ctx.recipe.goldberg {
             Some(g) => couchlink_steam::GoldbergOptions::from_recipe(g).map_err(|e| e.user_message())?,
             None => Default::default(),

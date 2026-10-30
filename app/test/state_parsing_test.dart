@@ -56,7 +56,7 @@ void main() {
     });
 
     test('seats keep nulls and colours', () {
-      expect(st.seats, hasLength(4));
+      expect(st.seats, hasLength(DaemonState.maxSeats));
       expect(st.seats[0]!.name, 'Player 1');
       expect(st.seats[0]!.color, const Color(0xFF0A84FF));
       expect(st.seats[0]!.devices, ['pad:7']);
@@ -92,9 +92,9 @@ void main() {
   });
 
   group('State parsing is forgiving', () {
-    test('short or odd seat lists are padded to four', () {
+    test('short or odd seat lists are padded to eight', () {
       final st = DaemonState.fromJson({'seats': [null, {'name': 'B', 'color': '#FF6B5B', 'devices': []}]});
-      expect(st.seats, hasLength(4));
+      expect(st.seats, hasLength(DaemonState.maxSeats));
       expect(st.seats[1]!.name, 'B');
       expect(st.seats[1]!.devices, isEmpty);
     });
@@ -204,6 +204,22 @@ void main() {
         modified: (_) => DateTime(2026),
       );
       expect(p, '/home/u/couchlink/core/target/release/couchlinkd');
+    });
+  });
+
+  group('State parsing for eight players and the frame rate', () {
+    test('all eight seats come through', () {
+      final seats = [for (var i = 0; i < 8; i++) {'name': 'P${i + 1}', 'color': '#0A84FF', 'devices': ['pad:$i']}];
+      final st = DaemonState.fromJson({'seats': seats, 'fps_limit': 30});
+      expect(st.seats, hasLength(8));
+      expect(st.seats[7]!.name, 'P8', reason: 'players 5 to 8 are not dropped');
+      expect(st.fpsLimit, 30);
+      expect(DaemonState.fromJson(const {}).fpsLimit, 0, reason: 'no limit when the daemon says nothing');
+    });
+
+    test('a game with pad controls of its own says so', () {
+      expect(GameInfo.fromJson(const {'recipe': 'deusex', 'game': 'Deus Ex', 'controls': true}).controls, isTrue);
+      expect(GameInfo.fromJson(const {'recipe': 'x', 'game': 'X'}).controls, isFalse);
     });
   });
 }

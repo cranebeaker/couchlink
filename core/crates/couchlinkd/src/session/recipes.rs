@@ -178,17 +178,67 @@ pub fn guess_exe(install_dir: &Path) -> Option<String> {
     found.into_iter().next().map(|(_, p)| p)
 }
 
+/// A native Linux game's program inside its install folder (relative, forward slashes): the biggest executable ELF
+/// file near the top that is not a library, an installer or a helper.
+pub fn guess_native(install_dir: &Path) -> Option<String> {
+    fn is_elf_program(path: &Path, meta: &std::fs::Metadata) -> bool {
+        use std::io::Read;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if meta.permissions().mode() & 0o111 == 0 {
+                return false;
+            }
+        }
+        #[cfg(not(unix))]
+        let _ = meta; // no execute bit off Unix
+        let mut magic = [0u8; 4];
+        std::fs::File::open(path).and_then(|mut f| f.read_exact(&mut magic)).is_ok() && magic == *b"\x7fELF"
+    }
+    fn walk(dir: &Path, rel: &str, depth: u8, out: &mut Vec<(i64, String)>) {
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            let Ok(meta) = e.metadata() else { continue };
+            let path = if rel.is_empty() { name.clone() } else { format!("{rel}/{name}") };
+            let lower = name.to_lowercase();
+            if meta.is_dir() {
+                if depth < 2 && !skip_dir(&name) && !lower.ends_with("_data") && lower != "lib" && lower != "lib64" {
+                    walk(&e.path(), &path, depth + 1, out);
+                }
+            } else if !lower.contains(".so") && !not_the_game(&name) && is_elf_program(&e.path(), &meta) {
+                let mb = (meta.len() / (1 << 20)) as i64;
+                let named = if lower.ends_with(".x86_64") || lower.ends_with(".x64") { 1000 } else { 0 };
+                out.push((named + mb - depth as i64 * 5, path));
+            }
+        }
+    }
+    let mut found = Vec::new();
+    walk(install_dir, "", 0, &mut found);
+    found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    found.into_iter().next().map(|(_, p)| p)
+}
+
 /// A "Try it" recipe for an installed Steam game: one copy per player, every named single-instance lock renamed,
 /// your Steam for every copy (a player with their own Steam account plays on it), borderless windows.
 pub fn try_recipe(app_id: u32, name: &str, exe: &str) -> Option<Recipe> {
-    let file = exe.rsplit('/').next().unwrap_or(exe);
+    try_recipe_with(&format!("try-steam-{app_id}"), name, exe, Some(app_id))
+}
+
+/// A "Try it" recipe called `id` for the game whose program is `exe` (relative to its folder). Without a Steam app id
+/// it is a game from another store or the player's own files, and Steam stays out of it.
+pub fn try_recipe_with(id: &str, name: &str, exe: &str, app_id: Option<u32>) -> Option<Recipe> {
+    let matching = match app_id {
+        Some(app_id) => serde_json::json!({ "steamAppId": app_id, "exe": exe.rsplit('/').next().unwrap_or(exe) }),
+        None => serde_json::json!({ "exe": exe }),
+    };
     let v = serde_json::json!({
         "schema": 1,
-        "id": format!("try-steam-{app_id}"),
+        "id": id,
         "game": name,
-        "match": { "steamAppId": app_id, "exe": file },
+        "match": matching,
         "players": [2, couchlink_core::MAX_SEATS],
-        "steam": "shared",
+        "steam": if app_id.is_some() { "shared" } else { "none" },
         "launch": { "exe": exe, "args": "" },
         "files": { "copy": [], "link": "all", "saves": [] },
         "locks": ["*"],
@@ -214,7 +264,12 @@ pub fn try_recipes(known: &[Recipe]) -> Vec<Recipe> {
     let mut out: Vec<Recipe> = couchlink_steam::installed_apps()
         .into_iter()
         .filter(|a| !covered.contains(&a.app_id) && !is_tool(&a.name))
-        .filter_map(|a| try_recipe(a.app_id, &a.name, &guess_game(&a.install_dir)?))
+        .filter_map(|a| {
+            // On Linux a native build runs as it is; a Windows one runs through Proton. On macOS the game's app bundle
+            // when it has one (`guess_game`).
+            let native = if cfg!(target_os = "linux") { guess_native(&a.install_dir) } else { None };
+            try_recipe(a.app_id, &a.name, &native.or_else(|| guess_game(&a.install_dir))?)
+        })
         .collect();
     out.sort_by(|a, b| a.game.to_lowercase().cmp(&b.game.to_lowercase()));
     out
@@ -303,13 +358,14 @@ fn search(root: &Path, file: &str, depth: u8) -> Option<PathBuf> {
 }
 
 /// Where the game is installed, if a locator finds it and the folder looks right (it exists and holds
-/// the exe the recipe launches).
+/// the exe the recipe launches; on Linux its `linux.exe` when it has one).
 pub fn locate(locators: &[Locator], recipe: &Recipe) -> Option<PathBuf> {
     let dir = locators.iter().find_map(|l| l(recipe))?;
     if !dir.is_dir() {
         return None;
     }
-    let exe = &recipe.launch.exe;
+    let native = recipe.linux.as_ref().and_then(|l| l.exe.as_ref()).filter(|_| cfg!(target_os = "linux"));
+    let exe = native.unwrap_or(&recipe.launch.exe);
     if !exe.contains('$') && !runnable(&dir.join(exe)) && !runnable(Path::new(exe)) {
         return None;
     }
@@ -343,6 +399,7 @@ pub fn game_info(locators: &[Locator], r: &Recipe) -> GameInfo {
         options: couchlink_core::OptionInfo::list(r),
         steam_app_id: r.matching.steam_app_id,
         setup,
+        controls: r.controls.is_some(),
     }
 }
 
@@ -437,5 +494,30 @@ mod tests {
         assert!(!game_info(&locators, &other).installed);
         let _ = std::fs::remove_dir_all(&state);
         let _ = std::fs::remove_dir_all(&game);
+    }
+
+    /// A native game: the biggest executable ELF program near the top, never a library or a helper.
+    #[cfg(unix)]
+    #[test]
+    fn a_native_games_program_is_found() {
+        use std::os::unix::fs::PermissionsExt;
+        let g = std::env::temp_dir().join(format!("couchlink-native-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&g);
+        std::fs::create_dir_all(g.join("Game_Data")).unwrap();
+        let elf = |p: &Path, size: usize, exec: bool| {
+            let mut b = vec![0u8; size];
+            b[..4].copy_from_slice(&[0x7f, b'E', b'L', b'F']);
+            std::fs::write(p, b).unwrap();
+            std::fs::set_permissions(p, std::fs::Permissions::from_mode(if exec { 0o755 } else { 0o644 })).unwrap();
+        };
+        elf(&g.join("UnityPlayer.so"), 4 << 20, true);
+        elf(&g.join("crashhandler"), 2 << 20, true);
+        elf(&g.join("Game_Data/plugin"), 8 << 20, true);
+        elf(&g.join("notes"), 9 << 20, false);
+        elf(&g.join("Game.x86_64"), 1 << 20, true);
+        std::fs::write(g.join("start.sh"), "#!/bin/sh\n").unwrap();
+        assert_eq!(guess_native(&g).as_deref(), Some("Game.x86_64"));
+        assert_eq!(guess_exe(&g), None, "no Windows build here");
+        let _ = std::fs::remove_dir_all(&g);
     }
 }

@@ -1,4 +1,4 @@
-//! testgame: a tiny window app that stands in for a real game in automated tests.
+//! testgame: a tiny window app that stands in for a real game in automated tests (on Linux it runs without a window).
 //!
 //! It opens one ordinary window (with a title bar, so a launcher has something to strip) and writes
 //! a JSON status file every 200 ms: pid, seat, window rect, style, whether it is the foreground
@@ -160,6 +160,8 @@ fn write_status(window: Option<&WindowFacts>, alive: bool) {
     } else {
         s.push_str(",\"window\":null,\"focused\":false");
     }
+    #[cfg(not(windows))]
+    s.push_str(&sandbox_facts());
     s.push(',');
     s.push_str(&i.reported);
     s.push_str(",\"args\":[");
@@ -236,15 +238,96 @@ fn serve(port: u16) {
     }
 }
 
+/// On Linux with an X display: a plain X11 window (see `x11`). Otherwise there is no window: the status file is
+/// written as if one were open, so a session can still run it.
 #[cfg(not(windows))]
 fn run_window() {
-    eprintln!("testgame: the window mode only exists on Windows");
-    std::process::exit(2);
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("DISPLAY").is_some() && x11::run().is_some() {
+        return;
+    }
+    loop {
+        write_status(None, true);
+        if info().exit_after.is_some_and(|d| info().started.elapsed() >= d) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+}
+
+/// X key codes the Linux window got, in order (reported as `keys`).
+#[cfg(not(windows))]
+static KEYS: std::sync::Mutex<Vec<u8>> = std::sync::Mutex::new(Vec::new());
+
+/// What a copy can see of the machine on Linux: its home, its display, the entries of its `/dev/input`, and the keys
+/// its window got.
+#[cfg(not(windows))]
+fn sandbox_facts() -> String {
+    let mut nodes: Vec<String> = std::fs::read_dir("/dev/input").map(|d| d.flatten().map(|e| esc(&e.file_name().to_string_lossy())).collect()).unwrap_or_default();
+    nodes.sort();
+    let var = |v: &str| esc(&std::env::var(v).unwrap_or_default());
+    let keys: Vec<String> = KEYS.lock().map(|k| k.iter().map(u8::to_string).collect()).unwrap_or_default();
+    format!(",\"home\":{},\"display\":{},\"input_nodes\":[{}],\"keys\":[{}]", var("HOME"), var("DISPLAY"), nodes.join(","), keys.join(","))
 }
 
 #[cfg(windows)]
 fn run_window() {
     win::run();
+}
+
+/// One X11 window where `--at X,Y` and `--size WxH` say (100,100 and 640x360 otherwise), with `_NET_WM_PID` set as
+/// games' toolkits do, its rect reported like the Windows window's. None when the display cannot be used.
+#[cfg(target_os = "linux")]
+mod x11 {
+    use super::*;
+    use x11rb::connection::Connection;
+    use x11rb::protocol::xproto::{AtomEnum, ConnectionExt as _, CreateWindowAux, EventMask, MapState, PropMode, WindowClass};
+    use x11rb::wrapper::ConnectionExt as _;
+
+    fn pair(flag: &str, sep: char) -> Option<(i32, i32)> {
+        let args = &info().args;
+        let v = args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1))?;
+        let (a, b) = v.split_once(sep)?;
+        Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
+    }
+
+    pub fn run() -> Option<()> {
+        let (conn, n) = x11rb::connect(None).ok()?;
+        let screen = conn.setup().roots.get(n)?.clone();
+        let (w, h) = pair("--size", 'x').unwrap_or((640, 360));
+        let (x, y) = pair("--at", ',').unwrap_or((100, 100));
+        let win = conn.generate_id().ok()?;
+        let aux = CreateWindowAux::new().background_pixel(screen.black_pixel).event_mask(EventMask::STRUCTURE_NOTIFY | EventMask::KEY_PRESS);
+        conn.create_window(x11rb::COPY_DEPTH_FROM_PARENT, win, screen.root, x as i16, y as i16, w.max(1) as u16, h.max(1) as u16, 0, WindowClass::INPUT_OUTPUT, 0, &aux)
+            .ok()?;
+        let pid_atom = conn.intern_atom(false, b"_NET_WM_PID").ok()?.reply().ok()?.atom;
+        conn.change_property32(PropMode::REPLACE, win, pid_atom, AtomEnum::CARDINAL, &[std::process::id()]).ok()?;
+        let title = format!("testgame seat {}", info().seat.unwrap_or(0));
+        conn.change_property8(PropMode::REPLACE, win, AtomEnum::WM_NAME, AtomEnum::STRING, title.as_bytes()).ok()?;
+        conn.map_window(win).ok()?;
+        conn.flush().ok()?;
+        loop {
+            while let Ok(Some(ev)) = conn.poll_for_event() {
+                if let x11rb::protocol::Event::KeyPress(k) = ev
+                    && let Ok(mut keys) = super::KEYS.lock()
+                {
+                    keys.push(k.detail);
+                }
+            }
+            let facts = (|| {
+                let g = conn.get_geometry(win).ok()?.reply().ok()?;
+                let t = conn.translate_coordinates(win, screen.root, 0, 0).ok()?.reply().ok()?;
+                let a = conn.get_window_attributes(win).ok()?.reply().ok()?;
+                let (x, y, w, h) = (t.dst_x as i32, t.dst_y as i32, g.width as i32, g.height as i32);
+                Some(WindowFacts { hwnd: win as usize, rect: [x, y, x + w, y + h], client: [w, h], style: 0, foreground: false, visible: a.map_state == MapState::VIEWABLE })
+            })();
+            write_status(facts.as_ref(), true);
+            if info().exit_after.is_some_and(|d| info().started.elapsed() >= d) {
+                return Some(());
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    }
 }
 
 #[cfg(windows)]

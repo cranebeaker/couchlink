@@ -26,6 +26,7 @@ Daemon to client (events, no id): `{"event": "<name>", ...}`
 | `hello` | `token`, `client` (string, e.g. "couchlink-app 0.1.0") | `{"protocol": 1, "daemon": "0.1.0"}`, then a `state` event right away |
 | `get_state` | | `{"state": State}` |
 | `get_catalog` | | `{"catalog": Catalog, "refreshing": bool}`. The cached Co-op Anything game catalog right away (an empty `Catalog` when nothing was fetched yet). `refreshing` is true while a download runs. See [Game catalog](#game-catalog). |
+| `get_log` | | `{"dir": path, "text": string}`. `dir` is the log folder (`<state>/logs`): `couchlinkd.log` (every `log` event and every failed session, with the time) and `<recipe>-player<N>.log` (that game copy's own output, written again at each launch). `text` is what the app's "Copy log" copies: the Couchlink version, then the end of `couchlinkd.log` and of each player's log for the last session's game. |
 | `refresh_catalog` | | Replies at once; downloads the catalog in the background. A `catalog` event follows on success, a `log` warn event on failure. Does nothing if a download is already running. |
 | `join` | `device` (device id) | Seats the device in the first free seat. Error if no seat free or device unknown/already seated. |
 | `leave` | `seat` (0..3) | Frees the seat; its devices become unseated. |
@@ -34,10 +35,13 @@ Daemon to client (events, no id): `{"event": "<name>", ...}`
 | `rename` | `seat`, `name` (1..24 chars) | |
 | `identify` | `seat` | Rumbles the seat's gamepads for 400 ms and flashes their LED in the seat colour. Keyboards: no-op. |
 | `set_layout` | `layout`: `auto` \| `lr` \| `tb` \| `grid` \| `per_display` | |
+| `set_fps_limit` | `fps`: 0 (no limit) or 10 to 360 | Saved (`<state>/settings.json`); every game copy of the next session is held to it. |
 | `set_display_used` | `display` (display id), `used` (bool) | Which displays the session may use. The primary display is used by default. |
 | `subscribe_input` | `on` (bool) | When on, `input` events stream at about 30 Hz while any seated device moves. |
 | `debug_press` | `device`, `button` (`south` etc.) | Only with `--dev`: acts as if the button went down and up. For tests. |
 | `list_games` | | `{"games": [Game], "errors": [{"file", "error"}]}`. See [Game sessions](#game-sessions). |
+| `add_game` | `path`: the game's program or its folder; `name` (optional) | `{"recipe": id}`: the recipe that now plays it. Saved in `<state>/my_games.json`. |
+| `remove_game` | `recipe`: an id `add_game` gave | Forgets the game; its files stay. |
 | `start_session` | `recipe` (recipe id), optional `options` (`{NAME: value}`) | Checks, replies at once, then runs the launch pipeline in the background; progress comes as `session` events. Error text if the recipe or game is missing or the seats on screens do not fit. |
 | `stop_session` | | Ends the session and undoes everything. Replies at once; `session` events follow. Fine when nothing runs (and undoes a journal an earlier crash left behind). |
 | `steam_accounts` | | `{"accounts": [{"seat", "ready", "running", "plan": [{"id", "title", "detail", "needs_admin"}]}], "steam": bool}` for seats 1 and up (seat 0 always plays on the PC owner's Steam). A seat that is `ready` plays on its own Steam account in every game whose recipe uses real Steam (`shared` or `accounts`). |
@@ -54,6 +58,7 @@ Daemon to client (events, no id): `{"event": "<name>", ...}`
 | `joined` | `{"seat": n, "device": id}` | Right after a press-to-join, so the UI can animate it. A `state` event follows. |
 | `catalog` | `{"catalog": Catalog}` | After a successful catalog refresh (the daemon's own 6 hour refresh or `refresh_catalog`). Broadcast to every client. |
 | `log` | `{"level": "info"\|"warn"\|"error", "text": "..."}` | Things the UI may show as a toast (for example "Controller disconnected"). |
+| `games_changed` | | New live recipes arrived (a first start gets most of them a few seconds after the app connects). Ask `list_games` again. |
 | `session` | `{"state", "recipe", "seats", "error"}` | Every time the game session changes. Also sent right after `hello` while a session exists. See [Game sessions](#game-sessions). |
 
 ## State
@@ -83,9 +88,14 @@ Daemon to client (events, no id): `{"event": "<name>", ...}`
     { "id": "disp:1", "name": "DELL U2720Q", "x": 0, "y": 0, "w": 2560, "h": 1440, "scale": 1.5, "hz": 144, "primary": true, "used": true }
   ],
   "layout": "auto",
+  "fps_limit": 0,
   "dev": false
 }
 ```
+
+- `fps_limit`: frames per second every game copy is held to, 0 for none (`set_fps_limit`). Linux holds every game to
+  it through gamescope; on both systems games that draw through DXVK or VKD3D get `DXVK_FRAME_RATE` and
+  `VKD3D_FRAME_RATE`. With 0, a recipe's `window.fps_limit` applies.
 
 - `devices[].id`: `pad:<SDL joystick instance id>` for gamepads, `kbm:system` for the combined system keyboard and mouse. Ids are unique for the life of the connection.
 - `devices[].family`: `xbox` \| `playstation` \| `switch` \| `steam` \| `generic` \| `kbm`.
@@ -256,10 +266,12 @@ because of a binding, and the active layer id (or null). When a stick acts as `m
 How games are started is described in [launch.md](launch.md); this is the wire part.
 
 `list_games` reply: `{"games": [{"recipe": "testgame", "game": "Couchlink test game", "installed": true, "path": "C:\...", "players": [1, 4], "steam": "none", "source": "builtin", "options": []}], "errors": []}`.
-One row per recipe, built-ins first found in the `recipes` folder next to couchlinkd (or `--recipes DIR`), then `<state>/recipes` (a user recipe with the same id replaces the built-in one). `installed` is true when a locator finds the game folder and it holds the exe the recipe launches; `path` is that folder or null. `source` is `builtin`, `imported` or `user`. `options` lists the choices the recipe offers before a start, see below. `errors` lists recipe files that could not be read, as `{"file", "error"}`.
+One row per recipe, built-ins first found in the `recipes` folder next to couchlinkd (or `--recipes DIR`), then `<state>/recipes` (a user recipe with the same id replaces the built-in one). `installed` is true when a locator finds the game folder and it holds the exe the recipe launches; `path` is that folder or null. `source` is `builtin`, `imported` or `user`. `options` lists the choices the recipe offers before a start, see below. `errors` lists recipe files that could not be read, as `{"file", "error"}`. `controls` is true when the recipe brings pad controls of its own (recipe `controls`, for a game without pad support).
 `options` rows, one per recipe option in name order: `{"name": "QUALITY", "label": "Quality", "choices": [{"value": "low", "label": "Low"}, {"value": "high", "label": "High"}], "default": "low", "text": false}`. The chosen `value` becomes the template variable `$QUALITY` in the recipe's arguments, environment, edits, registry values and files. An option with `"text": true` has no `choices` and takes short free text (up to 64 letters, digits, spaces and `. _ : , / \ + = @ -`); its `default` is the text used when none is given.
 
-Where a game is installed: today `<state>/games.json`, an object from recipe id to folder (`{"testgame": "C:\path"}`); the Steam layer adds a library scan.
+Where a game is installed: `<state>/games.json`, an object from recipe id to folder (`{"testgame": "C:\path"}`); then the games the player added (`add_game`) and the other stores on this PC (GOG and the Epic launcher on Windows, Heroic's GOG and Epic games on Linux), where a recipe finds its game by `match.exe` or `launch.exe`; then the Steam libraries. Couchlink never asks where a game came from.
+
+Every installed game no recipe covers is listed too, as a "Try it" recipe (`source` `try`): Steam games as `try-steam-<app id>`, games of other stores as `try-gog-<id>` and `try-epic-<id>`, and the player's own as `try-own-<id>`. Those play one copy per player with Steam left out (`steam` `none`).
 
 `start_session` takes the seats that are placed on a screen that is `on` in `State.screens` (see [Screens](#screens-who-plays-where)); each gets one copy of the game, in seat order, on the pixel rectangle of its region. The number of seats must lie in the recipe's `players` range. `options` maps option names to the player's choice; an option left out takes its default, and a name the recipe does not have, a value that is not one of its `choices`, or free text with other characters than the allowed ones is an error (the reply says which option). Only one session runs at a time. With `--dev`, a screen whose display is not connected falls back to a 1920x1080 stand-in display at 0,0 (for tests on a locked PC).
 
