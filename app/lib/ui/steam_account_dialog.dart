@@ -27,6 +27,8 @@ class _SteamAccountDialogState extends State<_SteamAccountDialog> {
   SteamAccounts? _list;
   String? _error;
   bool _working = false;
+  /// "How it works" is open: the steps Couchlink takes, for anyone who wants to know.
+  bool _details = false;
   Timer? _poll;
 
   SteamAccount? get _mine => _list?.accounts.where((a) => a.seat == widget.seat).firstOrNull;
@@ -108,18 +110,43 @@ class _SteamAccountDialogState extends State<_SteamAccountDialog> {
         style: txt(context, size: 13, color: c.ink2, height: 1.4),
       ));
     } else if (a != null) {
-      body.addAll([
-        Text('$name uses your Steam account. To give them their own:', style: txt(context, size: 13, color: c.ink2, height: 1.4)),
-        const SizedBox(height: 10),
-        for (final step in a.plan.where((s) => s.id != 'remove'))
-          Padding(
+      // What the player does is two things; everything else Couchlink does, and stays behind "How it works".
+      Widget line(int n, String text) => Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(step.title + (step.needsAdmin ? t(' (Windows asks for permission)') : ''), style: txt(context, size: 12.5, weight: FontWeight.w600)),
-              Text(step.detail, style: txt(context, size: 12, color: c.ink3, height: 1.35)),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              SizedBox(width: 20, child: Text('$n.', style: txt(context, size: 13, weight: FontWeight.w600, color: c.ink3))),
+              Expanded(child: Text(text, style: txt(context, size: 13, color: c.ink2, height: 1.4))),
             ]),
+          );
+      body.addAll([
+        Text(t('{name} plays on your Steam account now. Couchlink can give them their own; it sets everything up for you.', {'name': name}),
+            style: txt(context, size: 13, color: c.ink2, height: 1.4)),
+        const SizedBox(height: 12),
+        line(1, t('Click the button below. Windows asks for permission once.')),
+        line(2, t('A Steam window opens. {name} signs in there with their own account.', {'name': name})),
+        line(3, t('Done. Their Steam starts by itself whenever you play.')),
+        const SizedBox(height: 4),
+        Text(t('{name} needs their own copy of the game on their account.', {'name': name}), style: txt(context, size: 12, color: c.ink3)),
+        const SizedBox(height: 10),
+        MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            key: const ValueKey('steam-how'),
+            onTap: () => setState(() => _details = !_details),
+            child: Text(_details ? t('Hide how it works') : t('How it works'), style: txt(context, size: 12, color: c.accent).copyWith(decoration: TextDecoration.underline, decorationColor: c.accent)),
           ),
-        Text('Each player needs their own copy of the game on their account.', style: txt(context, size: 12, color: c.ink3)),
+        ),
+        if (_details) ...[
+          const SizedBox(height: 8),
+          for (final step in a.plan.where((s) => s.id != 'remove'))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(step.title, style: txt(context, size: 12, weight: FontWeight.w600, color: c.ink2)),
+                Text(step.detail, style: txt(context, size: 12, color: c.ink3, height: 1.35)),
+              ]),
+            ),
+        ],
       ]);
     }
     if (_error != null) {
