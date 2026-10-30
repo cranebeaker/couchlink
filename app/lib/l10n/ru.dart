@@ -330,6 +330,7 @@ const Map<String, String> ruStrings = {
   'Controller button': 'Кнопка геймпада',
   'Keyboard key': 'Клавиша',
   'Mouse': 'Мышь',
+  'Keyboard': 'Клавиатура',
   'Layer': 'Слой',
   'Nothing': 'Ничего',
   'Press': 'Нажатие',

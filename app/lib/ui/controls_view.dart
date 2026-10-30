@@ -544,7 +544,7 @@ class _Header extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      CIcon(device!.isKbm ? iconKbm : iconPad, size: 18, color: c.ink2),
+                      CIcon(deviceIcon(device!.id, device!.isKbm), size: 18, color: c.ink2),
                       const SizedBox(width: 8),
                       Flexible(child: Text(device!.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: txt(context, size: 12.5, color: c.ink2, height: 1.3))),
                       if (device!.battery != null) ...[

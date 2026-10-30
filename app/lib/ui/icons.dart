@@ -37,6 +37,20 @@ final IconSpec iconPad = IconSpec(32, [
   _circle(23.5, 17.5, 1),
 ]);
 
+/// A keyboard on its own and a mouse on its own, on the same 32 grid as [iconKbm].
+final IconSpec iconKeyboard = IconSpec(32, [
+  _rect(3, 9.5, 26, 13, 2.5),
+  'M7.5 14h1M11.5 14h1M15.5 14h1M19.5 14h1M23.5 14h1M8.5 18h15',
+], const []);
+final IconSpec iconMouse = IconSpec(32, [
+  _rect(10.5, 5.5, 11, 21, 5.5),
+  'M16 5.5v6.5M10.5 12h11',
+], const []);
+
+/// The icon for a device: a keyboard, a mouse, both (the shared desktop pair), or a controller.
+IconSpec deviceIcon(String id, bool isKbm) =>
+    id.startsWith('kbd:') ? iconKeyboard : id.startsWith('mouse:') ? iconMouse : isKbm ? iconKbm : iconPad;
+
 final IconSpec iconKbm = IconSpec(32, [
   _rect(2.5, 11, 19, 11, 2),
   'M6 15h1M9.5 15h1M13 15h1M16.5 15h1M7 18.5h10',

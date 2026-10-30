@@ -187,7 +187,9 @@ class _DeviceChip extends StatelessWidget {
   Widget _body(BuildContext context, {bool hover = false}) {
     final c = context.c;
     final seated = seat != null;
-    final status = seated ? t('Player {seat_1}', {'seat_1': seat! + 1}) : (device.isKbm ? t('Click to join') : t('Press A to join'));
+    final kind = device.isKeyboard ? t('Keyboard') : device.isMouse ? t('Mouse') : null;
+    final what = seated ? t('Player {seat_1}', {'seat_1': seat! + 1}) : (device.isKbm ? t('Click to join') : t('Press A to join'));
+    final status = kind == null ? what : '$kind · $what';
     final small = txt(context, size: 11.5, color: seated ? c.ink3 : c.accent, height: 1.3);
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 9, 14, 9),
@@ -199,7 +201,7 @@ class _DeviceChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          CIcon(device.isKbm ? iconKbm : iconPad, size: 30, color: c.ink2),
+          CIcon(deviceIcon(device.id, device.isKbm), size: 30, color: c.ink2),
           const SizedBox(width: 10),
           Flexible(
             child: Column(
@@ -424,7 +426,7 @@ class _SeatCardState extends State<_SeatCard> with SingleTickerProviderStateMixi
               Padding(
                 padding: const EdgeInsets.only(bottom: 2),
                 child: Row(children: [
-                  CIcon(d.isKbm ? iconKbm : iconPad, size: 20, color: c.ink2),
+                  CIcon(deviceIcon(d.id, d.isKbm), size: 20, color: c.ink2),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(d.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: txt(context, size: 12.5, color: c.ink2, height: 1.3)),

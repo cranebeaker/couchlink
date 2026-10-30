@@ -39,6 +39,10 @@ class Device {
 
   bool get isKbm => kind == 'kbm' || family == 'kbm';
 
+  /// One physical keyboard or mouse (ids from the raw input list); the shared desktop one is neither.
+  bool get isKeyboard => id.startsWith('kbd:');
+  bool get isMouse => id.startsWith('mouse:');
+
   factory Device.fromJson(Map<String, dynamic> j) => Device(
         id: _str(j['id']),
         kind: _str(j['kind'], 'gamepad'),
