@@ -1,0 +1,134 @@
+# Linux build: tests the Rust workspace (including the input sandbox test with virtual uinput devices),
+# builds the Flutter app and packs both into a tarball. Tags (v*) keep the tarball as a release artifact.
+name: Linux
+
+on:
+  push:
+    branches: [main, "claude/linux-**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: never
+  # The hook injection tests are Windows only and never run in CI.
+  COUCHLINK_SKIP_INJECT_TESTS: "1"
+
+jobs:
+  core:
+    name: Rust workspace
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System packages
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends \
+            bubblewrap fuse-overlayfs cmake ninja-build pkg-config \
+            libudev-dev libx11-dev libxext-dev libxrandr-dev libxi-dev libxfixes-dev libxcursor-dev \
+            libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev libdbus-1-dev libasound2-dev libpulse-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+
+      - name: Let tests make virtual input devices and sandboxes
+        run: |
+          # Ubuntu 24.04 limits unprivileged user namespaces, which bubblewrap needs.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          sudo modprobe uinput
+          sudo chmod 0666 /dev/uinput
+          # Only the test devices (named couchlink-test-...) become readable by the runner user.
+          echo 'SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="couchlink-test-*", MODE="0666"' \
+            | sudo tee /etc/udev/rules.d/99-couchlink-test.rules
+          sudo udevadm control --reload-rules
+          bwrap --version
+          fuse-overlayfs --version | head -1
+
+      - name: Test
+        working-directory: core
+        env:
+          # The sandbox test must run here, never skip.
+          COUCHLINK_REQUIRE_SANDBOX_TEST: "1"
+        run: cargo test --workspace --locked -- --nocapture
+
+      - name: Build couchlinkd
+        working-directory: core
+        env:
+          RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=build
+        run: cargo build --release --locked -p couchlinkd
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: couchlinkd-linux-x64
+          path: core/target/release/couchlinkd
+          if-no-files-found: error
+
+  app:
+    name: Flutter app
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System packages
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends clang cmake ninja-build pkg-config libgtk-3-dev
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Test
+        working-directory: app
+        run: flutter test
+
+      - name: Build
+        working-directory: app
+        run: flutter build linux --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: couchlink-app-linux-x64
+          path: app/build/linux/x64/release/bundle
+          if-no-files-found: error
+
+  package:
+    name: Tarball
+    needs: [core, app]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: couchlinkd-linux-x64
+          path: built/couchlinkd
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: couchlink-app-linux-x64
+          path: built/app
+
+      - name: Pack
+        env:
+          # Extra words that must never ship (comma separated), kept as a repository secret when set.
+          COUCHLINK_PRIVATE_WORDS: ${{ secrets.COUCHLINK_PRIVATE_WORDS }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          case "$GITHUB_REF" in refs/tags/v*) ;; *) version="0.1.0-dev.${GITHUB_SHA::7}" ;; esac
+          python3 -I tools/release/package_linux.py --version "$version" \
+            --daemon built/couchlinkd/couchlinkd --app-bundle built/app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: couchlink-linux-x64
+          path: dist/*.tar.gz
+          if-no-files-found: error
