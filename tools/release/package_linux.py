@@ -1,7 +1,7 @@
 """Builds a Couchlink release tarball for Linux.
 
-    python3 -I tools/release/package_linux.py [--version 0.1.0] [--build-root /tmp/cl-build]
-    python3 -I tools/release/package_linux.py --version 0.1.0 --daemon PATH --app-bundle DIR
+    python3 -I tools/release/package_linux.py [--version 0.1.1] [--build-root /tmp/cl-build]
+    python3 -I tools/release/package_linux.py --version 0.1.1 --daemon PATH --app-bundle DIR
 
 Without --daemon and --app-bundle it builds both, from a neutral folder outside the user's home (with its own
 Cargo and pub caches), because compilers bake the build folder into the binaries. CI passes what its jobs built.

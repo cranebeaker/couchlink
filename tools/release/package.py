@@ -1,6 +1,6 @@
 """Builds a Couchlink release zip for Windows.
 
-    python -I tools/release/package.py [--version 0.1.0] [--build-root C:\\cl-build]
+    python -I tools/release/package.py [--version 0.1.1] [--build-root C:\\cl-build]
 
 Compilers bake the folder a program was built in into the binaries (panic messages, PDB paths, asset
 paths). A personal folder name must never ship, so the whole build runs from a neutral folder outside the

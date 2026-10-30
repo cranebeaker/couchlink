@@ -1,0 +1,38 @@
+# Windows build (windows-2022: the hook builds with Visual Studio 2022): the release zip (couchlinkd, the input hook for x64 and x86, the Flutter app), built by
+# tools/release/package.py from a neutral folder. Tags (v*) keep it as the release artifact; pull requests check it builds.
+name: Windows
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Release zip
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Pack
+        shell: pwsh
+        run: |
+          $version = if ($env:GITHUB_REF -like 'refs/tags/v*') { $env:GITHUB_REF_NAME.TrimStart('v') } else { "0.1.1-dev.$($env:GITHUB_SHA.Substring(0, 7))" }
+          python -I tools/release/package.py --version $version --build-root C:\cl-build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: couchlink-windows-x64
+          path: dist/*-windows-x64.zip
+          if-no-files-found: error

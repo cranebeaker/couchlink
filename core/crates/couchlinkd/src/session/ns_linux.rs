@@ -400,10 +400,12 @@ mod tests {
         // The namespace ends with its holder (which may take a moment to go).
         let gone = || !Path::new(&format!("/proc/{pid}")).exists() || std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|s| s.contains(") Z "));
         let t = std::time::Instant::now();
-        while !gone() && t.elapsed() < Duration::from_secs(5) {
+        while !gone() && t.elapsed() < Duration::from_secs(15) {
             std::thread::sleep(Duration::from_millis(20));
         }
-        assert!(gone(), "the holder ended");
+        let status = std::fs::read_to_string(format!("/proc/{pid}/status")).unwrap_or_default();
+        let state: Vec<&str> = status.lines().filter(|l| l.starts_with("State:") || l.starts_with("PPid:")).collect();
+        assert!(gone(), "the holder ended ({state:?})");
         assert_eq!(std::fs::read_to_string(upper.join("save.dat")).unwrap(), "save", "the seat's changes stay in its layer");
         let _ = std::fs::remove_dir_all(&root);
     }

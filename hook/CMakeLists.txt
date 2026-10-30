@@ -52,6 +52,10 @@ target_compile_options(hook_core PRIVATE /W3 /utf-8 /EHsc /GS-)
 # Version information (company, product, description) for every binary: unlabeled files look suspicious to scanners.
 enable_language(RC)
 enable_language(ASM_MASM)
+# x86 stand-ins are linked as SafeSEH images; their assembly has no exception handlers, so MASM marks it safe.
+if(CL_ARCH STREQUAL "x86")
+  set(CMAKE_ASM_MASM_FLAGS "${CMAKE_ASM_MASM_FLAGS} /safeseh")
+endif()
 function(cl_version_rc target description internal original out_var)
   set(CL_FILE_DESCRIPTION "${description}")
   set(CL_INTERNAL_NAME "${internal}")

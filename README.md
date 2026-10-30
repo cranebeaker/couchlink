@@ -88,7 +88,7 @@ cd core && cargo build --release -p couchlinkd
 cd ../app && flutter build windows --release
 ```
 
-`python -I tools/release/package.py --version 0.1.0` builds the release zip from a neutral folder and checks every file
+`python -I tools/release/package.py --version 0.1.1` builds the release zip from a neutral folder and checks every file
 before writing it. Tests: `cd core && cargo test --workspace` and `cd app && flutter test`.
 
 Layout: `core/` (Rust: the `couchlinkd` service and its crates), `app/` (Flutter), `hook/` (C++ input hook),
