@@ -99,7 +99,7 @@ endforeach()
 add_executable(couchlink_test_target tests/test_target.cpp)
 target_compile_definitions(couchlink_test_target PRIVATE UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
 target_compile_options(couchlink_test_target PRIVATE /W3 /utf-8 /EHsc)
-target_link_libraries(couchlink_test_target PRIVATE user32 shell32 ole32 dinput8 dxguid setupapi hid)
+target_link_libraries(couchlink_test_target PRIVATE user32 shell32 ole32 dinput8 dxguid setupapi hid runtimeobject)
 
 foreach(t couchlink_hook ${CL_PROXY_TARGETS})
   if(t STREQUAL "couchlink_hook")

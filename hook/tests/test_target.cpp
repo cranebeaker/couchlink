@@ -13,6 +13,11 @@
 #include <setupapi.h>
 #include <hidsdi.h>
 
+#include <roapi.h>
+#include <windows.gaming.input.h>
+#include <wrl/client.h>
+#include <wrl/wrappers/corewrappers.h>
+
 // A static import of version.dll, so a stand-in version.dll next to this exe is loaded at process start.
 #pragma comment(lib, "version.lib")
 #include <cstdlib>
@@ -726,7 +731,28 @@ int wmain(int argc, wchar_t** argv) {
             }
             di->Release();
         }
-        j += ",\"pads\":{\"raw\":" + list(raw) + ",\"hid\":" + list(hid) + ",\"hid_refused\":" + std::to_string(refused) +
+        // Windows.Gaming.Input: its lists fill in a moment after the first look, so look for up to 1.5 s.
+        int wgi_pads = -1, wgi_raw = -1;
+        {
+            namespace wgi = ABI::Windows::Gaming::Input;
+            using Microsoft::WRL::ComPtr;
+            using Microsoft::WRL::Wrappers::HStringReference;
+            RoInitialize(RO_INIT_MULTITHREADED);
+            ComPtr<wgi::IGamepadStatics> gs;
+            ComPtr<wgi::IRawGameControllerStatics> rs;
+            RoGetActivationFactory(HStringReference(RuntimeClass_Windows_Gaming_Input_Gamepad).Get(), IID_PPV_ARGS(&gs));
+            RoGetActivationFactory(HStringReference(RuntimeClass_Windows_Gaming_Input_RawGameController).Get(), IID_PPV_ARGS(&rs));
+            for (int i = 0; i < 15 && (gs || rs); ++i) {
+                unsigned n = 0;
+                ComPtr<ABI::Windows::Foundation::Collections::IVectorView<wgi::Gamepad*>> pv;
+                if (gs && SUCCEEDED(gs->get_Gamepads(&pv)) && SUCCEEDED(pv->get_Size(&n))) wgi_pads = (int)n;
+                ComPtr<ABI::Windows::Foundation::Collections::IVectorView<wgi::RawGameController*>> rv;
+                if (rs && SUCCEEDED(rs->get_RawGameControllers(&rv)) && SUCCEEDED(rv->get_Size(&n))) wgi_raw = (int)n;
+                if (wgi_pads > 0 && wgi_raw > 0) break;
+                Sleep(100);
+            }
+        }
+        j += ",\"pads\":{\"wgi_gamepads\":" + std::to_string(wgi_pads) + ",\"wgi_raw\":" + std::to_string(wgi_raw) + ",\"raw\":" + list(raw) + ",\"hid\":" + list(hid) + ",\"hid_refused\":" + std::to_string(refused) +
              ",\"dinput_enumerated\":" + std::to_string(di_enum) + ",\"dinput\":" + list(di_paths) +
              ",\"dinput_refused\":" + std::to_string(di_refused) + "}";
     }

@@ -375,6 +375,7 @@ void MaybeHookLoaded(HMODULE m) {
     DWORD n = GetModuleFileNameW(m, path, ARRAYSIZE(path));
     if (n == 0 || n >= ARRAYSIZE(path)) return;
     DInputModuleLoaded(m, path);  // no-op without a keyboard / mouse feed or pad hiding
+    PadsModuleLoaded(m, path);    // no-op without pad hiding
     if (!g_cfg.xinput) return;
     std::string name;
     if (!IsXInputName(path, &name)) return;

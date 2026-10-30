@@ -1525,7 +1525,7 @@ fn proxy_pads_only_own(arch: &str) {
     plain.finish();
     let strs = |v: &Value| -> Vec<String> { v.as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default() };
     let (base_raw, base_hid, base_di) = (strs(&base["raw"]), strs(&base["hid"]), strs(&base["dinput"]));
-    println!("  {arch}: controllers without the hook: raw {} hid {} dinput {}", base_raw.len(), base_hid.len(), base_di.len());
+    println!("  {arch}: controllers without the hook: raw {} hid {} dinput {} wgi {} wgi_raw {}", base_raw.len(), base_hid.len(), base_di.len(), base["wgi_gamepads"], base["wgi_raw"]);
 
     let none = HookConfig { own_pads: Some(vec![]), ..Default::default() };
     let opts = HookOptions { xinput: true, test_pads: Some(vec![]) };
@@ -1533,6 +1533,8 @@ fn proxy_pads_only_own(arch: &str) {
     let r = hidden.result()["pads"].clone();
     let st = hidden.status();
     assert!(st.hooks.pads, "{st:?}");
+    // Windows.Gaming.Input has no device paths to sort by: a copy that hides pads gets none through it (-1: refused).
+    assert!(r["wgi_gamepads"].as_i64().unwrap_or(0) <= 0 && r["wgi_raw"].as_i64().unwrap_or(0) <= 0, "no controller through Windows.Gaming.Input: {r}");
     assert!(strs(&r["raw"]).is_empty() && strs(&r["hid"]).is_empty() && strs(&r["dinput"]).is_empty(), "no controller may leak: {r}");
     assert_eq!(r["dinput_enumerated"], 0, "{r}");
     assert!(r["hid_refused"].as_u64().unwrap_or(0) >= base_hid.len() as u64, "{r}");

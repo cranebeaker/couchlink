@@ -7,7 +7,11 @@
 //
 // - HID: CreateFileW/A and CreateFile2 on its device path fail with "not found" (files_hook.cpp asks PadPathHidden);
 // - Raw Input: GetRawInputDeviceList leaves it out and its WM_INPUT messages are dropped (msg_hook.cpp);
-// - DirectInput 8: EnumDevices skips it and CreateDevice refuses it (kbm_dinput.cpp).
+// - DirectInput 8: EnumDevices skips it and CreateDevice refuses it (kbm_dinput.cpp);
+// - Windows.Gaming.Input and GameInput: these list every controller with no device path to sort by, so a copy that
+//   hides pads gets neither (RoGetActivationFactory refuses the controller classes, GameInputCreate fails). Games
+//   then fall back to XInput, which gives each copy its own pad. Same idea as the Nucleus Co-op trick of patching
+//   "Windows.Gaming.Input" out of the game.
 //
 // Keyboards, mice and every other kind of device are never touched. An empty list hides every controller (a seat that
 // plays with keyboard and mouse). Same idea as ProtoInput's BlockRawInputHook, DinputDeviceHook and CreateSingleHIDHook
@@ -25,6 +29,10 @@ std::map<std::wstring, bool> g_path_is_pad;  // normalised path -> is a game con
 std::map<HANDLE, bool> g_handle_hidden;       // Raw Input device -> hidden
 
 UINT(WINAPI* o_GetRawInputDeviceList)(PRAWINPUTDEVICELIST, PUINT, UINT) = nullptr;
+HRESULT(WINAPI* o_RoGetActivationFactory)(void*, REFIID, void**) = nullptr;
+const wchar_t*(WINAPI* p_WindowsGetStringRawBuffer)(void*, UINT32*) = nullptr;
+HRESULT(WINAPI* o_GameInputCreate)(void**) = nullptr;
+bool g_gameinput_hooked = false;
 
 // HID usage page 1 (generic desktop): 4 joystick, 5 gamepad, 8 multi-axis controller.
 bool IsControllerUsage(USHORT page, USHORT usage) { return page == 1 && (usage == 4 || usage == 5 || usage == 8); }
@@ -192,8 +200,69 @@ bool PadsKeepMessage(const MSG* m) {
     return false;
 }
 
+namespace {
+
+// The Windows.Gaming.Input classes that hand out controllers.
+bool IsControllerClass(void* cls) {
+    if (!cls || !p_WindowsGetStringRawBuffer) return false;
+    UINT32 len = 0;
+    const wchar_t* s = p_WindowsGetStringRawBuffer(cls, &len);
+    static const wchar_t kPrefix[] = L"Windows.Gaming.Input.";
+    const UINT32 plen = ARRAYSIZE(kPrefix) - 1;
+    if (!s || len <= plen || wcsncmp(s, kPrefix, plen) != 0) return false;
+    std::wstring rest(s + plen, len - plen);
+    for (const wchar_t* n : {L"Gamepad", L"RawGameController", L"ArcadeStick", L"FlightStick", L"RacingWheel", L"UINavigationController"})
+        if (rest == n) return true;
+    return false;
+}
+
+HRESULT WINAPI d_RoGetActivationFactory(void* cls, REFIID iid, void** factory) {
+    if (g_cfg.hide_pads && IsControllerClass(cls)) {
+        if (factory) *factory = nullptr;
+        Bump(C_PADS_HIDDEN);
+        return REGDB_E_CLASSNOTREG;
+    }
+    return o_RoGetActivationFactory(cls, iid, factory);
+}
+
+HRESULT WINAPI d_GameInputCreate(void** out) {
+    if (out) *out = nullptr;
+    Bump(C_PADS_HIDDEN);
+    return E_NOTIMPL;
+}
+
+}  // namespace
+
+void PadsModuleLoaded(HMODULE m, const wchar_t* path) {
+    if (!g_cfg.hide_pads) return;
+    const wchar_t* base = wcsrchr(path, L'\\');
+    base = base ? base + 1 : path;
+    if (_wcsicmp(base, L"gameinput.dll") != 0) return;
+    {
+        std::lock_guard<std::mutex> l(g_lock);
+        if (g_gameinput_hooked) return;
+        g_gameinput_hooked = true;
+    }
+    if (InstallHook(m, "GameInputCreate", reinterpret_cast<void*>(&d_GameInputCreate), reinterpret_cast<void**>(&o_GameInputCreate)))
+        ApplyHooks();
+}
+
+namespace {
+
+void InstallGamingInput() {
+    HMODULE c = GetModuleHandleW(L"combase.dll");
+    if (!c) c = LoadLibraryW(L"combase.dll");
+    if (!c) return;
+    p_WindowsGetStringRawBuffer = reinterpret_cast<decltype(p_WindowsGetStringRawBuffer)>(GetProcAddress(c, "WindowsGetStringRawBuffer"));
+    if (p_WindowsGetStringRawBuffer)
+        InstallHook(c, "RoGetActivationFactory", reinterpret_cast<void*>(&d_RoGetActivationFactory), reinterpret_cast<void**>(&o_RoGetActivationFactory));
+}
+
+}  // namespace
+
 void InstallPads() {
     if (!g_cfg.hide_pads) return;
+    InstallGamingInput();
     HMODULE u = GetModuleHandleW(L"user32.dll");
     if (!u) u = LoadLibraryW(L"user32.dll");
     if (InstallHook(u, "GetRawInputDeviceList", reinterpret_cast<void*>(&d_GetRawInputDeviceList),

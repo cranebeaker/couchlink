@@ -144,6 +144,7 @@ bool PadHandleHidden(HANDLE device);
 bool PadsKeepMessage(const MSG* m);
 // A module was loaded into the process (called by the LoadLibrary watch in xinput_hook.cpp).
 void DInputModuleLoaded(HMODULE m, const wchar_t* path);
+void PadsModuleLoaded(HMODULE m, const wchar_t* path);  // GameInput.dll, when pads are hidden
 
 // The largest visible top-level window of this process; nullptr until there is one.
 HWND FindMainWindow();
