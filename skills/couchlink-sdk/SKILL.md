@@ -134,6 +134,8 @@ Keep the MIT notice and `hook/THIRD_PARTY.md` with anything you ship.
 
 ## Limits
 
-- Windows 10 and 11 only.
+- Windows 10 and 11. macOS 12 and later is a preview: native Mac games that do not use the hardened runtime get their
+  own controller and keyboard through an injected library; Windows games run through Wine but see every controller;
+  `goldberg` and `accounts` do not exist there. Details: `docs/macos.md`.
 - Up to 8 players per session.
 - Separate real Steam accounts per player are not in this release; `shared` and `goldberg` cover one-account play.

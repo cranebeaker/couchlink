@@ -57,7 +57,7 @@ way the game already supports: LAN, a co-op mod's server, or Steam. Any game tha
 |---|---|
 | Windows 10 and 11 (64-bit) | [Releases](https://github.com/cranebeaker/couchlink/releases): unzip, run `couchlink.exe` |
 | Linux | In the works |
-| macOS | In the works |
+| macOS 12 and later | Preview, build from source: what works and what cannot is in [`docs/macos.md`](docs/macos.md) |
 
 Some antivirus tools are wary of any program that gives games their own controllers. Couchlink is open source and
 built from this repo; if your antivirus complains, tell us on the Discord.
@@ -90,6 +90,17 @@ cd ../app && flutter build windows --release
 
 `python -I tools/release/package.py --version 0.1.0` builds the release zip from a neutral folder and checks every file
 before writing it. Tests: `cd core && cargo test --workspace` and `cd app && flutter test`.
+
+macOS, with Rust, Flutter, CMake and the Xcode command line tools:
+
+```
+cd core && cargo build --release -p couchlinkd
+cd ../app && flutter build macos --release
+```
+
+`python3 -I tools/release/package_macos.py --version 0.1.0` builds `Couchlink.app` (ad-hoc signed) into a zip, or a dmg
+with `--dmg`, with the same neutral-folder build and file check. Tests: `cd core && COUCHLINK_SKIP_INJECT_TESTS=1 cargo
+test --workspace`. Details, permissions and the first start through Gatekeeper: [`docs/macos.md`](docs/macos.md).
 
 Layout: `core/` (Rust: the `couchlinkd` service and its crates), `app/` (Flutter), `hook/` (C++ input hook),
 `core/recipes/` (built-in recipes), `docs/` (design and protocol).
@@ -133,7 +144,8 @@ Couchlink запускает отдельную копию игры для ка�
 **Скачать**
 - Windows 10 и 11 (64-бит): [Releases](https://github.com/cranebeaker/couchlink/releases), распакуйте и запустите
   `couchlink.exe`.
-- Linux и macOS: в работе.
+- macOS: предварительная версия, сборка из исходников, подробности в [`docs/macos.md`](docs/macos.md).
+- Linux: в работе.
 
 **Для разработчиков**
 

@@ -7,7 +7,7 @@
 //   key up 0
 //   mouse moved 5 -3
 //
-// usage: inputprobe [SECONDS]   (default 30; exits after that)
+// usage: inputprobe [SECONDS] [--window]   (default 30 s; --window opens a 640x400 window titled "inputprobe")
 
 #import <AppKit/AppKit.h>
 #import <GameController/GameController.h>
@@ -31,11 +31,26 @@ static long hid_pads(void) {
 
 int main(int argc, char **argv) {
     @autoreleasepool {
-        double seconds = argc > 1 ? atof(argv[1]) : 30;
+        double seconds = 30;
+        BOOL window = NO;
+        for (int i = 1; i < argc; i++) {
+            if (strcmp(argv[i], "--window") == 0)
+                window = YES;
+            else
+                seconds = atof(argv[i]);
+        }
         setvbuf(stdout, NULL, _IOLBF, 0);
         [NSApplication sharedApplication];
-        [NSApp setActivationPolicy:NSApplicationActivationPolicyProhibited];
+        [NSApp setActivationPolicy:window ? NSApplicationActivationPolicyRegular : NSApplicationActivationPolicyProhibited];
         [NSApp finishLaunching];
+        NSWindow *win = nil;
+        if (window) {
+            NSWindowStyleMask style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable;
+            win = [[NSWindow alloc] initWithContentRect:NSMakeRect(200, 200, 640, 400) styleMask:style backing:NSBackingStoreBuffered defer:NO];
+            win.title = @"inputprobe";
+            win.releasedWhenClosed = NO;
+            [win makeKeyAndOrderFront:nil];
+        }
         int *loaded = dlsym(RTLD_DEFAULT, "couchlink_inject_loaded");
         printf("ready injected=%d hidpads=%ld\n", loaded ? *loaded : 0, hid_pads());
         NSDate *end = [NSDate dateWithTimeIntervalSinceNow:seconds];

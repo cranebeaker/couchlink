@@ -457,6 +457,40 @@ mod tests {
         assert!(!alive(pid));
     }
 
+    /// Places a real window and puts it back. Needs the Accessibility permission for the process that runs the
+    /// tests (System Settings > Privacy & Security > Accessibility), so it only runs when asked:
+    /// `cargo test -p couchlinkd -- --ignored placing_a_window`.
+    #[test]
+    #[ignore = "needs the Accessibility permission"]
+    fn placing_a_window_moves_it_and_restoring_puts_it_back() {
+        let _procs = crate::session::launch::test_process_lock();
+        assert!(trusted(), "this test needs the Accessibility permission");
+        let mut child = std::process::Command::new(env!("COUCHLINK_TEST_INPUTPROBE")).args(["20", "--window"]).stdout(std::process::Stdio::null()).spawn().unwrap();
+        let pid = child.id();
+        let t = std::time::Instant::now();
+        while best_window(pid).is_none() {
+            assert!(t.elapsed() < std::time::Duration::from_secs(10), "the probe window never appeared");
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let before = best_window(pid).unwrap().frame().unwrap();
+        let displays = point_displays();
+        let main = crate::displays_macos::to_pixels(&displays[0], displays.iter().map(|d| d.scale).fold(1.0, f64::max));
+        let rect = Rect { x: main.x, y: main.y + main.h / 2, w: main.w / 2, h: main.h / 2 };
+        let mut seats = Seats::default();
+        assert_eq!(place(&mut seats, 0, pid, rect, true), Ok(true));
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let now = best_window(pid).unwrap().frame().unwrap();
+        let want = to_points(rect, &displays);
+        assert!((now.origin.x - want.origin.x).abs() <= 2.0 && (now.size.width - want.size.width).abs() <= 2.0, "{now:?} vs {want:?}");
+        assert!(titled("inputprobe"));
+        restore_all(&mut seats);
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let back = best_window(pid).unwrap().frame().unwrap();
+        assert!((back.origin.x - before.origin.x).abs() <= 2.0 && (back.size.width - before.size.width).abs() <= 2.0, "{back:?} vs {before:?}");
+        kill(pid);
+        let _ = child.wait();
+    }
+
     #[test]
     fn nothing_is_titled_like_a_random_string() {
         assert!(!titled(&format!("couchlink-no-such-window-{}", std::process::id())));

@@ -23,6 +23,11 @@ pub fn builtin_dir(explicit: Option<&Path>) -> Option<PathBuf> {
         return Some(d.to_path_buf());
     }
     let exe = std::env::current_exe().ok()?;
+    // In the Mac app bundle couchlinkd is in Contents/MacOS and the recipes in Contents/Resources.
+    #[cfg(target_os = "macos")]
+    if let Some(r) = exe.parent().and_then(Path::parent).map(|c| c.join("Resources").join("recipes")).filter(|d| d.is_dir()) {
+        return Some(r);
+    }
     let mut dir = exe.parent()?.to_path_buf();
     for _ in 0..5 {
         let candidate = dir.join("recipes");
