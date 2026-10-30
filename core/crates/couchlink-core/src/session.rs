@@ -184,6 +184,13 @@ pub fn plan_seats(state: &State, recipe: &Recipe, allow_missing_display: bool) -
         let range = if min == max { format!("{min}") } else { format!("{min} to {max}") };
         return Err(format!("{} needs {range} players on screen, but {n} {} placed", recipe.game, if n == 1 { "is" } else { "are" }));
     }
+    if recipe.mode == crate::recipe::Mode::Native {
+        // One copy for everyone: player 1's whole screen, and every player's devices in seat order.
+        let display = state.displays.iter().find(|d| d.id == plans[0].display).cloned().unwrap_or_else(|| fallback_display(&plans[0].display));
+        let devices = plans.iter().flat_map(|p| p.devices.iter().cloned()).collect();
+        let first = plans.swap_remove(0);
+        return Ok(vec![SeatPlan { rect: region_rect(&display, [0.0, 0.0, 1.0, 1.0]), devices, ..first }]);
+    }
     Ok(plans)
 }
 
@@ -241,6 +248,17 @@ mod tests {
         assert_eq!(r[0].x + r[0].w, r[1].x);
         assert_eq!(r[1].x + r[1].w, r[2].x);
         assert_eq!(r[2].x + r[2].w, 1000);
+    }
+
+    #[test]
+    fn a_native_game_is_one_copy_with_every_players_devices_on_player_ones_whole_screen() {
+        let st = state(vec![screen(&[3, 0], &[[0.5, 0.0, 0.5, 1.0], [0.0, 0.0, 0.5, 1.0]])]);
+        let text = r#"{"schema":1,"id":"g","game":"G","players":[1,4],"mode":"native","launch":{"exe":"g.exe"}}"#;
+        let plan = plan_seats(&st, &Recipe::parse(text).unwrap(), false).unwrap();
+        assert_eq!(plan.len(), 1);
+        assert_eq!((plan[0].seat, plan[0].player.as_str()), (0, "A"));
+        assert_eq!(plan[0].devices, vec!["dev-A", "dev-D"], "player 1's pad first, then the others in seat order");
+        assert_eq!(plan[0].rect, Rect { x: 100, y: -50, w: 1921, h: 1081 });
     }
 
     #[test]

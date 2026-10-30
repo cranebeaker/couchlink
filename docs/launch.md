@@ -131,6 +131,8 @@ Where the change goes: a file in the copy is replaced by a new file (the hardlin
 journalled (the original is kept as `<name>.couchlink-orig`) and restored at the end. Edits without `per_seat` are made once up front, with `per_seat` right before each
 seat's launch with that seat's variables (so a shared file is rewritten for each seat in turn, for games that read it at start). A missing file is an error that says to start the game once, unless `optional` (skip) or `create` (make it).
 
+**mode**: `instances` (the default) runs one copy of the game per player. `native` runs one copy for every player, for a game that splits the screen itself (its own split-screen, or a mod that unlocks it, like AlphaRing for Halo: The Master Chief Collection): it starts from the real game folder (`files.link` is `none`) on player 1's whole screen, gets every player's controller in seat order, and runs without the input hook, so the game sees all the pads. `players` is how many the game's split-screen takes. Example: `recipes/halo-mcc-alpharing.json`.
+
 **files**: `copy` and `copy_dirs` (real copies, not links; a folder copies everything under it), `exclude_files` / `exclude_dirs` (left out of the copy; a bare name matches at
 any depth, a path matches only there; a file in both lists is refused), `per_seat`: `[{"path": "user.ini", "content": "fov=$FOV\n"}]` writes a real file into each seat's copy (without `content`, a fresh copy of the game's file),
 `saves`: relative paths, or paths under `$USERPROFILE`, `$DOCUMENTS`, `$APPDATA`, `$LOCALAPPDATA`. A machine path in `saves` is given to the hook as a redirect (the game's path, `<state>/instances/<recipe>/<seat>/saves/<path>`);

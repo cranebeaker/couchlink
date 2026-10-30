@@ -201,6 +201,12 @@ impl Config {
             }
         }
         let options = recipe.resolve_options(options)?;
+        if recipe.mode == couchlink_core::recipe::Mode::Native {
+            // One copy for everyone: from the real folder (where the split-screen mod is), and without the input hook,
+            // which would give it only one pad.
+            recipe.files.link = couchlink_core::recipe::LinkMode::None;
+            recipe.input = couchlink_core::recipe::Input { xinput: false, dinput: false, rawinput: false };
+        }
         let seats = plan_seats(state, &recipe, dev)?;
         if matches!(recipe.steam, couchlink_core::recipe::SteamMode::Goldberg | couchlink_core::recipe::SteamMode::Accounts) && self.deps.prepare.is_none() {
             return Err(format!("{} needs Steam mode {:?}, which this build of Couchlink cannot set up yet", recipe.game, recipe.steam));

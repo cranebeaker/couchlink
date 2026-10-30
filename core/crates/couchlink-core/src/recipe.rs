@@ -21,6 +21,10 @@ pub enum Mode {
     /// One game process per player.
     #[default]
     Instances,
+    /// One game process for every player: the game splits the screen itself (its own split-screen, or a mod that
+    /// unlocks it). It starts from the real game folder on player 1's screen, with every player's controller and no
+    /// input hook, so the game sees all the pads.
+    Native,
 }
 
 /// How the copies become different Steam players (the "ladder" in docs/launch.md).
