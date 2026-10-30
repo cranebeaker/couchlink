@@ -81,6 +81,20 @@ pub struct GameInfo {
     /// The recipe brings controls of its own (`controls`): a pad mapping for a game without pad support.
     #[serde(default)]
     pub controls: bool,
+    /// How to play (the recipe's `tips`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tips: Vec<String>,
+    /// What Couchlink puts in place for each session (the recipe's `fetch`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub installs: Vec<InstallInfo>,
+}
+
+/// One file a recipe fetches, as the Library names it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstallInfo {
+    pub name: String,
+    pub source: String,
+    pub license: String,
 }
 
 /// A one-time step before the first game, as `list_games` shows it.

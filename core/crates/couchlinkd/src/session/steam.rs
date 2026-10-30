@@ -12,6 +12,7 @@ pub struct SteamPrepare;
 
 impl Prepare for SteamPrepare {
     fn prepare_seat(&self, ctx: &PrepareCtx, journal: &mut Journal) -> Result<SeatPrep, String> {
+        fetch_files(ctx, journal)?;
         let mode = match ctx.recipe.steam {
             SteamMode::Goldberg => couchlink_steam::SteamMode::Goldberg,
             SteamMode::Accounts | SteamMode::Shared => {
@@ -57,6 +58,23 @@ impl Prepare for SteamPrepare {
         }
         Ok(prep)
     }
+}
+
+/// The recipe's `fetch` files (a mod the game needs), downloaded once into the cache and put into this seat's folder
+/// for the session; the journal takes them away again.
+fn fetch_files(ctx: &PrepareCtx, journal: &mut Journal) -> Result<(), String> {
+    for f in &ctx.recipe.fetch {
+        let src = couchlink_steam::fetch::fetch_cached(&f.url, &f.sha256, &ctx.cache_dir)
+            .map_err(|e| format!("cannot get {} for {}: {}", f.name, ctx.recipe.game, e.user_message()))?;
+        let dest = ctx.copy_dir.join(expand(&f.to, &ctx.vars)?.replace('\\', "/"));
+        let undos = couchlink_steam::fetch::place_for_session(&dest, &src)
+            .map_err(|e| format!("cannot put {} in place: {}", f.name, e.user_message()))?;
+        for u in &undos {
+            let data = serde_json::to_value(u).map_err(|e| e.to_string())?;
+            journal.record_external(KIND, data).map_err(|e| format!("could not write the journal: {e}"))?;
+        }
+    }
+    Ok(())
 }
 
 /// A game on the player's own Steam, started outside Steam, quits and asks Steam to start it instead unless

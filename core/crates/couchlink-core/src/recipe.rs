@@ -262,6 +262,19 @@ pub struct Find {
     pub depth: u8,
 }
 
+/// A file Couchlink fetches for a session (a mod the game needs): downloaded once from `url`, checked against `sha256`,
+/// put at `to` (relative to the game folder; templates) and taken away again when the session ends.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Fetch {
+    pub url: String,
+    pub sha256: String,
+    pub to: String,
+    /// What it is, for the Library ("AlphaRing v2.0.2"), its project page and its licence (an SPDX id like `MIT`).
+    pub name: String,
+    pub source: String,
+    pub license: String,
+}
+
 /// A file the game folder must hold (relative to it), and the plain hint shown when it is missing.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Require {
@@ -315,6 +328,12 @@ pub struct Recipe {
     /// Files the game folder must hold before a start, each with what to tell the player if it does not.
     #[serde(default)]
     pub requires: Vec<Require>,
+    /// Files Couchlink fetches and puts in place for each session (`Fetch`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fetch: Vec<Fetch>,
+    /// How to play, in plain sentences, shown in the Library (what to press in the game, what to avoid).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tips: Vec<String>,
     /// Choices the player makes before a start; each becomes a template variable named like the option.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub options: BTreeMap<String, OptionDef>,
@@ -354,6 +373,21 @@ impl Recipe {
         }
         if let Some(c) = &self.controls {
             crate::profile::Profile::from_value(c).map_err(|e| format!("controls: {e}"))?;
+        }
+        for (i, f) in self.fetch.iter().enumerate() {
+            if !f.url.starts_with("https://") {
+                return Err(format!("fetch[{i}].url: only https downloads are taken"));
+            }
+            if f.sha256.len() != 64 || !f.sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Err(format!("fetch[{i}].sha256: 64 hex digits"));
+            }
+            let to = f.to.replace('\\', "/");
+            if to.is_empty() || to.starts_with('/') || to.contains(':') || to.split('/').any(|p| p == "..") {
+                return Err(format!("fetch[{i}].to: a path inside the game folder"));
+            }
+            if f.name.trim().is_empty() || !f.source.starts_with("https://") || f.license.trim().is_empty() {
+                return Err(format!("fetch[{i}]: name, an https source page and a licence are needed, so players see what is installed"));
+            }
         }
         let id_ok = !self.id.is_empty()
             && self.id.len() <= 64

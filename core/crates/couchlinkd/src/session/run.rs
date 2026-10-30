@@ -288,12 +288,21 @@ impl Run {
         Ok(())
     }
 
+    /// Per-seat setup before launch: the recipe's fetched files, then the Steam layer (Goldberg, a seat's own account,
+    /// or `steam_appid.txt` for a game on the player's own Steam).
     fn steam(&mut self, recipe: &Recipe) -> Result<(), String> {
-        if !matches!(recipe.steam, SteamMode::Goldberg | SteamMode::Accounts) {
+        let needs_layer = matches!(recipe.steam, SteamMode::Goldberg | SteamMode::Accounts);
+        if !needs_layer && recipe.steam != SteamMode::Shared && recipe.fetch.is_empty() {
             return Ok(());
         }
         let Some(prepare) = self.deps.prepare.clone() else {
-            return Err(format!("{} needs Steam mode {:?}, which this build of Couchlink cannot set up yet", recipe.game, recipe.steam));
+            if needs_layer {
+                return Err(format!("{} needs Steam mode {:?}, which this build of Couchlink cannot set up yet", recipe.game, recipe.steam));
+            }
+            if !recipe.fetch.is_empty() {
+                return Err(format!("{} needs files this build of Couchlink cannot fetch", recipe.game));
+            }
+            return Ok(());
         };
         let party = self.seats.len() as u8;
         for idx in 0..self.seats.len() {

@@ -15,10 +15,20 @@
   "locks": [],
   "input": { "xinput": false, "dinput": false, "rawinput": false },
   "window": { "borderless": true, "settle_ms": 8000, "wait_ms": 180000 },
-  "requires": [
+  "fetch": [
     {
-      "file": "MCC/Binaries/Win64/WTSAPI32.dll",
-      "hint": "install the AlphaRing mod: put its WTSAPI32.dll in MCC/Binaries/Win64, next to MCC-Win64-Shipping.exe. In the game, press F4, add the players, give each one a controller, click Enable, then press F4 again to close it. Anti-cheat is off while it runs, so play the campaign or custom games, not online matchmaking."
+      "name": "AlphaRing v2.0.2",
+      "url": "https://github.com/kirklandsig/AlphaRing/releases/download/v2.0.2-experimental/WTSAPI32.dll",
+      "sha256": "6c836b36dec443fb986ab0c67444de5d26e27b51a34e7d71d19529e46dc56650",
+      "to": "MCC/Binaries/Win64/WTSAPI32.dll",
+      "source": "https://github.com/kirklandsig/AlphaRing",
+      "license": "MIT"
     }
-  ]
+  ],
+  "tips": [
+    "Couchlink puts the AlphaRing split-screen mod in place while you play and takes it out again after, so the normal game with anti-cheat still works.",
+    "In the game, press F4, add the players, give each one a controller, click Enable, then press F4 again to close it.",
+    "Anti-cheat is off while it runs: play the campaign or custom games, not online matchmaking."
+  ],
+  "linux": { "env": { "WINEDLLOVERRIDES": "WTSAPI32=n,b" } }
 }

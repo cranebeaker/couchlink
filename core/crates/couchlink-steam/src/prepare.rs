@@ -472,6 +472,11 @@ fn make_room(path: &Path, undos: &mut Vec<Undo>) -> Result<()> {
     Ok(())
 }
 
+/// `place_file` for other modules of this crate (recipe fetches).
+pub(crate) fn place_bytes(path: &Path, data: &[u8], undos: &mut Vec<Undo>) -> Result<()> {
+    place_file(path, data, undos)
+}
+
 fn place_file(path: &Path, data: &[u8], undos: &mut Vec<Undo>) -> Result<()> {
     make_room(path, undos)?;
     std::fs::write(path, data).map_err(|e| SteamError::io(format!("writing {}", path.display()), e))
