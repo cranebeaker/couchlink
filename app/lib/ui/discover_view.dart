@@ -104,7 +104,7 @@ class _DiscoverViewState extends State<DiscoverView> {
                 onChanged: ui.setCatalogQuery,
                 style: txt(context, size: 14, height: 1.3),
                 decoration: InputDecoration.collapsed(
-                  hintText: total > 0 ? 'Search $total projects' : t('Search title, project or engine'),
+                  hintText: total > 0 ? t('Search {total} projects', {'total': total}) : t('Search title, project or engine'),
                   hintStyle: txt(context, size: 14, color: c.ink3, height: 1.3),
                 ),
               ),
@@ -143,10 +143,10 @@ class _DiscoverViewState extends State<DiscoverView> {
   Widget _statusLine(BuildContext context, CouchClient client, UiState ui, Catalog cat, int shown) {
     final c = context.c;
     final fetched = cat.fetchedAt;
-    final updated = fetched == null ? 'Updated at an unknown time' : 'Updated ${relativeTime(fetched, ui.clock())}';
+    final updated = fetched == null ? t('Updated at an unknown time') : t('Updated {clock}', {'clock': relativeTime(fetched, ui.clock())});
     final offline = client.catalogProblem != null;
     final parts = [
-      shown == cat.entries.length ? '${cat.entries.length} projects' : '$shown of ${cat.entries.length} projects',
+      shown == cat.entries.length ? '${cat.entries.length} projects' : t('{shown} of {length} projects', {'shown': shown, 'length': cat.entries.length}),
       updated,
       if (offline) 'Offline, showing the saved list',
     ];
@@ -204,7 +204,7 @@ class _DiscoverViewState extends State<DiscoverView> {
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
             child: Text(
-              'Couchlink could not reach coopanything.app and has no saved copy. Check your connection, then try again.',
+              t('Couchlink could not reach coopanything.app and has no saved copy. Check your connection, then try again.'),
               textAlign: TextAlign.center,
               style: txt(context, size: 13, color: c.ink2),
             ),

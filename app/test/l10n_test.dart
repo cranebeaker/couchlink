@@ -1,0 +1,56 @@
+import 'package:couchlink/l10n/l10n.dart';
+import 'package:couchlink/l10n/ru.dart';
+import 'package:couchlink/ui/app_state.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'helpers.dart';
+
+void main() {
+  tearDown(() => currentLang = AppLang.en);
+
+  test('placeholders are filled and a missing translation falls back to English', () {
+    currentLang = AppLang.ru;
+    expect(t('Library'), 'Библиотека');
+    expect(t('{first} and {last}', {'first': 'Maya', 'last': 'Theo'}), 'Maya и Theo');
+    expect(t('Something nobody translated'), 'Something nobody translated');
+    currentLang = AppLang.en;
+    expect(t('{first} and {last}', {'first': 'Maya', 'last': 'Theo'}), 'Maya and Theo');
+  });
+
+  test('Russian counts use the right plural form', () {
+    currentLang = AppLang.ru;
+    expect(countGames(1), '1 игра');
+    expect(countGames(3), '3 игры');
+    expect(countGames(5), '5 игр');
+    expect(countGames(11), '11 игр');
+    expect(countGames(21), '21 игра');
+    expect(countPlayers(2), '2 игрока');
+    currentLang = AppLang.en;
+    expect(countGames(1), '1 game');
+    expect(countPlayers(3), '3 players');
+  });
+
+  test('every Russian entry keeps the placeholders of its English key', () {
+    final ph = RegExp(r'\{\w+\}');
+    for (final e in ruStrings.entries) {
+      final a = ph.allMatches(e.key).map((m) => m[0]).toSet();
+      final b = ph.allMatches(e.value).map((m) => m[0]).toSet();
+      expect(b, a, reason: e.key);
+    }
+  });
+
+  testWidgets('the language switch turns the app Russian and back', (tester) async {
+    await pumpApp(tester, newFake(), view: AppView.library);
+    expect(find.text('Library'), findsWidgets);
+    await tester.tap(find.byKey(const ValueKey('lang-русский')));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Библиотека'), findsWidgets);
+    expect(find.text('Язык'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('lang-english')));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Library'), findsWidgets);
+  });
+}

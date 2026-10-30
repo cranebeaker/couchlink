@@ -1,3 +1,4 @@
+import '../l10n/l10n.dart';
 import 'dart:math' as math;
 import 'dart:ui' show Rect;
 
@@ -44,7 +45,7 @@ class TilePlan {
   int get hashCode => Object.hash(cols, rows, Object.hashAll(cells));
 
   @override
-  String toString() => 'TilePlan($cols x $rows, $cells)';
+  String toString() => t('TilePlan({cols} x {rows}, {cells})', {'cols': cols, 'rows': rows, 'cells': cells});
 }
 
 bool _listEq(List<Object?> a, List<Object?> b) {
@@ -167,7 +168,7 @@ TilePlan previewPlan(List<DisplayInfo> displays, List<int> seats, LayoutMode mod
 /// Name of the layout the players will see, for the party bar.
 String layoutSummary(List<DisplayInfo> displays, List<int> seats, LayoutMode mode) {
   final splits = planScreens(displays, seats, mode).where((p) => p.role == ScreenRole.split).toList();
-  if (splits.length > 1) return 'One per screen';
+  if (splits.length > 1) return t('One per screen');
   return effectiveShape(mode, seats.length).label;
 }
 

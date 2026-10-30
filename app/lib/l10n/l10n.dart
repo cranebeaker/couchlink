@@ -16,6 +16,10 @@ enum AppLang {
 }
 
 AppLang _systemLang() {
+  // `--dart-define=COUCHLINK_LANG=ru` starts in Russian (screenshots, layout checks).
+  const forced = String.fromEnvironment('COUCHLINK_LANG');
+  if (forced == 'ru') return AppLang.ru;
+  if (forced == 'en') return AppLang.en;
   try {
     return Platform.localeName.toLowerCase().startsWith('ru') ? AppLang.ru : AppLang.en;
   } catch (_) {

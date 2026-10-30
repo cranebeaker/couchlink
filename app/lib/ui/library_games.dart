@@ -1,5 +1,7 @@
 import 'package:flutter/painting.dart';
 
+import '../l10n/l10n.dart';
+
 import '../daemon/client.dart';
 import 'app_state.dart';
 import 'sample_data.dart';
@@ -27,7 +29,7 @@ LibraryGame? pickedGame(CouchClient client, UiState ui) {
 
 /// The display name of a session's recipe: the Library name, else the recipe id.
 String gameNameOf(CouchClient client, String? recipe) {
-  if (recipe == null) return 'the game';
+  if (recipe == null) return t('the game');
   for (final g in client.games ?? const []) {
     if (g.recipe == recipe) return g.game;
   }

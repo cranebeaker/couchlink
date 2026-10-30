@@ -22,9 +22,9 @@ class ConnectionGate extends StatelessWidget {
       listenable: client,
       builder: (context, _) {
         final s = client.state;
-        if (client.status == ConnStatus.error) return StatusPanel.error(client.errorMessage ?? 'Something went wrong.', client.retry);
+        if (client.status == ConnStatus.error) return StatusPanel.error(client.errorMessage ?? t('Something went wrong.'), client.retry);
         if (s == null) {
-          return StatusPanel.starting(client.status == ConnStatus.reconnecting ? 'Reconnecting to Couchlink service' : 'Starting Couchlink service');
+          return StatusPanel.starting(client.status == ConnStatus.reconnecting ? t('Reconnecting to Couchlink service') : t('Starting Couchlink service'));
         }
         return builder(context, s);
       },

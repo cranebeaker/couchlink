@@ -114,7 +114,7 @@ class _PlayersBar extends StatelessWidget {
               ),
             ] else
               Text(
-                taken.isEmpty ? 'Nobody has joined yet. Players join on the Players page.' : 'Drag a player onto a screen, or click a player and then a screen.',
+                taken.isEmpty ? t('Nobody has joined yet. Players join on the Players page.') : t('Drag a player onto a screen, or click a player and then a screen.'),
                 style: txt(context, size: 12.5, color: c.ink2, height: 1.3),
               ),
           ]),
@@ -139,7 +139,7 @@ class _PlayerChip extends StatelessWidget {
   Widget _body(BuildContext context, {bool hover = false}) {
     final c = context.c;
     final st = ctl.state;
-    final where = ctl.screenOf(seat)?.display.name ?? 'Not on a screen';
+    final where = ctl.screenOf(seat)?.display.name ?? t('Not on a screen');
     final picked = ctl.picked == seat;
     return Container(
       padding: const EdgeInsets.fromLTRB(6, 6, 14, 6),
@@ -154,7 +154,7 @@ class _PlayerChip extends StatelessWidget {
         SeatBadge(number: seat + 1, color: c.seat[seat], size: 22, radius: 7, fontSize: 12),
         const SizedBox(width: 8),
         Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-          Text(st.seats[seat]?.name ?? 'Player ${seat + 1}', style: txt(context, size: 13, weight: FontWeight.w600, height: 1.15)),
+          Text(st.seats[seat]?.name ?? t('Player {seat_1}', {'seat_1': seat + 1}), style: txt(context, size: 13, weight: FontWeight.w600, height: 1.15)),
           Text(where, style: txt(context, size: 11, color: c.ink3, height: 1.15)),
         ]),
       ]),
@@ -174,7 +174,7 @@ class _PlayerChip extends StatelessWidget {
       child: Pressable(
         onTap: () => ctl.pick(seat),
         radius: 999,
-        semanticLabel: '${ctl.state.seats[seat]?.name}, click then click a screen',
+        semanticLabel: t('{name}, click then click a screen', {'name': ctl.state.seats[seat]?.name}),
         builder: (context, s) => _body(context, hover: s.hover),
       ),
     );
@@ -191,10 +191,10 @@ class _OffZone extends StatelessWidget {
     return DragTarget<int>(
       key: const ValueKey('off-zone'),
       onAcceptWithDetails: (d) {
-        final name = ctl.state.seats[d.data]?.name ?? 'They';
+        final name = ctl.state.seats[d.data]?.name ?? t('They');
         final where = ctl.screenOf(d.data)?.display.name;
         ctl.remove(d.data);
-        if (where != null) Scope.of(context).toaster.show('$name is off the $where');
+        if (where != null) Scope.of(context).toaster.show(t('{name} is off the {where}', {'name': name, 'where': where}));
       },
       builder: (context, cand, _) => Container(
         height: 40,
@@ -329,7 +329,7 @@ class _ScreenCard extends StatelessWidget {
 }
 
 void _placeWithToast(BuildContext context, ScreensController ctl, ScreenEdit e, int seat) {
-  final name = ctl.state.seats[seat]?.name ?? 'Player ${seat + 1}';
+  final name = ctl.state.seats[seat]?.name ?? t('Player {seat_1}', {'seat_1': seat + 1});
   final from = ctl.screenOf(seat);
   if (from == e) {
     ctl.pick(null);
@@ -340,7 +340,7 @@ void _placeWithToast(BuildContext context, ScreensController ctl, ScreenEdit e, 
   if (err != null) {
     toaster.show(err);
   } else {
-    toaster.show(from != null ? '$name moved from the ${from.display.name} to the ${e.display.name}' : '$name is on the ${e.display.name}');
+    toaster.show(from != null ? t('{name} moved from the {name2} to the {name3}', {'name': name, 'name2': from.display.name, 'name3': e.display.name}) : t('{name} is on the {name2}', {'name': name, 'name2': e.display.name}));
   }
 }
 
@@ -357,7 +357,7 @@ class _DropHint extends StatelessWidget {
     final name = ctl.state.seats[seat]?.name ?? 'them';
     final here = edit.seats.contains(seat);
     final full = !here && edit.seats.length >= kMaxSeats;
-    final text = full ? 'This screen is full' : here ? '$name is already here' : ctl.dragging != null ? 'Drop to add $name' : 'Put $name here';
+    final text = full ? t('This screen is full') : here ? t('{name} is already here', {'name': name}) : ctl.dragging != null ? t('Drop to add {name}', {'name': name}) : t('Put {name} here', {'name': name});
     return IgnorePointer(
       child: Container(
         decoration: BoxDecoration(
@@ -406,7 +406,7 @@ class _TileState extends State<_Tile> {
     final d = widget.edit.display;
     final (pw, ph) = pixelsOf(widget.box, d.w, d.h);
     final size = pictureSize(pw, ph);
-    final name = widget.ctl.state.seats[seat]?.name ?? 'Player ${seat + 1}';
+    final name = widget.ctl.state.seats[seat]?.name ?? t('Player {seat_1}', {'seat_1': seat + 1});
     return LayoutBuilder(builder: (context, box) {
       final tiny = box.maxWidth < 70 || box.maxHeight < 44;
       return Container(
@@ -455,7 +455,7 @@ class _TileState extends State<_Tile> {
   Widget build(BuildContext context) {
     final ctl = widget.ctl;
     final seat = widget.seat;
-    final name = ctl.state.seats[seat]?.name ?? 'Player ${seat + 1}';
+    final name = ctl.state.seats[seat]?.name ?? t('Player {seat_1}', {'seat_1': seat + 1});
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
@@ -464,9 +464,9 @@ class _TileState extends State<_Tile> {
         // Only someone already on a screen swaps; a newcomer falls through to the screen and is added (it splits).
         onWillAcceptWithDetails: (d) => d.data != seat && ctl.screenOf(d.data) != null,
         onAcceptWithDetails: (d) {
-          final other = ctl.state.seats[d.data]?.name ?? 'They';
+          final other = ctl.state.seats[d.data]?.name ?? t('They');
           ctl.swap(d.data, seat);
-          Scope.of(context).toaster.show('$other and $name swapped places');
+          Scope.of(context).toaster.show(t('{other} and {name} swapped places', {'other': other, 'name': name}));
         },
         builder: (context, cand, _) => Stack(fit: StackFit.expand, children: [
           Draggable<int>(
@@ -495,7 +495,7 @@ class _TileState extends State<_Tile> {
               top: 6,
               child: RoundX(
                 key: ValueKey('remove-$seat${widget.big ? '-big' : ''}'),
-                label: 'Take $name off this screen',
+                label: t('Take {name} off this screen', {'name': name}),
                 size: 22,
                 bg: const Color(0x6B000000),
                 fg: Colors.white,
@@ -509,10 +509,10 @@ class _TileState extends State<_Tile> {
 }
 
 void _removeWithUndo(BuildContext context, ScreensController ctl, int seat) {
-  final name = ctl.state.seats[seat]?.name ?? 'They';
+  final name = ctl.state.seats[seat]?.name ?? t('They');
   final where = ctl.screenOf(seat)?.display.name;
   ctl.remove(seat);
-  if (where != null) Scope.of(context).toaster.show('$name is off the $where');
+  if (where != null) Scope.of(context).toaster.show(t('{name} is off the {where}', {'name': name, 'where': where}));
 }
 
 class _Flash extends StatefulWidget {
@@ -593,10 +593,10 @@ class _ScreenFooter extends StatelessWidget {
             onTap: () {
               final n = e.seats.length;
               ctl.setOn(e.display.id, !e.on);
-              Scope.of(context).toaster.show(!e.on ? '${e.display.name} on' : n > 0 ? '${e.display.name} is off; $n ${n == 1 ? 'player' : 'players'} back in the Players bar' : '${e.display.name} off');
+              Scope.of(context).toaster.show(!e.on ? t('{display} on', {'display': e.display.name}) : n > 0 ? t('{display} is off; {players} back in the Players bar', {'display': e.display.name, 'players': countPlayers(n)}) : t('{display} off', {'display': e.display.name}));
             },
             radius: 999,
-            semanticLabel: '${e.on ? 'Turn off' : 'Turn on'} ${e.display.name}',
+            semanticLabel: t(e.on ? 'Turn off {display}' : 'Turn on {display}', {'display': e.display.name}),
             builder: (context, s) => Container(
               width: 26,
               height: 26,
@@ -634,7 +634,7 @@ class _ScreenFooter extends StatelessWidget {
           ),
         ])
       else
-        CButton(key: ValueKey('turn-on-${e.display.id}'), label: 'Turn on', small: true, onTap: () => ctl.setOn(e.display.id, true)),
+        CButton(key: ValueKey('turn-on-${e.display.id}'), label: t('Turn on'), small: true, onTap: () => ctl.setOn(e.display.id, true)),
     ]);
   }
 }
@@ -664,8 +664,8 @@ class _AddPlayerButton extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                Text(ctl.state.seats[s]?.name ?? 'Player ${s + 1}', style: txt(context, size: 13, weight: FontWeight.w600, height: 1.2)),
-                Text(ctl.screenOf(s) != null ? 'on the ${ctl.screenOf(s)!.display.name}' : 'not on a screen', style: txt(context, size: 11.5, color: c.ink3, height: 1.2)),
+                Text(ctl.state.seats[s]?.name ?? t('Player {s_1}', {'s_1': s + 1}), style: txt(context, size: 13, weight: FontWeight.w600, height: 1.2)),
+                Text(ctl.screenOf(s) != null ? t('on the {name}', {'name': ctl.screenOf(s)!.display.name}) : t('not on a screen'), style: txt(context, size: 11.5, color: c.ink3, height: 1.2)),
               ]),
             ),
           ),
@@ -748,9 +748,9 @@ class _SplitEditor extends StatelessWidget {
                       const SizedBox(height: 10),
                       Text(
                         e.isCustom
-                            ? 'Drag a player to move them, drag a corner to resize. Edges snap to the screen, to each other and to a grid. Leave gaps for Discord, a map or a stream.'
+                            ? t('Drag a player to move them, drag a corner to resize. Edges snap to the screen, to each other and to a grid. Leave gaps for Discord, a map or a stream.')
                             : n >= 2
-                                ? 'Drag the round handles to resize; they snap to halves and thirds. Drag one player onto another to swap.'
+                                ? t('Drag the round handles to resize; they snap to halves and thirds. Drag one player onto another to swap.')
                                 : '',
                         style: txt(context, size: 12, color: c.ink3, height: 1.4),
                       ),
@@ -864,8 +864,8 @@ class _PresentRow extends StatelessWidget {
       const SizedBox(height: 6),
       Text(
         virtual
-            ? 'Each player gets a virtual screen sized exactly to their part, so every game runs true full screen and fits perfectly. Needs a one-time display driver install and adds about a frame of delay.'
-            : 'Each game runs in a borderless window placed on its part of this screen. Fastest, no extra drivers. Some games only work full screen; switch to virtual screens for those.',
+            ? t('Each player gets a virtual screen sized exactly to their part, so every game runs true full screen and fits perfectly. Needs a one-time display driver install and adds about a frame of delay.')
+            : t('Each game runs in a borderless window placed on its part of this screen. Fastest, no extra drivers. Some games only work full screen; switch to virtual screens for those.'),
         style: txt(context, size: 12, color: c.ink2, height: 1.4),
       ),
     ]);
@@ -1043,7 +1043,7 @@ class _EditorCanvasState extends State<_EditorCanvas> {
     final others = [for (final x in e.custom!.entries) if (x.key != seat) x.value];
     final clash = clashing(e.custom!).contains(seat);
     final (pw, ph) = pixelsOf(b, e.display.w, e.display.h);
-    final name = ctl.state.seats[seat]?.name ?? 'Player ${seat + 1}';
+    final name = ctl.state.seats[seat]?.name ?? t('Player {seat_1}', {'seat_1': seat + 1});
 
     void start(DragStartDetails d) {
       ctl.beginGesture();
@@ -1109,7 +1109,7 @@ class _EditorCanvasState extends State<_EditorCanvas> {
       Positioned(
         right: 22,
         top: 8,
-        child: RoundX(key: ValueKey('remove-$seat-free'), label: 'Take $name off this screen', size: 22, bg: const Color(0x6B000000), fg: Colors.white, onTap: () => _removeWithUndo(context, ctl, seat)),
+        child: RoundX(key: ValueKey('remove-$seat-free'), label: t('Take {name} off this screen', {'name': name}), size: 22, bg: const Color(0x6B000000), fg: Colors.white, onTap: () => _removeWithUndo(context, ctl, seat)),
       ),
       // Corners sit just inside the tile so they stay grabbable at the screen's edges.
       Positioned(left: 3, top: 3, child: corner('nw', Alignment.topLeft)),
@@ -1143,7 +1143,7 @@ class _EditorSide extends StatelessWidget {
           final b = boxes[s] ?? const Box(0, 0, 1, 1);
           final (pw, ph) = pixelsOf(b, e.display.w, e.display.h);
           final size = pictureSize(pw, ph);
-          final name = ctl.state.seats[s]?.name ?? 'Player ${s + 1}';
+          final name = ctl.state.seats[s]?.name ?? t('Player {s_1}', {'s_1': s + 1});
           return Container(
             margin: const EdgeInsets.only(bottom: 6),
             padding: const EdgeInsets.fromLTRB(8, 6, 6, 6),
@@ -1155,12 +1155,12 @@ class _EditorSide extends StatelessWidget {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(name, style: txt(context, size: 13, weight: FontWeight.w600, height: 1.25)),
                   Text(
-                    '$pw x $ph${size == PictureSize.ok ? '' : size == PictureSize.tooSmall ? ', too small' : ', small'}',
+                    '$pw x $ph${size == PictureSize.ok ? '' : size == PictureSize.tooSmall ? t(', too small') : t(', small')}',
                     style: txt(context, size: 11.5, color: size == PictureSize.ok ? c.ink3 : (size == PictureSize.tooSmall ? c.danger : c.warn), height: 1.25),
                   ),
                 ]),
               ),
-              RoundX(key: ValueKey('side-remove-$s'), label: 'Take $name off', size: 26, onTap: () => _removeWithUndo(context, ctl, s)),
+              RoundX(key: ValueKey('side-remove-$s'), label: t('Take {name} off', {'name': name}), size: 26, onTap: () => _removeWithUndo(context, ctl, s)),
             ]),
           );
         }),
@@ -1174,7 +1174,7 @@ class _EditorSide extends StatelessWidget {
             key: ValueKey('side-add-$s'),
             onTap: e.seats.length >= 4 ? null : () => _placeWithToast(context, ctl, e, s),
             radius: 10,
-            semanticLabel: 'Add ${ctl.state.seats[s]?.name} to this screen',
+            semanticLabel: t('Add {name} to this screen', {'name': ctl.state.seats[s]?.name}),
             builder: (context, st) => CustomPaint(
               painter: DashedRRectPainter(color: st.hover ? c.accent : c.hairStrong, radius: 10),
               child: Padding(
@@ -1184,8 +1184,8 @@ class _EditorSide extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(ctl.state.seats[s]?.name ?? 'Player ${s + 1}', style: txt(context, size: 13, weight: FontWeight.w600, height: 1.25)),
-                      Text(ctl.screenOf(s) != null ? 'on the ${ctl.screenOf(s)!.display.name}' : 'not on a screen', style: txt(context, size: 11.5, color: c.ink3, height: 1.25)),
+                      Text(ctl.state.seats[s]?.name ?? t('Player {s_1}', {'s_1': s + 1}), style: txt(context, size: 13, weight: FontWeight.w600, height: 1.25)),
+                      Text(ctl.screenOf(s) != null ? t('on the {name}', {'name': ctl.screenOf(s)!.display.name}) : t('not on a screen'), style: txt(context, size: 11.5, color: c.ink3, height: 1.25)),
                     ]),
                   ),
                   CIcon(iconPlus, size: 14, color: c.accent, strokeWidth: 2),
@@ -1207,7 +1207,7 @@ String screensSummary(DaemonState st) {
     if (d == null) continue;
     parts.add('${d.name}: ${s.seats.length}');
   }
-  return parts.isEmpty ? 'Nobody placed' : parts.join(', ');
+  return parts.isEmpty ? t('Nobody placed') : parts.join(', ');
 }
 
 /// A little picture of the busiest screen and who plays where on it, for the party bar.

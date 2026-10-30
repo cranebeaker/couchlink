@@ -43,10 +43,10 @@ class ControlCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (title != null) Text(title!, style: txt(context, size: 14, weight: FontWeight.w600, height: 1.3)),
+          if (title != null) Text(t(title!), style: txt(context, size: 14, weight: FontWeight.w600, height: 1.3)),
           if (sub != null) ...[
             const SizedBox(height: 4),
-            Text(sub!, style: txt(context, size: 12.5, color: c.ink2, height: 1.4)),
+            Text(t(sub!), style: txt(context, size: 12.5, color: c.ink2, height: 1.4)),
           ],
           if (title != null || sub != null) const SizedBox(height: 12),
           child,
@@ -64,7 +64,7 @@ class FieldLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(top: 14, bottom: 7),
-        child: Text(text.toUpperCase(), style: txt(context, size: 11.5, weight: FontWeight.w600, color: context.c.ink3, ls: .02, height: 1.2)),
+        child: Text(t(text).toUpperCase(), style: txt(context, size: 11.5, weight: FontWeight.w600, color: context.c.ink3, ls: .02, height: 1.2)),
       );
 }
 
@@ -83,7 +83,7 @@ class OptChip extends StatelessWidget {
     return Pressable(
       onTap: onTap,
       radius: 9,
-      semanticLabel: label,
+      semanticLabel: t(label),
       toggled: selected,
       builder: (context, s) => Container(
         constraints: const BoxConstraints(minWidth: 38),
@@ -96,7 +96,7 @@ class OptChip extends StatelessWidget {
         child: Center(
           widthFactor: 1,
           heightFactor: 1,
-          child: child ?? Text(label, style: txt(context, size: 12.5, color: selected ? Colors.white : c.ink, height: 1.3)),
+          child: child ?? Text(t(label), style: txt(context, size: 12.5, color: selected ? Colors.white : c.ink, height: 1.3)),
         ),
       ),
     );
@@ -167,7 +167,7 @@ class SwitchRow extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Flexible(child: Text(label, style: txt(context, size: 13, height: 1.3))),
+            Flexible(child: Text(t(label), style: txt(context, size: 13, height: 1.3))),
             const SizedBox(width: 12),
             CSwitch(value: value, onChanged: onChanged, label: label),
           ],
@@ -253,7 +253,7 @@ class _StickCard extends StatelessWidget {
     const curves = [('linear', 'Linear'), ('smooth', 'Smooth'), ('precise', 'Precise'), ('fast', 'Fast'), ('wide', 'Wide middle')];
     return ControlCard(
       title: _left ? t('Left stick') : t('Right stick'),
-      sub: '${_left ? 'Usually moving.' : 'Usually looking and aiming.'} Move the stick to see the grey dot (what you do) and the coloured dot (what the game gets).',
+      sub: '${_left ? t('Usually moving.') : t('Usually looking and aiming.')} ${t('Move the stick to see the grey dot (what you do) and the coloured dot (what the game gets).')}',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -297,19 +297,19 @@ class _StickCard extends StatelessWidget {
             const SizedBox(width: 8),
             Flexible(child: Text('Dead zone: small wobbles here are ignored', style: txt(context, size: 12, color: c.ink2, height: 1.3))),
           ]),
-          const FieldLabel('Acts as'),
+          FieldLabel(t('Acts as')),
           Seg<String>(
             keyPrefix: 'as-$side',
             options: const [('stick', 'Stick'), ('mouse', 'Mouse'), ('dpad', 'D-pad'), ('wasd', 'W A S D')],
             value: cfg.as,
             onChanged: (v) => _set((c) => c.copyWith(as: v)),
           ),
-          const FieldLabel('Curve'),
+          FieldLabel(t('Curve')),
           Wrap(spacing: 6, runSpacing: 6, children: [
             for (final (v, label) in curves)
               OptChip(key: ValueKey('curve-$side-$v'), selected: cfg.curve == v, label: label, onTap: () => _set((c) => c.copyWith(curve: v))),
           ]),
-          const FieldLabel('Dead zone'),
+          FieldLabel(t('Dead zone')),
           SliderRow(
             key: ValueKey('inner-$side'),
             label: t('Dead zone'),
@@ -320,7 +320,7 @@ class _StickCard extends StatelessWidget {
             display: '${cfg.inner.round()}%',
             onChanged: (v) => _set((c) => c.copyWith(inner: v.roundToDouble(), outer: math.max(c.outer, v + 10))),
           ),
-          const FieldLabel('Full speed at'),
+          FieldLabel(t('Full speed at')),
           SliderRow(
             key: ValueKey('outer-$side'),
             label: t('Full speed at'),
@@ -331,7 +331,7 @@ class _StickCard extends StatelessWidget {
             display: '${cfg.outer.round()}%',
             onChanged: (v) => _set((c) => c.copyWith(outer: v.roundToDouble())),
           ),
-          const FieldLabel('Sensitivity'),
+          FieldLabel(t('Sensitivity')),
           SliderRow(
             key: ValueKey('sens-$side'),
             label: t('Sensitivity'),
@@ -473,13 +473,13 @@ class _TriggerCard extends StatelessWidget {
       _ => 50.0,
     };
     final blurb = switch (cfg.mode) {
-      'digital' => 'Counts as pressed past the line on the bar. Best for menus and simple shooting.',
-      'hair' => 'Fires the moment you start squeezing and resets as soon as you ease off. Fastest shooting.',
-      _ => 'The game gets how far you squeeze. Best for driving.',
+      'digital' => t('Counts as pressed past the line on the bar. Best for menus and simple shooting.'),
+      'hair' => t('Fires the moment you start squeezing and resets as soon as you ease off. Fastest shooting.'),
+      _ => t('The game gets how far you squeeze. Best for driving.'),
     };
     return ControlCard(
       title: _left ? t('Left trigger') : t('Right trigger'),
-      sub: '${_left ? 'Often aim.' : 'Often shoot or accelerate.'} Squeeze it to see where it counts as pressed.',
+      sub: '${_left ? t('Often aim.') : t('Often shoot or accelerate.')} ${t('Squeeze it to see where it counts as pressed.')}',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -509,7 +509,7 @@ class _TriggerCard extends StatelessWidget {
                         bottom: 0,
                         child: Center(
                           child: Text(
-                            cfg.mode != 'analog' && pressed ? 'Pressed' : '$pct%',
+                            cfg.mode != 'analog' && pressed ? t('Pressed') : '$pct%',
                             key: ValueKey('tval-$side'),
                             style: txt(context, size: 12, weight: FontWeight.w600, height: 1.2).copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
                           ),
@@ -525,7 +525,7 @@ class _TriggerCard extends StatelessWidget {
             Text('released', style: txt(context, size: 11.5, color: c.ink3, height: 1.3)),
             Text('fully pressed', style: txt(context, size: 11.5, color: c.ink3, height: 1.3)),
           ]),
-          const FieldLabel('Works as'),
+          FieldLabel(t('Works as')),
           Seg<String>(
             keyPrefix: 'mode-$side',
             options: const [('analog', 'Analog'), ('digital', 'On or off'), ('hair', 'Hair trigger')],
@@ -535,7 +535,7 @@ class _TriggerCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(blurb, style: txt(context, size: 12.5, color: c.ink2, height: 1.4)),
           if (cfg.mode == 'digital') ...[
-            const FieldLabel('Counts as pressed at'),
+            FieldLabel(t('Counts as pressed at')),
             SliderRow(
               key: ValueKey('at-$side'),
               label: t('Counts as pressed at'),
@@ -547,7 +547,7 @@ class _TriggerCard extends StatelessWidget {
               onChanged: (v) => _set((c) => c.copyWith(at: v.roundToDouble())),
             ),
           ],
-          const FieldLabel('Dead zone'),
+          FieldLabel(t('Dead zone')),
           SliderRow(
             key: ValueKey('tdz-$side'),
             label: t('Trigger dead zone'),
@@ -629,7 +629,7 @@ class LayersPanel extends StatelessWidget {
               child: ControlCard(
                 key: ValueKey('layer-${l.id}'),
                 title: l.name,
-                sub: profile.holderOf(l.id) == null ? 'No button holds this layer yet.' : 'While holding ${style.label(profile.holderOf(l.id)!).name}.',
+                sub: profile.holderOf(l.id) == null ? t('No button holds this layer yet.') : t('While holding {name}.', {'name': style.label(profile.holderOf(l.id)!).name}),
                 child: l.buttons.isEmpty
                     ? Text('No buttons changed in this layer.', style: txt(context, size: 12.5, color: c.ink3, height: 1.3))
                     : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [for (final e in l.buttons.entries) _row(context, e.key, e.value)]),

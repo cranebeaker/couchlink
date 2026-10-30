@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 import '../theme/tokens.dart';
 import 'icons.dart';
 
@@ -110,7 +112,7 @@ class CButton extends StatelessWidget {
     return Pressable(
       onTap: onTap,
       radius: 999,
-      semanticLabel: label,
+      semanticLabel: t(label),
       builder: (context, s) {
         final bg = primary ? Color.lerp(c.accent, Colors.white, s.hover ? .08 : 0)! : c.raised;
         final fg = primary ? c.accentInk : c.ink;
@@ -131,7 +133,7 @@ class CButton extends StatelessWidget {
               children: [
                 if (leading != null) ...[leading!, const SizedBox(width: 8)],
                 Flexible(
-                  child: Text(label,
+                  child: Text(t(label),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: txt(context, size: small ? 12 : 13, weight: FontWeight.w600, color: fg, height: 1.3)),
@@ -167,7 +169,7 @@ class Seg<T> extends StatelessWidget {
               key: ValueKey('$keyPrefix-${v is Enum ? v.name : v}'),
               onTap: () => onChanged(v),
               radius: 7,
-              semanticLabel: label,
+              semanticLabel: t(label),
               toggled: v == value,
               builder: (context, s) {
                 final on = v == value;
@@ -179,7 +181,7 @@ class Seg<T> extends StatelessWidget {
                     borderRadius: BorderRadius.circular(7),
                     boxShadow: on ? const [BoxShadow(color: Color(0x40000000), blurRadius: 3, offset: Offset(0, 1))] : null,
                   ),
-                  child: Text(label,
+                  child: Text(t(label),
                       style: txt(context, size: 12.5, color: on ? c.ink : (s.hover ? c.ink : c.ink2), height: 1.3)),
                 );
               },
@@ -204,7 +206,7 @@ class CSwitch extends StatelessWidget {
     return Pressable(
       onTap: onChanged == null ? null : () => onChanged!(!value),
       radius: 999,
-      semanticLabel: label,
+      semanticLabel: t(label),
       toggled: value,
       builder: (context, s) => Opacity(
         opacity: onChanged == null ? .45 : 1,
@@ -250,7 +252,7 @@ class CChip extends StatelessWidget {
     return Pressable(
       onTap: onTap,
       radius: 999,
-      semanticLabel: label,
+      semanticLabel: t(label),
       toggled: selected,
       builder: (context, s) => AnimatedContainer(
         duration: const Duration(milliseconds: 120),
@@ -260,7 +262,7 @@ class CChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(999),
           border: Border.all(color: selected ? c.ink : c.hairStrong),
         ),
-        child: Text(label, style: txt(context, size: 12.5, color: selected ? c.window : (s.hover ? c.ink : c.ink2), height: 1.3)),
+        child: Text(t(label), style: txt(context, size: 12.5, color: selected ? c.window : (s.hover ? c.ink : c.ink2), height: 1.3)),
       ),
     );
   }
@@ -287,7 +289,7 @@ class Tag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(borderRadius: BorderRadius.circular(999), border: Border.all(color: border)),
-      child: Text(label, maxLines: 1, style: txt(context, size: 11, weight: FontWeight.w600, color: color, height: 1.3)),
+      child: Text(t(label), maxLines: 1, style: txt(context, size: 11, weight: FontWeight.w600, color: color, height: 1.3)),
     );
   }
 }
@@ -417,10 +419,10 @@ class SectionLabel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.baseline,
         textBaseline: TextBaseline.alphabetic,
         children: [
-          Text(label, style: txt(context, size: 13, weight: FontWeight.w600)),
+          Text(t(label), style: txt(context, size: 13, weight: FontWeight.w600)),
           if (sub != null) ...[
             const SizedBox(width: 10),
-            Flexible(child: Text(sub!, maxLines: 1, overflow: TextOverflow.ellipsis, style: txt(context, size: 12, color: c.ink3))),
+            Flexible(child: Text(t(sub!), maxLines: 1, overflow: TextOverflow.ellipsis, style: txt(context, size: 12, color: c.ink3))),
           ],
         ],
       ),
@@ -453,9 +455,9 @@ class PageHead extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(title, style: txt(context, size: 30, weight: FontWeight.w700, display: true, ls: -.025, height: 1.2)),
+                Text(t(title), style: txt(context, size: 30, weight: FontWeight.w700, display: true, ls: -.025, height: 1.2)),
                 const SizedBox(height: 4),
-                Text(subtitle, style: txt(context, size: 14, color: c.ink2)),
+                Text(t(subtitle), style: txt(context, size: 14, color: c.ink2)),
               ],
             ),
           ),
@@ -721,7 +723,7 @@ class RoundX extends StatelessWidget {
     return Pressable(
       onTap: onTap,
       radius: 999,
-      semanticLabel: label,
+      semanticLabel: t(label),
       builder: (context, s) => Container(
         width: size,
         height: size,
@@ -786,7 +788,7 @@ class BatteryGauge extends StatelessWidget {
     final c = context.c;
     final low = level <= 20 && !charging;
     final color = charging ? c.ok : (low ? c.danger : c.ink2);
-    final label = charging ? 'Charging, $level%' : 'Battery $level%';
+    final label = charging ? t('Charging, {level}%', {'level': level}) : t('Battery {level}%', {'level': level});
     return Semantics(
       label: label,
       child: Tooltip(

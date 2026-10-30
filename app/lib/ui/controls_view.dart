@@ -167,7 +167,7 @@ class _ControlsViewState extends State<ControlsView> {
             _sel = b;
             _listening = false;
           });
-          _toaster!.show('Picked ${style.label(b).name}');
+          _toaster!.show(t('Picked {name}', {'name': style.label(b).name}));
           return;
         }
       }
@@ -208,7 +208,7 @@ class _ControlsViewState extends State<ControlsView> {
     }
     setState(_stopCapture);
     _setBinding(_profile!.bindingOf(_sel).copyWith(type: 'key', value: name));
-    _toaster!.show('${_style().label(_sel).name} now sends $name key');
+    _toaster!.show(t('{name} now sends {name2} key', {'name': _style().label(_sel).name, 'name2': name}));
     return true;
   }
 
@@ -234,7 +234,7 @@ class _ControlsViewState extends State<ControlsView> {
         _profile = r.profile;
         _dirty = false;
       });
-      _toaster!.show('Loaded ${s.name}');
+      _toaster!.show(t('Loaded {name}', {'name': s.name}));
     }
   }
 
@@ -255,7 +255,7 @@ class _ControlsViewState extends State<ControlsView> {
       _toaster!.show(r.error!);
     } else {
       setState(() => _profile = r.profile);
-      _toaster!.show('Saved as $name');
+      _toaster!.show(t('Saved as {name}', {'name': name}));
     }
   }
 
@@ -272,7 +272,7 @@ class _ControlsViewState extends State<ControlsView> {
       _toaster!.show(err);
       return;
     }
-    _toaster!.show('Deleted ${p.name}');
+    _toaster!.show(t('Deleted {name}', {'name': p.name}));
     await _load();
   }
 
@@ -283,9 +283,9 @@ class _ControlsViewState extends State<ControlsView> {
     final p = _profile!;
     try {
       final where = await _ui!.exportFile(profileFileName(p.name), p.toPrettyJson());
-      if (where != null) _toaster!.show('Saved ${where.split(RegExp(r'[\\/]')).last}');
+      if (where != null) _toaster!.show(t('Saved {file}', {'file': where.split(RegExp(r'[\\/]')).last}));
     } catch (e) {
-      _toaster!.show('Could not save the file: $e');
+      _toaster!.show(t('Could not save the file: {e}', {'e': e}));
     }
   }
 
@@ -296,7 +296,7 @@ class _ControlsViewState extends State<ControlsView> {
     try {
       file = await _ui!.importFile();
     } catch (e) {
-      _toaster!.show('Could not open the file: $e');
+      _toaster!.show(t('Could not open the file: {e}', {'e': e}));
       return;
     }
     if (file == null || !mounted) return;
@@ -304,27 +304,27 @@ class _ControlsViewState extends State<ControlsView> {
     try {
       decoded = jsonDecode(file.text);
     } catch (_) {
-      _toaster!.show('${file.name} is not a profile file (it is not valid JSON).');
+      _toaster!.show(t('{name} is not a profile file (it is not valid JSON).', {'name': file.name}));
       return;
     }
     if (decoded is! Map<String, dynamic>) {
-      _toaster!.show('${file.name} is not a profile file.');
+      _toaster!.show(t('{name} is not a profile file.', {'name': file.name}));
       return;
     }
     // An imported profile never overwrites one you already have: it gets a fresh id.
     final list = await _client!.listProfiles();
-    final name = decoded['name'] is String ? decoded['name'] as String : 'Imported profile';
+    final name = decoded['name'] is String ? decoded['name'] as String : t('Imported profile');
     final id = uniqueId(slugify(name), list.items.map((s) => s.id));
     final r = await _client!.setProfileJson(widget.seat, {...decoded, 'id': id, 'builtin': false});
     if (!mounted) return;
     if (r.error != null) {
-      _toaster!.show('Could not import ${file.name}: ${r.error}');
+      _toaster!.show(t('Could not import {name}: {error}', {'name': file.name, 'error': r.error}));
     } else {
       setState(() {
         _profile = r.profile;
         _dirty = false;
       });
-      _toaster!.show('Imported ${r.profile!.name}');
+      _toaster!.show(t('Imported {name}', {'name': r.profile!.name}));
     }
   }
 
@@ -429,22 +429,22 @@ class _ControlsViewState extends State<ControlsView> {
 /// The name a logical key is bound as, or null for keys a profile cannot send.
 String? keyNameOf(LogicalKeyboardKey k) {
   final fixed = <LogicalKeyboardKey, String>{
-    LogicalKeyboardKey.space: 'Space',
-    LogicalKeyboardKey.enter: 'Enter',
-    LogicalKeyboardKey.numpadEnter: 'Enter',
-    LogicalKeyboardKey.escape: 'Esc',
-    LogicalKeyboardKey.tab: 'Tab',
-    LogicalKeyboardKey.shiftLeft: 'Shift',
-    LogicalKeyboardKey.shiftRight: 'Shift',
-    LogicalKeyboardKey.controlLeft: 'Ctrl',
-    LogicalKeyboardKey.controlRight: 'Ctrl',
-    LogicalKeyboardKey.altLeft: 'Alt',
-    LogicalKeyboardKey.altRight: 'Alt',
-    LogicalKeyboardKey.backspace: 'Backspace',
-    LogicalKeyboardKey.arrowUp: 'Up',
-    LogicalKeyboardKey.arrowDown: 'Down',
-    LogicalKeyboardKey.arrowLeft: 'Left',
-    LogicalKeyboardKey.arrowRight: 'Right',
+    LogicalKeyboardKey.space: t('Space'),
+    LogicalKeyboardKey.enter: t('Enter'),
+    LogicalKeyboardKey.numpadEnter: t('Enter'),
+    LogicalKeyboardKey.escape: t('Esc'),
+    LogicalKeyboardKey.tab: t('Tab'),
+    LogicalKeyboardKey.shiftLeft: t('Shift'),
+    LogicalKeyboardKey.shiftRight: t('Shift'),
+    LogicalKeyboardKey.controlLeft: t('Ctrl'),
+    LogicalKeyboardKey.controlRight: t('Ctrl'),
+    LogicalKeyboardKey.altLeft: t('Alt'),
+    LogicalKeyboardKey.altRight: t('Alt'),
+    LogicalKeyboardKey.backspace: t('Backspace'),
+    LogicalKeyboardKey.arrowUp: t('Up'),
+    LogicalKeyboardKey.arrowDown: t('Down'),
+    LogicalKeyboardKey.arrowLeft: t('Left'),
+    LogicalKeyboardKey.arrowRight: t('Right'),
     LogicalKeyboardKey.f1: 'F1',
     LogicalKeyboardKey.f2: 'F2',
     LogicalKeyboardKey.f3: 'F3',
@@ -597,7 +597,7 @@ class _Tabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.c;
-    const labels = {_Tab.buttons: 'Buttons', _Tab.sticks: 'Sticks', _Tab.triggers: 'Triggers', _Tab.layers: 'Layers'};
+    final labels = {_Tab.buttons: t('Buttons'), _Tab.sticks: t('Sticks'), _Tab.triggers: t('Triggers'), _Tab.layers: t('Layers')};
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 32),
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.hair))),
@@ -701,13 +701,13 @@ class _ProfileMenu extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _head(context, 'Starters'),
+            _head(context, t('Starters')),
             for (final s in builtins)
               _item(context, key: ValueKey('profile-${s.id}'), label: s.name, on: s.id == current.id, onTap: () => onUse(s)),
-            if (saved.isNotEmpty) _head(context, 'Saved'),
+            if (saved.isNotEmpty) _head(context, t('Saved')),
             for (final s in saved)
               _item(context, key: ValueKey('profile-${s.id}'), label: s.name, on: s.id == current.id, onTap: () => onUse(s)),
-            _head(context, 'This profile'),
+            _head(context, t('This profile')),
             _item(context, key: const ValueKey('menu-save-as'), label: t('Save as...'), icon: iconSave, onTap: onSaveAs),
             _item(context, key: const ValueKey('menu-delete'), label: t('Delete'), icon: iconTrash, onTap: isSaved ? onDelete : null),
             _item(context, key: const ValueKey('menu-export'), label: t('Export to a file'), icon: iconDownload, onTap: onExport),
@@ -862,7 +862,7 @@ class _ButtonsTab extends StatelessWidget {
     final sel = style.buttons.contains(selected) ? selected : 'south';
     final pad = ControlCard(
       title: t('Press or click a button to change it'),
-      sub: 'Buttons light up in ${seat.name}’s colour as you press them. Changed buttons get a dashed outline and a label saying what they send now.',
+      sub: t('Buttons light up in {name}’s colour as you press them. Changed buttons get a dashed outline and a label saying what they send now.', {'name': seat.name}),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -879,7 +879,7 @@ class _ButtonsTab extends StatelessWidget {
             const SizedBox(width: 8),
             Flexible(
               child: Text(
-                deviceName == null ? 'No controller connected, so there is nothing to preview.' : 'Live: $deviceName',
+                deviceName == null ? t('No controller connected, so there is nothing to preview.') : t('Live: {deviceName}', {'deviceName': deviceName}),
                 style: txt(context, size: 12.5, color: c.ink2, height: 1.3),
               ),
             ),
@@ -1018,12 +1018,12 @@ class _Inspector extends StatelessWidget {
   void _type(String type) {
     final cur = profile.bindingOf(id);
     if (type == 'layer' && profile.layers.isEmpty) {
-      onEdit((p) => p.copyWith(layers: [const Layer(id: 'layer-1', name: 'Layer 1')]).withButton(id, cur.copyWith(type: 'layer', value: 'layer-1', how: 'hold')));
+      onEdit((p) => p.copyWith(layers: [Layer(id: 'layer-1', name: t('Layer 1'))]).withButton(id, cur.copyWith(type: 'layer', value: 'layer-1', how: 'hold')));
       return;
     }
     final value = switch (type) {
       'pad' => id,
-      'key' => 'Space',
+      'key' => t('Space'),
       'mouse' => 'left',
       'layer' => profile.layers.first.id,
       _ => '',
@@ -1037,7 +1037,7 @@ class _Inspector extends StatelessWidget {
       n++;
     }
     final lid = 'layer-$n';
-    onEdit((p) => p.copyWith(layers: [...p.layers, Layer(id: lid, name: 'Layer $n')]).withButton(id, p.bindingOf(id).copyWith(type: 'layer', value: lid, how: 'hold')));
+    onEdit((p) => p.copyWith(layers: [...p.layers, Layer(id: lid, name: t('Layer {n}', {'n': n}))]).withButton(id, p.bindingOf(id).copyWith(type: 'layer', value: lid, how: 'hold')));
   }
 
   @override
@@ -1064,7 +1064,7 @@ class _Inspector extends StatelessWidget {
             ),
         ]);
       case 'key':
-        optsLabel = 'Which key';
+        optsLabel = t('Which key');
         opts = Wrap(spacing: 6, runSpacing: 6, children: [
           for (final k in _presetKeys)
             OptChip(key: ValueKey('opt-$k'), selected: b.value == k, label: k, onTap: () => onBinding(b.copyWith(value: k))),
@@ -1078,7 +1078,7 @@ class _Inspector extends StatelessWidget {
           for (final m in kMouseActions) OptChip(key: ValueKey('opt-$m'), selected: b.value == m, label: mouseLabel(m), onTap: () => onBinding(b.copyWith(value: m))),
         ]);
       case 'layer':
-        optsLabel = 'Which layer';
+        optsLabel = t('Which layer');
         opts = Wrap(spacing: 6, runSpacing: 6, children: [
           for (final l in profile.layers) OptChip(key: ValueKey('opt-${l.id}'), selected: b.value == l.id, label: l.name, onTap: () => onBinding(b.copyWith(value: l.id))),
           OptChip(key: const ValueKey('opt-new-layer'), selected: false, label: t('New layer'), onTap: _newLayer),
@@ -1128,15 +1128,15 @@ class _Inspector extends StatelessWidget {
                 onTap: () => onBinding(Binding.identity(id)),
               ),
           ]),
-          const FieldLabel('When pressed, send'),
+          FieldLabel(t('When pressed, send')),
           Seg<String>(keyPrefix: 'type', options: types, value: b.type, onChanged: _type),
           if (opts != null) ...[FieldLabel(optsLabel), opts],
           if (b.type != 'none' && b.type != 'layer') ...[
-            const FieldLabel('How'),
+            FieldLabel(t('How')),
             Seg<String>(keyPrefix: 'how', options: hows, value: b.how, onChanged: (v) => onBinding(b.copyWith(how: v))),
           ],
           if (b.how == 'hold' && b.type != 'none' && b.type != 'layer') ...[
-            const FieldLabel('Hold for'),
+            FieldLabel(t('Hold for')),
             SliderRow(
               key: const ValueKey('holdms'),
               label: t('Hold time'),
@@ -1149,7 +1149,7 @@ class _Inspector extends StatelessWidget {
             ),
           ],
           if (b.how == 'turbo' && b.type != 'none' && b.type != 'layer') ...[
-            const FieldLabel('Turbo speed'),
+            FieldLabel(t('Turbo speed')),
             SliderRow(
               key: const ValueKey('turbo'),
               label: t('Turbo presses per second'),
@@ -1157,7 +1157,7 @@ class _Inspector extends StatelessWidget {
               min: 2,
               max: 30,
               divisions: 28,
-              display: '${b.turbo} per second',
+              display: t('{turbo} per second', {'turbo': b.turbo}),
               onChanged: (v) => onBinding(b.copyWith(turbo: v.round())),
             ),
           ],

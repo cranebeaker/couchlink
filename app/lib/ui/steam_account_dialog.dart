@@ -79,7 +79,7 @@ class _SteamAccountDialogState extends State<_SteamAccountDialog> {
       setState(() => _error = err);
       return;
     }
-    Scope.of(context).toaster.show('Windows asks for permission, then ${widget.player}’s own account is removed');
+    Scope.of(context).toaster.show(t('Windows asks for permission, then {player}’s own account is removed', {'player': widget.player}));
     _poll?.cancel();
     _poll = Timer.periodic(const Duration(seconds: 2), (_) => _load());
   }
@@ -103,7 +103,7 @@ class _SteamAccountDialogState extends State<_SteamAccountDialog> {
       ]);
     } else if (_working) {
       body.add(Text(
-        'Windows asks for permission once. Then a Steam window opens: $name signs in there with their own account. This window updates when it is done.',
+        t('Windows asks for permission once. Then a Steam window opens: {name} signs in there with their own account. This window updates when it is done.', {'name': name}),
         key: const ValueKey('steam-working'),
         style: txt(context, size: 13, color: c.ink2, height: 1.4),
       ));
@@ -143,7 +143,7 @@ class _SteamAccountDialogState extends State<_SteamAccountDialog> {
                 CButton(key: const ValueKey('steam-open'), label: t('Open their Steam'), small: true, onTap: () => runCmd(context, () => scope.client.openSteamAccount(widget.seat))),
               ],
               if (a != null && !a.ready && !_working)
-                CButton(key: const ValueKey('steam-setup'), label: 'Give $name their own account', small: true, primary: true, onTap: _setUp),
+                CButton(key: const ValueKey('steam-setup'), label: t('Give {name} their own account', {'name': name}), small: true, primary: true, onTap: _setUp),
               CButton(key: const ValueKey('steam-close'), label: t('Close'), small: true, onTap: () => Navigator.of(context).pop()),
             ]),
           ]),
