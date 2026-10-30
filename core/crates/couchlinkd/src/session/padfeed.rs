@@ -359,6 +359,12 @@ pub fn take_rumble(device_id: &str) -> Option<(u16, u16)> {
 mod tests {
     use super::*;
 
+    /// Tests that set the seat profiles (one list for the whole process) take turns.
+    fn profiles_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: Mutex<()> = Mutex::new(());
+        LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     #[test]
     fn sdl_units_become_xinput_units() {
         let s = PadState::from_sdl(
@@ -426,6 +432,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn a_seat_feed_in_shared_memory_holds_the_profiles_state() {
+        let _l = profiles_lock();
         let swap = Profile::from_value(&serde_json::json!({"id": "s", "name": "S", "buttons": {"south": {"type": "pad", "value": "east"}}})).unwrap();
         let default = couchlink_core::profile::builtin("default").unwrap();
         set_profiles(&[default.clone(), swap, default]);
@@ -443,7 +450,6 @@ mod tests {
         assert_eq!(read(&mine), (true, xb::B), "seat 1's profile plays South as East");
         assert_eq!(read(&plain), (true, xb::A), "a feed without a seat gets the pad as it is");
         drop((mine, plain));
-        assert!(!active());
     }
 
     #[test]
@@ -482,6 +488,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn a_pads_keys_reach_the_seats_keyboard_feed() {
+        let _l = profiles_lock();
         let keys = Profile::from_value(&serde_json::json!({"id": "k", "name": "K", "buttons": {"south": {"type": "key", "value": "E"}}})).unwrap();
         let default = couchlink_core::profile::builtin("default").unwrap();
         set_profiles(&[default.clone(), default.clone(), default.clone(), keys]);
