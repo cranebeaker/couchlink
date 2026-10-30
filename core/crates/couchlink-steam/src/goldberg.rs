@@ -290,6 +290,8 @@ pub fn install_archive_with(
                 _ => false,
             };
             if !wanted {
+                // Read it anyway: sevenz-rust2 0.20 fails the block checksum when entries of a block are skipped.
+                std::io::copy(data, &mut std::io::sink())?;
                 return Ok(true);
             }
             let mut buf = Vec::new();
@@ -621,5 +623,21 @@ mod tests {
         let f = ensure_goldberg(&tmp).unwrap();
         assert!(f.dll_x86.exists() && f.dll_x64.exists());
         std::fs::remove_dir_all(&tmp).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod real_archive {
+    /// The pinned release itself (network): every DLL comes out of it, also with the steamclient set. Writes the
+    /// DLLs into a temp folder, which antivirus tools may flag, so it only runs on demand:
+    /// `cargo test -p couchlink-steam pinned_release_unpacks -- --ignored`.
+    #[test]
+    #[ignore]
+    fn pinned_release_unpacks() {
+        let bytes = super::download(super::GOLDBERG.url).unwrap();
+        let cache = std::env::temp_dir().join(format!("couchlink-gbe-{}", std::process::id()));
+        let f = super::install_archive_with(&bytes, super::GOLDBERG.sha256, &cache, true);
+        let _ = std::fs::remove_dir_all(&cache);
+        f.unwrap();
     }
 }
