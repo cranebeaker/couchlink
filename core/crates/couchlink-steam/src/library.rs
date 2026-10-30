@@ -13,7 +13,8 @@ pub struct InstalledApp {
 }
 
 /// The Steam install folder: `HKCU\Software\Valve\Steam` `SteamPath`, then the default
-/// `Program Files (x86)\Steam` (Windows) or `~/.steam/steam` / `~/.local/share/Steam` (Linux).
+/// `Program Files (x86)\Steam` (Windows), `~/Library/Application Support/Steam` (macOS) or `~/.steam/steam` /
+/// `~/.local/share/Steam` (Linux).
 pub fn steam_root() -> Option<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
     #[cfg(windows)]
@@ -28,7 +29,9 @@ pub fn steam_root() -> Option<PathBuf> {
         }
         candidates.push(PathBuf::from(r"C:\Program Files (x86)\Steam"));
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    candidates.extend(crate::library_macos::candidates());
+    #[cfg(all(not(windows), not(target_os = "macos")))]
     {
         if let Some(home) = std::env::var_os("HOME") {
             let home = PathBuf::from(home);

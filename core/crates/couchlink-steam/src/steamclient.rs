@@ -114,6 +114,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(not(windows), ignore = "the loader runs on Windows; drive paths only parse there")]
     fn absolute_paths_outside_the_copy_stay_absolute_and_zero_app_id_is_empty() {
         let copy = Path::new("C:\\inst\\copy1");
         let game = GameLaunch { exe: PathBuf::from("D:\\Games\\X\\x.exe"), args: String::new(), run_dir: None };

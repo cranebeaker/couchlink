@@ -5,6 +5,7 @@
 //! counts game polls in a heartbeat. The layout is `FeedBlock` in hook/src/feed.h (64 bytes, little endian); the
 //! pad state is protected by a sequence lock (`seq` is odd while the writer is busy).
 
+#[cfg_attr(target_os = "macos", allow(unused_imports))]
 use crate::error::{HookError, Result};
 
 /// XInput button bits (XINPUT_GAMEPAD_*), for building a [`FeedState`].
@@ -259,7 +260,13 @@ mod imp {
 #[cfg(windows)]
 pub use imp::Feed;
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+#[path = "feed_macos.rs"]
+mod macos;
+#[cfg(target_os = "macos")]
+pub use macos::Feed;
+
+#[cfg(not(any(windows, target_os = "macos")))]
 mod stub {
     use super::*;
 
@@ -296,5 +303,5 @@ mod stub {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 pub use stub::Feed;

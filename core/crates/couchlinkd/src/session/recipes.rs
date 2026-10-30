@@ -23,6 +23,11 @@ pub fn builtin_dir(explicit: Option<&Path>) -> Option<PathBuf> {
         return Some(d.to_path_buf());
     }
     let exe = std::env::current_exe().ok()?;
+    // In the Mac app bundle couchlinkd is in Contents/MacOS and the recipes in Contents/Resources.
+    #[cfg(target_os = "macos")]
+    if let Some(r) = exe.parent().and_then(Path::parent).map(|c| c.join("Resources").join("recipes")).filter(|d| d.is_dir()) {
+        return Some(r);
+    }
     let mut dir = exe.parent()?.to_path_buf();
     for _ in 0..5 {
         let candidate = dir.join("recipes");
@@ -244,6 +249,15 @@ pub fn try_recipe_with(id: &str, name: &str, exe: &str, app_id: Option<u32>) -> 
     Recipe::parse(&v.to_string()).ok()
 }
 
+/// The program a "Try it" recipe starts: on macOS the game's app bundle when it has one (`recipes_macos.rs`).
+fn guess_game(install_dir: &Path) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    if let Some(app) = super::recipes_macos::guess_app(install_dir) {
+        return Some(app);
+    }
+    guess_exe(install_dir)
+}
+
 /// "Try it" recipes for every installed Steam game no recipe covers.
 pub fn try_recipes(known: &[Recipe]) -> Vec<Recipe> {
     let covered: std::collections::HashSet<u32> = known.iter().filter_map(|r| r.matching.steam_app_id).collect();
@@ -251,9 +265,10 @@ pub fn try_recipes(known: &[Recipe]) -> Vec<Recipe> {
         .into_iter()
         .filter(|a| !covered.contains(&a.app_id) && !is_tool(&a.name))
         .filter_map(|a| {
-            // On Linux a native build runs as it is; a Windows one runs through Proton.
+            // On Linux a native build runs as it is; a Windows one runs through Proton. On macOS the game's app bundle
+            // when it has one (`guess_game`).
             let native = if cfg!(target_os = "linux") { guess_native(&a.install_dir) } else { None };
-            try_recipe(a.app_id, &a.name, &native.or_else(|| guess_exe(&a.install_dir))?)
+            try_recipe(a.app_id, &a.name, &native.or_else(|| guess_game(&a.install_dir))?)
         })
         .collect();
     out.sort_by(|a, b| a.game.to_lowercase().cmp(&b.game.to_lowercase()));
@@ -351,10 +366,19 @@ pub fn locate(locators: &[Locator], recipe: &Recipe) -> Option<PathBuf> {
     }
     let native = recipe.linux.as_ref().and_then(|l| l.exe.as_ref()).filter(|_| cfg!(target_os = "linux"));
     let exe = native.unwrap_or(&recipe.launch.exe);
-    if !exe.contains('$') && !dir.join(exe).is_file() && !Path::new(exe).is_file() {
+    if !exe.contains('$') && !runnable(&dir.join(exe)) && !runnable(Path::new(exe)) {
         return None;
     }
     Some(dir)
+}
+
+/// A program file, or on macOS an app bundle with its program inside.
+fn runnable(p: &Path) -> bool {
+    #[cfg(target_os = "macos")]
+    if p.is_dir() {
+        return super::launch_macos::resolve_app(p).is_file();
+    }
+    p.is_file()
 }
 
 pub fn game_info(locators: &[Locator], r: &Recipe) -> GameInfo {

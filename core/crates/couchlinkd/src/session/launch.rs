@@ -285,6 +285,15 @@ fn describe(w: &Wait) -> String {
     }
 }
 
+/// Tests that check whether a port is free and tests that start child processes take this lock. On macOS a new
+/// socket is marked close-on-exec only after it is created, so a child started in between keeps the socket open
+/// and the port looks taken after the test closed it.
+#[cfg(test)]
+pub fn test_process_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -307,8 +316,13 @@ mod tests {
         TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
     }
 
+    fn ports() -> std::sync::MutexGuard<'static, ()> {
+        super::test_process_lock()
+    }
+
     #[test]
     fn a_listening_tcp_port_is_seen() {
+        let _ports = ports();
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = l.local_addr().unwrap().port();
         assert!(port_in_use(port));
@@ -320,6 +334,7 @@ mod tests {
 
     #[test]
     fn a_bound_udp_port_is_seen() {
+        let _ports = ports();
         let s = UdpSocket::bind("127.0.0.1:0").unwrap();
         let port = s.local_addr().unwrap().port();
         assert!(port_in_use(port));
@@ -329,6 +344,7 @@ mod tests {
 
     #[test]
     fn waiting_ends_on_exit_stop_or_timeout() {
+        let _ports = ports();
         let stop = AtomicBool::new(false);
         let port = free_port();
         let e = wait_for(&Wait::Port(port), &mut Fake(Some(3)), &stop, Duration::from_secs(5)).unwrap_err();
@@ -370,6 +386,7 @@ mod tests {
 
     #[test]
     fn the_command_launcher_starts_and_kills_a_process() {
+        let _ports = ports();
         // `ping -n 30` (Windows) / `sleep 30` run long enough to be killed.
         let (exe, args): (&str, Vec<String>) = if cfg!(windows) { ("ping", vec!["-n".into(), "30".into(), "127.0.0.1".into()]) } else { ("sleep", vec!["30".into()]) };
         let spec = LaunchSpec {

@@ -16,7 +16,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 #[path = "integration/session.rs"]
-#[cfg_attr(target_os = "linux", allow(dead_code))]
+#[cfg_attr(any(target_os = "linux", target_os = "macos"), allow(dead_code))]
 mod session;
 
 /// Virtual input devices (shared with the daemon's unit tests).
@@ -819,10 +819,14 @@ async fn run() -> u32 {
     drop(cl);
 
     // Game sessions run against their own daemon and state folder.
-    #[cfg(not(target_os = "linux"))]
-    session::run(&mut c, &fx).await;
     #[cfg(target_os = "linux")]
     session::linux::run(&mut c, &fx).await;
+    // The session checks drive testgame.exe, its window and the registry. On macOS the session parts have their own
+    // tests in the daemon (launch_macos, copies_macos, isolation_macos, window_macos).
+    #[cfg(target_os = "macos")]
+    println!("SKIP session checks (testgame.exe windows and registry edits; macOS has its own session tests)");
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    session::run(&mut c, &fx).await;
 
     // Idle exit: without --stay the daemon leaves 10 s after the last client.
     let idle = start("idle", &["--dev", "--virtual-pads", "0"], &fx);

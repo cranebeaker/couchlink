@@ -413,7 +413,16 @@ impl KbmGuard {
 
 impl Drop for KbmGuard {
     fn drop(&mut self) {
-        registry().seats.retain(|s| s.id != self.id);
+        let mut reg = registry();
+        #[cfg(target_os = "macos")]
+        let released: Vec<String> = reg.seats.iter().filter(|s| s.id == self.id).flat_map(|s| s.devices.clone()).collect();
+        reg.seats.retain(|s| s.id != self.id);
+        // macOS: the seat's devices go back to the desktop.
+        #[cfg(target_os = "macos")]
+        {
+            drop(reg);
+            mac::seize(&released, false);
+        }
     }
 }
 
@@ -445,8 +454,14 @@ pub fn attach_shared(name: &str, devices: &[String], share_with: Option<&str>) -
     let mut reg = registry();
     reg.next_seat_id += 1;
     let id = reg.next_seat_id;
-    reg.seats.push(Seat { id, name: name.to_string(), feed, devices: ids });
+    reg.seats.push(Seat { id, name: name.to_string(), feed, devices: ids.clone() });
     reg.update_handles();
+    // macOS: the seat's devices stop reaching the desktop and the other copies while the seat plays.
+    #[cfg(target_os = "macos")]
+    {
+        drop(reg);
+        mac::seize(&ids, true);
+    }
     Ok(KbmGuard { id, name: name.to_string() })
 }
 
@@ -499,9 +514,13 @@ pub fn start() -> Result<(), String> {
     {
         linux::start()
     }
-    #[cfg(not(any(windows, target_os = "linux")))]
+    #[cfg(target_os = "macos")]
     {
-        Err("own keyboards and mice per seat are only available on Windows and Linux".to_string())
+        mac::start()
+    }
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+    {
+        Err("own keyboards and mice per seat are only available on Windows, Linux and macOS".to_string())
     }
 }
 
@@ -510,6 +529,10 @@ pub fn start() -> Result<(), String> {
 pub mod linux;
 
 // ---------------------------------------------------------------------------------------------- windows
+
+#[cfg(target_os = "macos")]
+#[path = "rawkbm_macos.rs"]
+mod mac;
 
 #[cfg(windows)]
 mod win {

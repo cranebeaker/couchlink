@@ -15,10 +15,13 @@
 pub mod copies;
 pub mod edits;
 pub mod launch;
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub mod hook;
 #[cfg(target_os = "linux")]
 #[path = "hook_linux.rs"]
+pub mod hook;
+#[cfg(target_os = "macos")]
+#[path = "hook_macos.rs"]
 pub mod hook;
 #[cfg(target_os = "linux")]
 pub mod copies_linux;
@@ -30,6 +33,14 @@ pub mod ns_linux;
 pub mod sandbox_linux;
 #[cfg(target_os = "linux")]
 pub mod uipad_linux;
+#[cfg(target_os = "macos")]
+pub mod copies_macos;
+#[cfg(target_os = "macos")]
+pub mod launch_macos;
+#[cfg(all(test, target_os = "macos"))]
+mod isolation_macos;
+#[cfg(target_os = "macos")]
+mod recipes_macos;
 pub mod padfeed;
 pub mod rawkbm;
 pub mod recipes;

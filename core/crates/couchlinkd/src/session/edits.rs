@@ -326,6 +326,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(not(windows), ignore = "the hook redirects Windows paths; backslashes only separate folders there")]
     fn save_paths_are_redirected_by_whole_components() {
         let saves = vec![(PathBuf::from("C:/Users/x/AppData/Local/Game"), PathBuf::from("D:/inst/0/saves/Game"))];
         assert_eq!(redirect(Path::new("C:/Users/x/AppData/Local/Game"), &saves), Some(PathBuf::from("D:/inst/0/saves/Game")));

@@ -18,6 +18,8 @@ pub mod error;
 pub mod feed;
 pub mod kbmfeed;
 pub mod proxy;
+#[cfg(target_os = "macos")]
+pub mod shm_macos;
 
 pub use config::{HookChild, HookConfig, HookFlags, HookOptions, HookStatus, TestPad};
 pub use error::{HookError, Result};

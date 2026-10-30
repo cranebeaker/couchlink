@@ -1,5 +1,5 @@
 //! Window placement: find a copy's top-level window, strip its borders, move it onto the seat's region
-//! of the desktop, keep it there, and put everything back at the end. Windows here, Linux in `window_linux.rs`;
+//! of the desktop, keep it there, and put everything back at the end. Windows here, Linux in `window_linux.rs`, macOS in `window_macos.rs`;
 //! elsewhere every call reports that it is not supported.
 
 use couchlink_core::session::Rect;
@@ -11,6 +11,8 @@ pub struct Placer {
     seats: std::collections::HashMap<usize, win::Placed>,
     #[cfg(target_os = "linux")]
     linux: linux::Placed,
+    #[cfg(target_os = "macos")]
+    mac: mac::Seats,
 }
 
 impl Placer {
@@ -35,7 +37,11 @@ impl Placer {
         {
             Ok(linux::place(&mut self.linux, seat, root_pid, rect, borderless))
         }
-        #[cfg(not(any(windows, target_os = "linux")))]
+        #[cfg(target_os = "macos")]
+        {
+            mac::place(&mut self.mac, seat, root_pid, rect, borderless)
+        }
+        #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
         {
             let _ = (seat, root_pid, rect, borderless);
             Err("window placement is only supported on Windows and Linux".to_string())
@@ -49,7 +55,9 @@ impl Placer {
         win::maintain(&mut self.seats, seat, root_pid, rect, borderless);
         #[cfg(target_os = "linux")]
         linux::maintain(&mut self.linux, seat, root_pid, rect, borderless);
-        #[cfg(not(any(windows, target_os = "linux")))]
+        #[cfg(target_os = "macos")]
+        mac::maintain(&mut self.mac, seat, root_pid, rect, borderless);
+        #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
         let _ = (seat, root_pid, rect, borderless);
     }
 
@@ -59,6 +67,8 @@ impl Placer {
         win::restore_all(&mut self.seats);
         #[cfg(target_os = "linux")]
         linux::restore_all(&mut self.linux);
+        #[cfg(target_os = "macos")]
+        mac::restore_all(&mut self.mac);
     }
 }
 
@@ -107,7 +117,11 @@ pub fn find_window_process(root: u32, wanted: &str, since: std::time::SystemTime
     {
         linux::find_window_process(root, wanted, since, claimed)
     }
-    #[cfg(not(any(windows, target_os = "linux")))]
+    #[cfg(target_os = "macos")]
+    {
+        mac::find_window_process(root, wanted, since, claimed)
+    }
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
     {
         let _ = (root, wanted, since, claimed);
         None
@@ -124,7 +138,11 @@ pub fn process_alive(pid: u32) -> bool {
     {
         linux::alive(pid)
     }
-    #[cfg(not(any(windows, target_os = "linux")))]
+    #[cfg(target_os = "macos")]
+    {
+        mac::alive(pid)
+    }
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
     {
         let _ = pid;
         false
@@ -137,7 +155,9 @@ pub fn kill_process(pid: u32) {
     win::kill(pid);
     #[cfg(target_os = "linux")]
     linux::kill(pid);
-    #[cfg(not(any(windows, target_os = "linux")))]
+    #[cfg(target_os = "macos")]
+    mac::kill(pid);
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
     let _ = pid;
 }
 
@@ -151,7 +171,11 @@ pub fn window_titled(text: &str) -> bool {
     {
         linux::titled(text)
     }
-    #[cfg(not(any(windows, target_os = "linux")))]
+    #[cfg(target_os = "macos")]
+    {
+        mac::titled(text)
+    }
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
     {
         let _ = text;
         false
@@ -164,13 +188,19 @@ pub fn close_windows(root_pid: u32) {
     win::close_windows(root_pid);
     #[cfg(target_os = "linux")]
     linux::close_windows(root_pid);
-    #[cfg(not(any(windows, target_os = "linux")))]
+    #[cfg(target_os = "macos")]
+    mac::close_windows(root_pid);
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
     let _ = root_pid;
 }
 
 #[cfg(target_os = "linux")]
 #[path = "window_linux.rs"]
 mod linux;
+
+#[cfg(target_os = "macos")]
+#[path = "window_macos.rs"]
+mod mac;
 
 #[cfg(windows)]
 mod win {
