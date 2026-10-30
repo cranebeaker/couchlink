@@ -58,8 +58,11 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           sudo modprobe uinput
           sudo chmod 0666 /dev/uinput
-          # Only the test devices (named couchlink-test-...) become readable by the runner user.
-          echo 'SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="couchlink-test-*", MODE="0666"' \
+          # Only the test devices (named couchlink-test-...) and Couchlink's virtual pads become readable by the runner
+          # user (on a desktop, the logged-in user may read pads anyway).
+          printf '%s\n' \
+            'SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="couchlink-test-*", MODE="0666"' \
+            'SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="*Couchlink player*", MODE="0666"' \
             | sudo tee /etc/udev/rules.d/99-couchlink-test.rules
           sudo udevadm control --reload-rules
           bwrap --version
