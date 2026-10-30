@@ -381,7 +381,13 @@ mod tests {
         assert_eq!(nested_allowed(ns.pid), Ok(()), "a sandbox inside the seat's sandbox works here");
         let pid = ns.pid;
         drop(ns);
-        assert!(!Path::new(&format!("/proc/{pid}")).exists() || std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|s| s.contains(") Z ")));
+        // The namespace ends with its holder (which may take a moment to go).
+        let gone = || !Path::new(&format!("/proc/{pid}")).exists() || std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|s| s.contains(") Z "));
+        let t = std::time::Instant::now();
+        while !gone() && t.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(gone(), "the holder ended");
         assert_eq!(std::fs::read_to_string(upper.join("save.dat")).unwrap(), "save", "the seat's changes stay in its layer");
         let _ = std::fs::remove_dir_all(&root);
     }

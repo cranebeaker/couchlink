@@ -21,9 +21,6 @@ pub struct LinuxLauncher;
 
 impl Launcher for LinuxLauncher {
     fn launch(&self, spec: &LaunchSpec) -> Result<Launched, String> {
-        if spec.run_as.is_some() {
-            return Err("an own Steam account per player is set up with steam: accounts on Linux, not run_as".to_string());
-        }
         let tools = Tools::find();
         // A copy's own output (gamescope, Proton, the game) goes to `copy.log` next to its home, for when it fails.
         let mut log = None;
@@ -161,6 +158,8 @@ pub fn copy_line(spec: &LaunchSpec, seat: &LinuxSeat, tools: &Tools, pad_paths: 
     let exe = spec.exe.display().to_string();
     let mut env = spec.env.clone();
     env.extend(opts.env.clone());
+    // A seat with its own Steam account: the copy runs with that Steam's home, so it talks to that Steam.
+    let steam_home = spec.run_as.as_ref().and_then(couchlink_steam::accounts_home);
 
     // Innermost: the game.
     let mut line: Vec<String> = Vec::new();
@@ -171,6 +170,14 @@ pub fn copy_line(spec: &LaunchSpec, seat: &LinuxSeat, tools: &Tools, pad_paths: 
         line.push(program.display().to_string());
         line.extend(args);
         umu = through_umu;
+        if let Some(home) = &steam_home {
+            // umu keeps its runtime under the user's data folder, shared by every seat.
+            let data = std::env::var("XDG_DATA_HOME").ok().filter(|d| !d.is_empty()).unwrap_or_else(|| format!("{}/.local/share", std::env::var("HOME").unwrap_or_default()));
+            env.insert("XDG_DATA_HOME".into(), data);
+            env.insert("HOME".into(), home.display().to_string());
+        }
+    } else if let Some(home) = &steam_home {
+        env.insert("HOME".into(), home.display().to_string());
     } else {
         // A native game keeps its settings and saves in a home of the seat's own.
         let home = seat.data_dir.join("home");

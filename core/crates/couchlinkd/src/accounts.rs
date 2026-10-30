@@ -133,9 +133,12 @@ fn elevate(args: &[String]) -> Result<i32, String> {
     }
 }
 
+/// Elsewhere no elevation is needed (Linux: a seat's Steam is a folder of the user's own): the step runs as a child.
 #[cfg(not(windows))]
-fn elevate(_: &[String]) -> Result<i32, String> {
-    Err("own Steam accounts need Windows".to_string())
+fn elevate(args: &[String]) -> Result<i32, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let status = std::process::Command::new(exe).args(args).status().map_err(|e| e.to_string())?;
+    Ok(status.code().unwrap_or(1))
 }
 
 #[cfg(test)]

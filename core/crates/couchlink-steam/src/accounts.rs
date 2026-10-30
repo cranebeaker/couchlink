@@ -68,6 +68,11 @@ fn step(id: &str, title: &str, detail: String, needs_admin: bool) -> Step {
 /// What `accounts_apply`, `accounts_start_steam` and `accounts_remove` would do, in plain language.
 /// Pure: touches nothing.
 pub fn accounts_plan(cfg: &AccountsConfig) -> Vec<Step> {
+    if cfg!(target_os = "linux") { linux_plan(cfg) } else { windows_plan(cfg) }
+}
+
+/// The plan on Windows: a helper Windows user per seat.
+fn windows_plan(cfg: &AccountsConfig) -> Vec<Step> {
     let user = cfg.user_name();
     let libs = if cfg.library_dirs.is_empty() {
         "the Steam install folder".to_string()
@@ -137,10 +142,69 @@ pub fn accounts_plan(cfg: &AccountsConfig) -> Vec<Step> {
     ]
 }
 
+/// The plan on Linux, where a seat's Steam needs no user of its own.
+fn linux_plan(cfg: &AccountsConfig) -> Vec<Step> {
+    let n = cfg.seat as u32 + 1;
+    vec![
+        step(
+            "home",
+            "Make a Steam folder for this seat",
+            format!(
+                "A folder of its own (~/.local/share/couchlink/steam-seat-{n}) where player {n}'s Steam keeps its files, \
+                 login and settings. No new user, no administrator password."
+            ),
+            false,
+        ),
+        step(
+            "start_steam",
+            "Start a second Steam for that seat",
+            format!(
+                "Runs {} with that folder as its home. The first time, Steam downloads its own files there (a few hundred MB). \
+                 Add your game library in that Steam's Settings, Storage, so games are not downloaded twice.",
+                cfg.steam_exe.display()
+            ),
+            false,
+        ),
+        step(
+            "sign_in",
+            "Sign in with the seat's own Steam account",
+            "The player signs in themselves in the Steam window that opens (Steam Guard included). \
+             Couchlink never sees or stores a Steam password. Each seat needs its own copy of the game. \
+             Sharing one Steam account between people is against Steam's terms; Family Sharing does not let two people \
+             play at once."
+                .to_string(),
+            false,
+        ),
+        step(
+            "remove",
+            "One-click removal",
+            format!("Closes that Steam and forgets the seat. Its folder (~/.local/share/couchlink/steam-seat-{n}) is left in place."),
+            false,
+        ),
+    ]
+}
+
 /// The account config for `seat` on this PC: the Steam install and its libraries. None without Steam.
 pub fn seat_config(seat: u8) -> Option<AccountsConfig> {
     let root = crate::library::steam_root()?;
-    Some(AccountsConfig { seat, steam_exe: root.join("steam.exe"), library_dirs: crate::library::steam_libraries() })
+    #[cfg(target_os = "linux")]
+    let steam_exe = imp::steam_exe(&root);
+    #[cfg(not(target_os = "linux"))]
+    let steam_exe = root.join("steam.exe");
+    Some(AccountsConfig { seat, steam_exe, library_dirs: crate::library::steam_libraries() })
+}
+
+/// Linux: the home folder of the seat's own Steam, which its game copy runs with. None elsewhere.
+pub fn accounts_home(cfg: &AccountsConfig) -> Option<PathBuf> {
+    #[cfg(target_os = "linux")]
+    {
+        Some(imp::seat_home(cfg))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = cfg;
+        None
+    }
 }
 
 /// True once the seat's helper user is set up (its password is stored). Cheap: reads Credential Manager only.
@@ -248,7 +312,11 @@ fn make_password(mut fill: impl FnMut(&mut [u8]) -> bool) -> Option<String> {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+#[path = "accounts_linux.rs"]
+mod imp;
+
+#[cfg(not(any(windows, target_os = "linux")))]
 mod imp {
     use super::*;
     fn no() -> SteamError {
@@ -636,7 +704,7 @@ mod tests {
 
     #[test]
     fn plan_covers_the_whole_flow() {
-        let p = accounts_plan(&cfg());
+        let p = windows_plan(&cfg());
         let ids: Vec<&str> = p.iter().map(|s| s.id.as_str()).collect();
         assert_eq!(ids, ["create_user", "store_credential", "share_library", "start_steam", "sign_in", "remove"]);
         let all = p.iter().map(|s| format!("{} {}", s.title, s.detail)).collect::<Vec<_>>().join("\n");
@@ -656,12 +724,21 @@ mod tests {
     #[test]
     fn plan_without_libraries_names_the_steam_folder() {
         let c = AccountsConfig { library_dirs: vec![], ..cfg() };
-        assert!(accounts_plan(&c)[2].detail.contains("the Steam install folder"));
+        assert!(windows_plan(&c)[2].detail.contains("the Steam install folder"));
+    }
+
+    #[test]
+    fn the_linux_plan_needs_no_administrator() {
+        let p = linux_plan(&cfg());
+        let ids: Vec<&str> = p.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(ids, ["home", "start_steam", "sign_in", "remove"]);
+        assert!(p.iter().all(|s| !s.needs_admin));
+        assert!(p[0].detail.contains("steam-seat-2"));
     }
 
     #[test]
     fn plan_serialises() {
-        let json = serde_json::to_string(&accounts_plan(&cfg())).unwrap();
+        let json = serde_json::to_string(&windows_plan(&cfg())).unwrap();
         assert!(json.contains("\"needs_admin\":true"));
     }
 
