@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../l10n/l10n.dart';
 
@@ -59,17 +60,24 @@ class _ScreensViewState extends State<ScreensView> {
               PageHead(
                 title: t('Screens'),
                 subtitle: t('Choose who plays on which screen. A screen splits itself as people join it; Customise changes the shape and sizes.'),
-                trailing: CButton(
-                  key: const ValueKey('identify-screens'),
-                  label: t('Identify screens'),
-                  small: true,
-                  leading: CIcon(iconMonitor, size: 14, color: context.c.ink, strokeWidth: 1.8),
-                  onTap: _identify,
+                // The screen settings: every game copy's frame rate, and a way to tell the monitors apart.
+                trailing: Wrap(
+                  spacing: 16,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _FpsLimit(fps: st.fpsLimit),
+                    CButton(
+                      key: const ValueKey('identify-screens'),
+                      label: t('Identify screens'),
+                      small: true,
+                      leading: CIcon(iconMonitor, size: 14, color: context.c.ink, strokeWidth: 1.8),
+                      onTap: _identify,
+                    ),
+                  ],
                 ),
               ),
               _PlayersBar(ctl: ctl),
-              const SizedBox(height: 12),
-              _FpsLimit(fps: st.fpsLimit),
               const SizedBox(height: 18),
               if (ctl.screens.isEmpty)
                 Panel(child: SizedBox(height: 120, child: Center(child: Text('No screens found.', style: txt(context, size: 13, color: context.c.ink3)))))
@@ -85,35 +93,117 @@ class _ScreensViewState extends State<ScreensView> {
 
 // ------------------------------------------------------------------ frame rate
 
-/// The frame rate every game copy is held to (for example 30, so several copies run smoothly together).
-class _FpsLimit extends StatelessWidget {
+/// The frame rate every game copy is held to (for example 30, so several copies run smoothly together): a preset,
+/// or any number the daemon takes (10 to 360).
+class _FpsLimit extends StatefulWidget {
   const _FpsLimit({required this.fps});
 
   final int fps;
 
   @override
+  State<_FpsLimit> createState() => _FpsLimitState();
+}
+
+class _FpsLimitState extends State<_FpsLimit> {
+  static const _presets = [0, 30, 60, 120];
+  static const _custom = -1;
+
+  late bool _isCustom = !_presets.contains(widget.fps);
+  late final _ctl = TextEditingController(text: _isCustom ? '${widget.fps}' : '');
+  final _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() {
+      if (!_focus.hasFocus) _commit();
+    });
+  }
+
+  @override
+  void didUpdateWidget(_FpsLimit old) {
+    super.didUpdateWidget(old);
+    if (widget.fps != old.fps && !_focus.hasFocus) {
+      _isCustom = _isCustom || !_presets.contains(widget.fps);
+      if (_isCustom) _ctl.text = '${widget.fps}';
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctl.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _set(int fps) async {
+    final scope = Scope.of(context);
+    final err = await scope.client.setFpsLimit(fps);
+    if (err != null) scope.toaster.show(err);
+  }
+
+  void _commit() {
+    final fps = int.tryParse(_ctl.text.trim());
+    if (fps == null) {
+      _ctl.text = _presets.contains(widget.fps) ? '' : '${widget.fps}';
+      return;
+    }
+    if (fps != widget.fps) _set(fps);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final c = context.c;
-    const choices = [0, 30, 60];
     return Wrap(
-      spacing: 12,
+      spacing: 10,
       runSpacing: 6,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Text(t('Frame rate'), style: txt(context, size: 13, weight: FontWeight.w600, height: 1.3)),
+        Tooltip(
+          message: t('Every game copy is held to it (on Windows, games that draw through DXVK or VKD3D).'),
+          child: Text(t('Frame rate'), style: txt(context, size: 13, weight: FontWeight.w600, height: 1.3)),
+        ),
         Seg<int>(
           keyPrefix: 'fps',
-          options: const [(0, 'No limit'), (30, '30 fps'), (60, '60 fps')],
-          value: choices.contains(fps) ? fps : 0,
-          onChanged: (v) async {
-            final client = Scope.of(context).client;
-            final toaster = Scope.of(context).toaster;
-            final err = await client.setFpsLimit(v);
-            if (err != null) toaster.show(err);
+          options: const [(0, 'No limit'), (30, '30 fps'), (60, '60 fps'), (120, '120 fps'), (_custom, 'Custom')],
+          value: _isCustom ? _custom : widget.fps,
+          onChanged: (v) {
+            if (v == _custom) {
+              setState(() => _isCustom = true);
+              _focus.requestFocus();
+              return;
+            }
+            setState(() => _isCustom = false);
+            _set(v);
           },
         ),
-        Text(t('Every game copy is held to it (on Windows, games that draw through DXVK or VKD3D).'),
-            style: txt(context, size: 12, color: c.ink3, height: 1.3)),
+        if (_isCustom)
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 56,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: c.raised,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _focus.hasFocus ? c.accent : c.hairStrong),
+              ),
+              child: TextField(
+                key: const ValueKey('fps-custom-value'),
+                controller: _ctl,
+                focusNode: _focus,
+                maxLength: 3,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                cursorColor: c.accent,
+                buildCounter: (context, {required currentLength, required isFocused, required maxLength}) => null,
+                decoration: const InputDecoration.collapsed(hintText: '90'),
+                style: txt(context, size: 13, weight: FontWeight.w600, height: 1.3),
+                onSubmitted: (_) => _focus.unfocus(),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(t('fps (10 to 360)'), style: txt(context, size: 12, color: c.ink3, height: 1.3)),
+          ]),
       ],
     );
   }

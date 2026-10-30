@@ -243,6 +243,8 @@ const Map<String, String> ruStrings = {
   'No limit': 'Без ограничения',
   '30 fps': '30 к/с',
   '60 fps': '60 к/с',
+  '120 fps': '120 к/с',
+  'fps (10 to 360)': 'к/с (от 10 до 360)',
   'Every game copy is held to it (on Windows, games that draw through DXVK or VKD3D).':
       'Её держит каждая копия игры (в Windows: игры, которые рисуют через DXVK или VKD3D).',
   'Pad controls': 'Управление с геймпада',

@@ -443,7 +443,10 @@ class PageHead extends StatelessWidget {
     final c = context.c;
     return Padding(
       padding: const EdgeInsets.only(bottom: 22),
-      child: Wrap(
+      // Full width, so `trailing` sits at the right edge (a Wrap in a start-aligned Column shrinks to its children).
+      child: SizedBox(
+        width: double.infinity,
+        child: Wrap(
         alignment: WrapAlignment.spaceBetween,
         crossAxisAlignment: WrapCrossAlignment.end,
         spacing: 16,
@@ -463,6 +466,7 @@ class PageHead extends StatelessWidget {
           ),
           ?trailing,
         ],
+      ),
       ),
     );
   }
