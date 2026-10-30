@@ -68,6 +68,7 @@ fn start(tag: &str, args: &[&str], fx: &Fixture) -> Daemon {
 fn start_in(dir: PathBuf, args: &[&str], base: &str) -> Daemon {
     let child = Command::new(DAEMON)
         .args(args)
+        .env("COUCHLINK_TRY_GAMES", "0")
         .env("COUCHLINK_STATE_DIR", &dir)
         .env("COUCHLINK_CATALOG_URL", format!("{base}/data/recomps.js"))
         .env("COUCHLINK_STATS_URL", format!("{base}/api/stats"))
@@ -297,6 +298,7 @@ async fn run() -> u32 {
     // A second instance must refuse to start.
     let second = Command::new(DAEMON)
         .args(["--dev", "--stay"])
+        .env("COUCHLINK_TRY_GAMES", "0")
         .env("COUCHLINK_STATE_DIR", &daemon.dir)
         .stdout(Stdio::null())
         .stderr(Stdio::null())

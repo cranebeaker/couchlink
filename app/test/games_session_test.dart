@@ -107,6 +107,21 @@ void main() {
     });
   });
 
+  testWidgets('installed games without a recipe show under Try it', (tester) async {
+    final fake = fastFake(games: const [
+      GameInfo(recipe: 'subnautica-nitrox', game: 'Subnautica (Nitrox)', installed: true, path: 'C:/g', minPlayers: 1, maxPlayers: 4),
+      GameInfo(recipe: 'try-steam-4000', game: "Garry's Mod", installed: true, path: 'C:/gm', minPlayers: 2, maxPlayers: 8, steam: 'shared', source: 'try', steamAppId: 4000),
+    ]);
+    await pumpApp(tester, fake, view: AppView.library, size: const Size(1400, 1300));
+    expect(find.descendant(of: byKey('section-try'), matching: find.text('1 game')), findsOneWidget);
+    expect(find.descendant(of: byKey('section-installed'), matching: find.text('1 game')), findsOneWidget);
+    await tester.ensureVisible(byKey('game-try-steam-4000'));
+    await settle(tester);
+    await tester.tap(byKey('game-try-steam-4000'));
+    await settle(tester);
+    expect(find.textContaining('own Steam account'), findsWidgets);
+  });
+
   group('missing Steam games', () {
     testWidgets('a missing Steam game offers Install on Steam, and a click outside closes the sheet', (tester) async {
       final fake = fastFake(games: const [

@@ -121,7 +121,8 @@ class _LibraryViewState extends State<LibraryView> {
                 const _Note('None of the games Couchlink supports are on this PC yet. Pick All to see them.'),
               // Your games first, then every other game Couchlink supports that is not on this PC yet.
               for (final (label, games, key) in [
-                ('On this PC', here, 'section-installed'),
+                ('On this PC', [for (final g in here) if (g.tier != Tier.tryIt) g], 'section-installed'),
+                ('Try it: your other games', [for (final g in here) if (g.tier == Tier.tryIt) g], 'section-try'),
                 if (!onlyHere) ('Not on this PC yet', notHere, 'section-more'),
               ])
                 if (games.isNotEmpty) ...[
@@ -263,7 +264,8 @@ class _GameSheetState extends State<GameSheet> {
           Tier.native => 'Couchlink starts the game once, gives it the controllers in seat order and keeps other devices away from it.',
           Tier.sdk => 'The mod talks to Couchlink: each copy learns its seat, its controller and its part of the screen, then joins the host by itself.',
           Tier.recipe => 'A community recipe tells Couchlink how to run separate copies, keep their saves apart and connect them over a pretend LAN.',
-          Tier.tryIt => 'No recipe yet. Couchlink tries safe defaults. If it works, one tap shares the result with Co-op Anything.',
+          Tier.tryIt =>
+            'No recipe yet. Couchlink starts one copy per player with safe defaults: separate windows, each player\u2019s own controller, single-instance checks lifted. The copies then meet through the game\u2019s own multiplayer, which works best when every extra player has their own Steam account (Players, Steam).',
         };
         return LayoutBuilder(builder: (context, box) {
           final w = box.maxWidth < 380 ? box.maxWidth : 380.0;

@@ -113,7 +113,13 @@ impl Config {
 
     fn load(&self) -> recipes::Loaded {
         let builtin = recipes::builtin_dir(self.recipes_dir.as_deref());
-        recipes::load_all(builtin.as_deref(), &self.state_dir.join("recipes"))
+        let mut loaded = recipes::load_all(builtin.as_deref(), &self.state_dir.join("recipes"));
+        // Every other installed Steam game, as a "Try it" recipe. Tests switch this off with COUCHLINK_TRY_GAMES=0.
+        if std::env::var("COUCHLINK_TRY_GAMES").map_or(true, |v| v != "0") {
+            let more = recipes::try_recipes(&loaded.recipes);
+            loaded.recipes.extend(more);
+        }
+        loaded
     }
 
     /// `list_games`: every recipe with whether and where the game is installed, plus recipe files that did not load.

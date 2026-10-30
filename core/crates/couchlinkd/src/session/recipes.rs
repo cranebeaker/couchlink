@@ -120,6 +120,92 @@ pub fn require_met(game_dir: &Path, r: &couchlink_core::recipe::Require) -> bool
     }
 }
 
+// ---------------------------------------------------------------------------------------------- try any game
+
+/// Installed Steam apps that are tools, not games.
+fn is_tool(name: &str) -> bool {
+    let n = name.to_lowercase();
+    ["proton", "steamworks", "redistributable", "steamvr", "soundtrack", "dedicated server", " sdk", "steam linux runtime", "benchmark"]
+        .iter()
+        .any(|t| n.contains(t))
+}
+
+/// Exe names that are never the game.
+fn not_the_game(file: &str) -> bool {
+    let n = file.to_lowercase();
+    ["unins", "setup", "crash", "report", "redist", "vcredist", "dxsetup", "dotnet", "prereq", "easyanticheat", "battleye",
+     "helper", "cefprocess", "webhelper", "updater", "installer", "touchup", "server"]
+        .iter()
+        .any(|t| n.contains(t))
+}
+
+/// Folders inside a game that hold installers and runtimes, never the game.
+fn skip_dir(name: &str) -> bool {
+    let n = name.to_lowercase();
+    ["_commonredist", "redist", "directx", "vcredist", "support", "installers", "easyanticheat", "battleye", "thirdparty", "engine"]
+        .iter()
+        .any(|t| n == *t || n.starts_with(t))
+}
+
+/// The game's exe inside its install folder, relative with forward slashes: an Unreal `*-Shipping.exe` first, then
+/// the biggest exe near the top that is not an installer or helper.
+pub fn guess_exe(install_dir: &Path) -> Option<String> {
+    fn walk(dir: &Path, rel: &str, depth: u8, out: &mut Vec<(i64, String)>) {
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            let Ok(meta) = e.metadata() else { continue };
+            let path = if rel.is_empty() { name.clone() } else { format!("{rel}/{name}") };
+            if meta.is_dir() {
+                if depth < 3 && !skip_dir(&name) {
+                    walk(&e.path(), &path, depth + 1, out);
+                }
+            } else if name.to_lowercase().ends_with(".exe") && !not_the_game(&name) {
+                let mb = (meta.len() / (1 << 20)) as i64;
+                let shipping = if name.to_lowercase().contains("shipping") { 10_000 } else { 0 };
+                out.push((shipping + mb - depth as i64 * 5, path));
+            }
+        }
+    }
+    let mut found = Vec::new();
+    walk(install_dir, "", 0, &mut found);
+    found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    found.into_iter().next().map(|(_, p)| p)
+}
+
+/// A "Try it" recipe for an installed Steam game: one copy per player, every named single-instance lock renamed,
+/// your Steam for every copy (a player with their own Steam account plays on it), borderless windows.
+pub fn try_recipe(app_id: u32, name: &str, exe: &str) -> Option<Recipe> {
+    let file = exe.rsplit('/').next().unwrap_or(exe);
+    let v = serde_json::json!({
+        "schema": 1,
+        "id": format!("try-steam-{app_id}"),
+        "game": name,
+        "match": { "steamAppId": app_id, "exe": file },
+        "players": [2, couchlink_core::MAX_SEATS],
+        "steam": "shared",
+        "launch": { "exe": exe, "args": "" },
+        "files": { "copy": [], "link": "all", "saves": [] },
+        "locks": ["*"],
+        "input": { "xinput": true, "dinput": false, "rawinput": false },
+        "window": { "borderless": true, "settle_ms": 3000, "wait_ms": 120000 },
+        "source": "try"
+    });
+    Recipe::parse(&v.to_string()).ok()
+}
+
+/// "Try it" recipes for every installed Steam game no recipe covers.
+pub fn try_recipes(known: &[Recipe]) -> Vec<Recipe> {
+    let covered: std::collections::HashSet<u32> = known.iter().filter_map(|r| r.matching.steam_app_id).collect();
+    let mut out: Vec<Recipe> = couchlink_steam::installed_apps()
+        .into_iter()
+        .filter(|a| !covered.contains(&a.app_id) && !is_tool(&a.name))
+        .filter_map(|a| try_recipe(a.app_id, &a.name, &guess_exe(&a.install_dir)?))
+        .collect();
+    out.sort_by(|a, b| a.game.to_lowercase().cmp(&b.game.to_lowercase()));
+    out
+}
+
 /// Locator for Steam games: the recipe's `match.steamAppId` in any Steam library on this PC. A game folder Steam has
 /// no manifest for (copied in, restored from a backup, a library Steam forgot) is found by `match.exe` instead.
 pub fn steam_locator() -> Locator {
@@ -249,6 +335,27 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn try_it_picks_the_game_exe_and_makes_a_valid_recipe() {
+        let g = temp("try");
+        std::fs::create_dir_all(g.join("Binaries/Win64")).unwrap();
+        std::fs::create_dir_all(g.join("_CommonRedist/vcredist")).unwrap();
+        std::fs::write(g.join("Game.exe"), vec![0u8; 1024]).unwrap();
+        std::fs::write(g.join("unins000.exe"), vec![0u8; 4096]).unwrap();
+        std::fs::write(g.join("_CommonRedist/vcredist/vc_redist.x64.exe"), vec![0u8; 8192]).unwrap();
+        std::fs::write(g.join("Binaries/Win64/Game-Win64-Shipping.exe"), vec![0u8; 512]).unwrap();
+        assert_eq!(guess_exe(&g).as_deref(), Some("Binaries/Win64/Game-Win64-Shipping.exe"));
+        std::fs::remove_file(g.join("Binaries/Win64/Game-Win64-Shipping.exe")).unwrap();
+        assert_eq!(guess_exe(&g).as_deref(), Some("Game.exe"));
+        let r = try_recipe(4000, "Garry's Mod", "Game.exe").expect("valid recipe");
+        assert_eq!(r.id, "try-steam-4000");
+        assert_eq!(r.source, "try");
+        assert_eq!(r.locks, ["*"]);
+        assert_eq!(r.players, [2, couchlink_core::MAX_SEATS as u8]);
+        assert!(is_tool("Proton 9.0") && is_tool("Steamworks Common Redistributables") && !is_tool("Portal 2"));
+        let _ = std::fs::remove_dir_all(&g);
     }
 
     #[test]

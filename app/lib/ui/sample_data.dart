@@ -232,11 +232,11 @@ LibraryGame libraryGameOf(GameInfo g) {
   return LibraryGame(
     id: g.recipe,
     name: g.game,
-    tier: Tier.recipe,
+    tier: g.source == 'try' ? Tier.tryIt : Tier.recipe,
     minPlayers: g.minPlayers,
     maxPlayers: g.maxPlayers,
     art: _artPalette[h % _artPalette.length],
-    mode: 'One copy per player',
+    mode: g.source == 'try' ? 'One copy per player, safe defaults' : 'One copy per player',
     saves: '',
     net: _steamText(g.steam),
     coverTitle: plain == g.game ? null : plain,
