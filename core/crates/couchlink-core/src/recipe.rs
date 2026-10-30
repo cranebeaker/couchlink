@@ -601,7 +601,8 @@ pub fn check_relative(p: &str) -> Result<(), String> {
     if path.is_absolute() || p.starts_with('/') || p.starts_with('\\') || p.contains(':') {
         return Err(format!("{p:?} must be relative to the game folder"));
     }
-    if path.components().any(|c| matches!(c, Component::ParentDir | Component::Prefix(_) | Component::RootDir)) {
+    // A recipe is the same file on every OS, so `\` separates folders here too (on Linux it would be a name).
+    if path.components().any(|c| matches!(c, Component::ParentDir | Component::Prefix(_) | Component::RootDir)) || p.split(['/', '\\']).any(|part| part == "..") {
         return Err(format!("{p:?} must stay inside the game folder"));
     }
     Ok(())
