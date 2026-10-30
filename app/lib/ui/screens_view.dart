@@ -3,6 +3,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 import '../daemon/models.dart';
 import '../daemon/fake_client.dart' show kMaxSeats;
 import '../layout/screen_layout.dart';
@@ -41,7 +43,7 @@ class _ScreensViewState extends State<ScreensView> {
 
   void _identify() {
     setState(() => _flash++);
-    Scope.of(context).toaster.show('Each screen shows its name for a moment');
+    Scope.of(context).toaster.show(t('Each screen shows its name for a moment'));
   }
 
   @override
@@ -55,11 +57,11 @@ class _ScreensViewState extends State<ScreensView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               PageHead(
-                title: 'Screens',
-                subtitle: 'Choose who plays on which screen. A screen splits itself as people join it; Customise changes the shape and sizes.',
+                title: t('Screens'),
+                subtitle: t('Choose who plays on which screen. A screen splits itself as people join it; Customise changes the shape and sizes.'),
                 trailing: CButton(
                   key: const ValueKey('identify-screens'),
-                  label: 'Identify screens',
+                  label: t('Identify screens'),
                   small: true,
                   leading: CIcon(iconMonitor, size: 14, color: context.c.ink, strokeWidth: 1.8),
                   onTap: _identify,
@@ -107,7 +109,7 @@ class _PlayersBar extends StatelessWidget {
                 key: const ValueKey('cancel-pick'),
                 onTap: () => ctl.pick(null),
                 radius: 6,
-                semanticLabel: 'Cancel',
+                semanticLabel: t('Cancel'),
                 builder: (context, s) => Text('Cancel', style: txt(context, size: 12.5, weight: FontWeight.w600, color: c.accent, height: 1.3)),
               ),
             ] else
@@ -435,11 +437,11 @@ class _TileState extends State<_Tile> {
               left: 6,
               top: 6,
               child: Tooltip(
-                message: size == PictureSize.tooSmall ? 'Too small for most games' : 'Small: text may be hard to read',
+                message: size == PictureSize.tooSmall ? t('Too small for most games') : t('Small: text may be hard to read'),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                   decoration: BoxDecoration(color: const Color(0x6B000000), borderRadius: BorderRadius.circular(999)),
-                  child: Text(size == PictureSize.tooSmall ? 'Too small' : 'Small',
+                  child: Text(size == PictureSize.tooSmall ? t('Too small') : t('Small'),
                       style: txt(context, size: 10.5, weight: FontWeight.w600, color: size == PictureSize.tooSmall ? const Color(0xFFFFB4B4) : const Color(0xFFFFE08A), height: 1.3)),
                 ),
               ),
@@ -585,7 +587,7 @@ class _ScreenFooter extends StatelessWidget {
     return Column(mainAxisSize: MainAxisSize.min, children: [
       Row(mainAxisAlignment: MainAxisAlignment.center, children: [
         Tooltip(
-          message: e.on ? 'Turn off' : 'Turn on',
+          message: e.on ? t('Turn off') : t('Turn on'),
           child: Pressable(
             key: ValueKey('power-${e.display.id}'),
             onTap: () {
@@ -625,7 +627,7 @@ class _ScreenFooter extends StatelessWidget {
           _AddPlayerButton(ctl: ctl, edit: e, others: others),
           CButton(
             key: ValueKey('customise-${e.display.id}'),
-            label: 'Customise',
+            label: t('Customise'),
             small: true,
             leading: CIcon(iconSplit, size: 13, color: c.ink, strokeWidth: 1.8),
             onTap: () => showSplitEditor(context, ctl, e.display.id),
@@ -670,7 +672,7 @@ class _AddPlayerButton extends StatelessWidget {
       ],
       builder: (context, menu, _) => CButton(
         key: ValueKey('add-player-${edit.display.id}'),
-        label: 'Add player',
+        label: t('Add player'),
         small: true,
         leading: CIcon(iconPlus, size: 13, color: c.ink, strokeWidth: 2),
         onTap: enabled ? () => menu.isOpen ? menu.close() : menu.open() : null,
@@ -733,7 +735,7 @@ class _SplitEditor extends StatelessWidget {
                       Text('${e.display.resolution} · ${e.display.hzLabel} · ${n == 0 ? 'nobody yet' : '$n ${n == 1 ? 'player' : 'players'}'}', style: txt(context, size: 12.5, color: c.ink3, height: 1.4)),
                     ]),
                   ),
-                  CButton(key: const ValueKey('editor-done'), label: 'Done', primary: true, onTap: () => Navigator.of(context).pop()),
+                  CButton(key: const ValueKey('editor-done'), label: t('Done'), primary: true, onTap: () => Navigator.of(context).pop()),
                 ]),
                 const SizedBox(height: 16),
                 Wrap(spacing: 22, runSpacing: 16, crossAxisAlignment: WrapCrossAlignment.start, children: [
@@ -807,12 +809,12 @@ class _ShapeRow extends StatelessWidget {
           ),
         ),
       Tooltip(
-        message: 'Custom: place each player anywhere, leave gaps for your desktop',
+        message: t('Custom: place each player anywhere, leave gaps for your desktop'),
         child: Pressable(
           key: const ValueKey('shape-custom'),
           onTap: () => ctl.makeCustom(edit.display.id),
           radius: 9,
-          semanticLabel: 'Custom',
+          semanticLabel: t('Custom'),
           toggled: edit.isCustom,
           builder: (context, st) => Container(
             height: 42,
@@ -832,8 +834,8 @@ class _ShapeRow extends StatelessWidget {
       ),
       if (n >= 2 && !edit.isCustom)
         Tooltip(
-          message: 'Give everyone on this screen the same size again',
-          child: CButton(key: const ValueKey('equal-sizes'), label: 'Equal sizes', small: true, onTap: () => ctl.equalSizes(edit.display.id)),
+          message: t('Give everyone on this screen the same size again'),
+          child: CButton(key: const ValueKey('equal-sizes'), label: t('Equal sizes'), small: true, onTap: () => ctl.equalSizes(edit.display.id)),
         ),
     ]);
   }
@@ -1164,7 +1166,7 @@ class _EditorSide extends StatelessWidget {
         }),
       const SizedBox(height: 8),
       heading('Add to this screen'),
-      if (others.isEmpty) Text(ctl.state.takenSeats.isEmpty ? 'Nobody has joined yet.' : 'Everyone is on this screen.', style: txt(context, size: 12.5, color: c.ink3)),
+      if (others.isEmpty) Text(ctl.state.takenSeats.isEmpty ? t('Nobody has joined yet.') : t('Everyone is on this screen.'), style: txt(context, size: 12.5, color: c.ink3)),
       for (final s in others)
         Padding(
           padding: const EdgeInsets.only(bottom: 6),

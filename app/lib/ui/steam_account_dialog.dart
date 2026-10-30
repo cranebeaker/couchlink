@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 import '../daemon/models.dart';
 import '../theme/tokens.dart';
 import 'app_state.dart';
@@ -97,7 +99,7 @@ class _SteamAccountDialogState extends State<_SteamAccountDialog> {
       body.addAll([
         Text('$name plays on their own Steam account in every game that uses Steam.', key: const ValueKey('steam-ready'), style: txt(context, size: 13, color: c.ink2, height: 1.4)),
         const SizedBox(height: 6),
-        Text(a.running ? 'Their Steam is running.' : 'Their Steam starts by itself when a game needs it.', style: txt(context, size: 12, color: c.ink3)),
+        Text(a.running ? t('Their Steam is running.') : t('Their Steam starts by itself when a game needs it.'), style: txt(context, size: 12, color: c.ink3)),
       ]);
     } else if (_working) {
       body.add(Text(
@@ -113,7 +115,7 @@ class _SteamAccountDialogState extends State<_SteamAccountDialog> {
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(step.title + (step.needsAdmin ? ' (Windows asks for permission)' : ''), style: txt(context, size: 12.5, weight: FontWeight.w600)),
+              Text(step.title + (step.needsAdmin ? t(' (Windows asks for permission)') : ''), style: txt(context, size: 12.5, weight: FontWeight.w600)),
               Text(step.detail, style: txt(context, size: 12, color: c.ink3, height: 1.35)),
             ]),
           ),
@@ -137,12 +139,12 @@ class _SteamAccountDialogState extends State<_SteamAccountDialog> {
             const SizedBox(height: 16),
             Wrap(alignment: WrapAlignment.end, spacing: 8, runSpacing: 8, children: [
               if (a != null && a.ready) ...[
-                CButton(key: const ValueKey('steam-remove'), label: 'Use my account again', small: true, onTap: _remove),
-                CButton(key: const ValueKey('steam-open'), label: 'Open their Steam', small: true, onTap: () => runCmd(context, () => scope.client.openSteamAccount(widget.seat))),
+                CButton(key: const ValueKey('steam-remove'), label: t('Use my account again'), small: true, onTap: _remove),
+                CButton(key: const ValueKey('steam-open'), label: t('Open their Steam'), small: true, onTap: () => runCmd(context, () => scope.client.openSteamAccount(widget.seat))),
               ],
               if (a != null && !a.ready && !_working)
                 CButton(key: const ValueKey('steam-setup'), label: 'Give $name their own account', small: true, primary: true, onTap: _setUp),
-              CButton(key: const ValueKey('steam-close'), label: 'Close', small: true, onTap: () => Navigator.of(context).pop()),
+              CButton(key: const ValueKey('steam-close'), label: t('Close'), small: true, onTap: () => Navigator.of(context).pop()),
             ]),
           ]),
         ),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 import '../theme/tokens.dart';
 import 'app_state.dart';
 import 'kit.dart';
@@ -29,13 +31,13 @@ class DevView extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           PageHead(
-            title: 'Add your game',
-            subtitle: 'Made a co-op mod? Three steps and Couchlink can launch it split-screen for everyone on the Co-op Anything list.',
+            title: t('Add your game'),
+            subtitle: t('Made a co-op mod? Three steps and Couchlink can launch it split-screen for everyone on the Co-op Anything list.'),
             trailing: CButton(
               key: const ValueKey('validate'),
-              label: 'Check my couchlink.json',
+              label: t('Check my couchlink.json'),
               small: true,
-              onTap: () => toaster.show('couchlink.json looks good: 2 to 4 players, instances, SDK found'),
+              onTap: () => toaster.show(t('couchlink.json looks good: 2 to 4 players, instances, SDK found')),
             ),
           ),
           LayoutBuilder(builder: (context, box) {
@@ -48,29 +50,29 @@ class DevView extends StatelessWidget {
             ];
             return EqualGrid(cols: cols, gap: 12, children: items);
           }),
-          const SectionLabel('Three steps'),
+          SectionLabel(t('Three steps')),
           LayoutBuilder(builder: (context, box) {
             final cols = box.maxWidth >= 760 ? 3 : 1;
                         final steps = [
               _Step(
                 n: 'Step 1',
-                title: 'Describe the game',
+                title: t('Describe the game'),
                 body: Text('Drop a couchlink.json next to your mod. Couchlink reads it when the game is found.', style: txt(context, size: 12.5, color: c.ink2)),
                 code: '{\n  "game": "Fallout: New Vegas",\n  "steamAppId": 22380,\n  "players": [2, 4],\n  "mode": "instances",\n  "exe": "FalloutNV.exe",\n  "join": { "loopback": 27960 },\n  "sdk": "couchlink_seat.dll"\n}',
               ),
               _Step(
                 n: 'Step 2',
-                title: 'Ask for your seat',
+                title: t('Ask for your seat'),
                 body: Text('Optional. Link the tiny SDK and your mod knows its player, pad and screen rectangle.', style: txt(context, size: 12.5, color: c.ink2)),
                 code: '// C, C++, C#, Lua bindings\nCouchlinkSeat s;\nif (couchlink_get_seat(&s)) {\n  join("127.0.0.1", s.port);\n  use_pad(s.pad);\n  name_player(s.name);\n}',
               ),
               _Step(
                 n: 'Step 3',
-                title: 'List it',
+                title: t('List it'),
                 body: Text.rich(TextSpan(style: txt(context, size: 12.5, color: c.ink2), children: [
-                  const TextSpan(text: 'Run '),
+                  TextSpan(text: t('Run ')),
                   WidgetSpan(alignment: PlaceholderAlignment.middle, child: Kbd('/listing')),
-                  const TextSpan(text: ' in the Co-op Anything Discord or edit your page on the site. Tick “Works with Couchlink” and it shows up here for everyone.'),
+                  TextSpan(text: t(' in the Co-op Anything Discord or edit your page on the site. Tick “Works with Couchlink” and it shows up here for everyone.')),
                 ])),
                 code: '# or from your agent\ncoop_mcp validate couchlink.json\n# ALL OK: ready for the catalog',
               ),

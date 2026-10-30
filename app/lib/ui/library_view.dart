@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 import '../daemon/models.dart';
 import '../theme/tokens.dart';
 import 'app_state.dart';
@@ -61,8 +63,8 @@ class _LibraryViewState extends State<LibraryView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               PageHead(
-                title: 'Library',
-                subtitle: 'Every game Couchlink can split, yours first. Pick one, then bring in your players.',
+                title: t('Library'),
+                subtitle: t('Every game Couchlink can split, yours first. Pick one, then bring in your players.'),
                 trailing: Wrap(spacing: 8, runSpacing: 8, children: [
                   for (final (k, l) in _filters) CChip(key: ValueKey('filter-$k'), label: l, selected: ui.libraryFilter == k, onTap: () => ui.setLibraryFilter(k)),
                 ]),
@@ -83,7 +85,7 @@ class _LibraryViewState extends State<LibraryView> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(r.ready ? 'READY TO PLAY' : 'ONE-TIME SETUP NEEDED', style: txt(context, size: 11, weight: FontWeight.w600, color: r.ready ? c.ink3 : c.warn, ls: .04, height: 1.3)),
+                                Text(r.ready ? t('READY TO PLAY') : t('ONE-TIME SETUP NEEDED'), style: txt(context, size: 11, weight: FontWeight.w600, color: r.ready ? c.ink3 : c.warn, ls: .04, height: 1.3)),
                                 const SizedBox(height: 10),
                                 Text(r.name, style: txt(context, size: 22, weight: FontWeight.w700, display: true, ls: -.02, height: 1.2)),
                                 const SizedBox(height: 10),
@@ -96,7 +98,7 @@ class _LibraryViewState extends State<LibraryView> {
                                 Wrap(spacing: 10, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
                                   CButton(
                                     key: const ValueKey('resume'),
-                                    label: names.isEmpty ? 'Choose players' : 'Play with the current seats',
+                                    label: names.isEmpty ? t('Choose players') : t('Play with the current seats'),
                                     primary: true,
                                     small: true,
                                     onTap: () {
@@ -114,11 +116,11 @@ class _LibraryViewState extends State<LibraryView> {
                     ),
                   ),
                 ),
-              if (scope.client.games == null) const _Note('Looking for your games'),
+              if (scope.client.games == null) _Note(t('Looking for your games')),
               if (scope.client.games != null && all.isEmpty)
-                const _Note('Couchlink found no game recipes yet. Add one to the recipes folder and it shows up here.'),
+                _Note(t('Couchlink found no game recipes yet. Add one to the recipes folder and it shows up here.')),
               if (all.isNotEmpty && here.isEmpty && onlyHere)
-                const _Note('None of the games Couchlink supports are on this PC yet. Pick All to see them.'),
+                _Note(t('None of the games Couchlink supports are on this PC yet. Pick All to see them.')),
               // Your games first, then every other game Couchlink supports that is not on this PC yet.
               for (final (label, games, key) in [
                 ('On this PC', [for (final g in here) if (g.tier != Tier.tryIt) g], 'section-installed'),
@@ -301,7 +303,7 @@ class _GameSheetState extends State<GameSheet> {
                               Positioned(
                                 top: 12,
                                 right: 12,
-                                child: RoundX(key: const ValueKey('sheet-close'), label: 'Close', size: 28, bg: const Color(0x73000000), fg: Colors.white, onTap: ui.closeSheet),
+                                child: RoundX(key: const ValueKey('sheet-close'), label: t('Close'), size: 28, bg: const Color(0x73000000), fg: Colors.white, onTap: ui.closeSheet),
                               ),
                             ],
                           ),
@@ -327,7 +329,7 @@ class _GameSheetState extends State<GameSheet> {
                                     _Fact('How it runs', g.mode, first: true),
                                     if (g.saves.isNotEmpty) _Fact('Saves', g.saves),
                                     _Fact('Connection', g.net),
-                                    if (!g.installed) const _Fact('On this PC', 'Not installed'),
+                                    if (!g.installed) _Fact('On this PC', t('Not installed')),
                                   ]),
                                 ),
                                 if (g.setup.isNotEmpty) ...[
@@ -359,20 +361,20 @@ class _GameSheetState extends State<GameSheet> {
                                 ],
                                 const SizedBox(height: 14),
                                 if (g.installed && !g.ready)
-                                  CButton(key: const ValueKey('sheet-recheck'), label: 'I did it, check again', primary: true, onTap: () => runCmd(context, scope.client.listGames))
+                                  CButton(key: const ValueKey('sheet-recheck'), label: t('I did it, check again'), primary: true, onTap: () => runCmd(context, scope.client.listGames))
                                 else if (g.installed)
-                                  CButton(key: const ValueKey('sheet-go'), label: 'Choose players', primary: true, onTap: () => ui.go(AppView.players))
+                                  CButton(key: const ValueKey('sheet-go'), label: t('Choose players'), primary: true, onTap: () => ui.go(AppView.players))
                                 else if (g.steamAppId != null) ...[
                                   Text('Couchlink could not find this game on this PC. Install it with Steam, then check again.', style: txt(context, size: 13, color: c.ink2)),
                                   const SizedBox(height: 14),
                                   Wrap(spacing: 10, runSpacing: 10, children: [
-                                    CButton(key: const ValueKey('sheet-install'), label: 'Install on Steam', primary: true, onTap: () => ui.openUrl(steamInstallUri(g.steamAppId!))),
-                                    CButton(key: const ValueKey('sheet-recheck'), label: 'Check again', onTap: () => runCmd(context, scope.client.listGames)),
+                                    CButton(key: const ValueKey('sheet-install'), label: t('Install on Steam'), primary: true, onTap: () => ui.openUrl(steamInstallUri(g.steamAppId!))),
+                                    CButton(key: const ValueKey('sheet-recheck'), label: t('Check again'), onTap: () => runCmd(context, scope.client.listGames)),
                                   ]),
                                 ] else ...[
                                   Text('Couchlink could not find this game on this PC. Install it, then check again.', style: txt(context, size: 13, color: c.ink2)),
                                   const SizedBox(height: 14),
-                                  CButton(key: const ValueKey('sheet-recheck'), label: 'Check again', primary: true, onTap: () => runCmd(context, scope.client.listGames)),
+                                  CButton(key: const ValueKey('sheet-recheck'), label: t('Check again'), primary: true, onTap: () => runCmd(context, scope.client.listGames)),
                                 ],
                               ],
                             ),

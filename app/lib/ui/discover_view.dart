@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 import '../daemon/client.dart';
 import '../daemon/models.dart';
 import '../theme/tokens.dart';
@@ -84,8 +86,8 @@ class _DiscoverViewState extends State<DiscoverView> {
   Widget _head(BuildContext context, UiState ui, int total) {
     final c = context.c;
     return PageHead(
-      title: 'Co-op Anything',
-      subtitle: 'Every co-op project the community tracks, live from coopanything.app. Open a game’s page to see how to get it running.',
+      title: t('Co-op Anything'),
+      subtitle: t('Every co-op project the community tracks, live from coopanything.app. Open a game’s page to see how to get it running.'),
       trailing: Container(
         width: 280,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
@@ -102,7 +104,7 @@ class _DiscoverViewState extends State<DiscoverView> {
                 onChanged: ui.setCatalogQuery,
                 style: txt(context, size: 14, height: 1.3),
                 decoration: InputDecoration.collapsed(
-                  hintText: total > 0 ? 'Search $total projects' : 'Search title, project or engine',
+                  hintText: total > 0 ? 'Search $total projects' : t('Search title, project or engine'),
                   hintStyle: txt(context, size: 14, color: c.ink3, height: 1.3),
                 ),
               ),
@@ -164,7 +166,7 @@ class _DiscoverViewState extends State<DiscoverView> {
     final busy = client.catalogRefreshing;
     return CButton(
       key: const ValueKey('catalog-refresh'),
-      label: busy ? 'Refreshing' : 'Refresh',
+      label: busy ? t('Refreshing') : t('Refresh'),
       small: true,
       onTap: busy ? null : () => runCmd(context, client.refreshCatalog),
       leading: busy ? Spinner(size: 12, width: 2, color: c.accent) : CIcon(iconRefresh, size: 13, color: c.ink2, strokeWidth: 2),
@@ -210,7 +212,7 @@ class _DiscoverViewState extends State<DiscoverView> {
           const SizedBox(height: 16),
           CButton(
             key: const ValueKey('catalog-retry'),
-            label: 'Try again',
+            label: t('Try again'),
             primary: true,
             onTap: () => runCmd(context, client.refreshCatalog),
           ),
@@ -238,11 +240,11 @@ class _CatalogRow extends StatelessWidget {
     final scope = Scope.of(context);
     final uri = Uri.tryParse(entry.pageUrl);
     if (uri == null || !uri.hasScheme) {
-      scope.toaster.show('This project has no page yet.');
+      scope.toaster.show(t('This project has no page yet.'));
       return;
     }
     final ok = await scope.ui.openUrl(uri);
-    if (!ok) scope.toaster.show('Could not open the browser.');
+    if (!ok) scope.toaster.show(t('Could not open the browser.'));
   }
 
   @override
@@ -322,7 +324,7 @@ class _CatalogRow extends StatelessWidget {
             const SizedBox(width: 16),
             CButton(
               key: ValueKey('copen-${entry.id}'),
-              label: 'Open page',
+              label: t('Open page'),
               small: true,
               leading: CIcon(iconExternal, size: 12, color: c.ink2, strokeWidth: 2),
               onTap: () => _open(context),

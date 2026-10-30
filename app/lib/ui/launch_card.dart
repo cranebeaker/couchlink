@@ -2,6 +2,8 @@ import 'dart:ui' as ui_;
 
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 import '../daemon/client.dart';
 import '../daemon/models.dart';
 import '../layout/layout_math.dart';
@@ -25,12 +27,12 @@ Future<void> playGame(BuildContext context, LibraryGame game) async {
   if (game.installed && !game.ready) {
     scope.ui.go(AppView.library);
     scope.ui.selectGame(game.id, openSheet: true);
-    scope.toaster.show('One-time setup first, then Play');
+    scope.toaster.show(t('One-time setup first, then Play'));
     return;
   }
   final st = scope.client.state;
   if (st == null || st.takenSeats.isEmpty) {
-    scope.toaster.show('Pick your players first');
+    scope.toaster.show(t('Pick your players first'));
     scope.ui.go(AppView.players);
     return;
   }
@@ -256,7 +258,7 @@ class _Progress extends StatelessWidget {
           children: [
             CButton(
               key: const ValueKey('launch-cancel'),
-              label: 'Cancel',
+              label: t('Cancel'),
               small: true,
               onTap: stopping
                   ? null
@@ -288,7 +290,7 @@ class _SeatRow extends StatelessWidget {
     final idx = info == null ? -1 : _stepOrder.indexOf(info!.step);
     final done = !failed && info?.step == 'running';
     final frac = info?.step == 'exited' ? 1.0 : (idx < 0 ? 0.0 : (idx + 1) / _stepOrder.length);
-    final label = info == null ? 'Waiting' : (failed ? info!.error! : _stepText(info!.step));
+    final label = info == null ? t('Waiting') : (failed ? info!.error! : _stepText(info!.step));
     return Row(
       children: [
         SeatBadge(number: seat + 1, color: c.seat[seat], size: 34, radius: 10, fontSize: 15),
@@ -377,7 +379,7 @@ class _Failed extends StatelessWidget {
           children: [
             CButton(
               key: const ValueKey('launch-close'),
-              label: 'Close',
+              label: t('Close'),
               small: true,
               primary: true,
               onTap: () {
@@ -452,11 +454,11 @@ class _InGame extends StatelessWidget {
           children: [
             Text('Your desktop comes back when you end the game.', style: txt(context, size: 12, color: c.ink3)),
             Row(mainAxisSize: MainAxisSize.min, children: [
-              CButton(key: const ValueKey('launch-hide'), label: 'Hide', small: true, onTap: scope.ui.closeLaunch),
+              CButton(key: const ValueKey('launch-hide'), label: t('Hide'), small: true, onTap: scope.ui.closeLaunch),
               const SizedBox(width: 8),
               CButton(
                 key: const ValueKey('launch-end'),
-                label: 'End',
+                label: t('End'),
                 small: true,
                 primary: true,
                 onTap: stopping ? null : () => runCmd(context, scope.client.stopSession),

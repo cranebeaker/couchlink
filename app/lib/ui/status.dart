@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 import '../daemon/client.dart';
 import '../daemon/models.dart';
 import '../theme/tokens.dart';
@@ -59,7 +61,7 @@ class StatusPanel extends StatelessWidget {
               Text(message, textAlign: TextAlign.center, style: txt(context, size: 13, color: c.ink2)),
               if (isError) ...[
                 const SizedBox(height: 18),
-                CButton(key: const ValueKey('retry'), label: 'Retry', primary: true, onTap: () => onRetry!()),
+                CButton(key: const ValueKey('retry'), label: t('Retry'), primary: true, onTap: () => onRetry!()),
               ],
             ],
           ),

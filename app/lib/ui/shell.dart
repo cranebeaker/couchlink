@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../l10n/l10n.dart';
+
 import '../daemon/client.dart';
 import '../daemon/models.dart';
 import '../layout/layout_math.dart';
@@ -66,9 +68,9 @@ class _ShellState extends State<Shell> {
     final wasLive = was == 'starting' || was == 'running' || was == 'stopping';
     if (wasLive && now.state == 'idle') {
       scope.ui.closeLaunch();
-      scope.toaster.show('The game session ended. Your desktop is back.');
+      scope.toaster.show(t('The game session ended. Your desktop is back.'));
     } else if (now.state == 'failed' && !scope.ui.launchOpen) {
-      scope.toaster.show(now.error ?? 'The game session failed.', long: true);
+      scope.toaster.show(now.error ?? t('The game session failed.'), long: true);
     }
   }
 
@@ -274,9 +276,9 @@ class _CaptionButtons extends StatelessWidget {
       valueListenable: chrome.maximized,
       builder: (context, max, _) => Row(
         children: [
-          _Caption(key: const ValueKey('win-min'), icon: iconMinimize, label: 'Minimize', onTap: chrome.minimize),
-          _Caption(key: const ValueKey('win-max'), icon: max ? iconRestore : iconMaximize, label: max ? 'Restore' : 'Maximize', onTap: chrome.toggleMaximize),
-          _Caption(key: const ValueKey('win-close'), icon: iconClose, label: 'Close', onTap: chrome.close, danger: true),
+          _Caption(key: const ValueKey('win-min'), icon: iconMinimize, label: t('Minimize'), onTap: chrome.minimize),
+          _Caption(key: const ValueKey('win-max'), icon: max ? iconRestore : iconMaximize, label: max ? t('Restore') : t('Maximize'), onTap: chrome.toggleMaximize),
+          _Caption(key: const ValueKey('win-close'), icon: iconClose, label: t('Close'), onTap: chrome.close, danger: true),
         ],
       ),
     );
@@ -366,6 +368,15 @@ class Sidebar extends StatelessWidget {
                   ],
                 ),
               ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 12, 14),
+                child: Row(
+                  children: [
+                    Expanded(child: Text('Language', style: txt(context, size: 12, color: c.ink2))),
+                    _LangSwitch(value: ui.lang, onChanged: ui.setLang),
+                  ],
+                ),
+              ),
             ],
           );
         },
@@ -391,6 +402,47 @@ class Kbd extends StatelessWidget {
 }
 
 /// System / light / dark, as three icon buttons in one pill.
+class _LangSwitch extends StatelessWidget {
+  const _LangSwitch({required this.value, required this.onChanged});
+
+  final AppLang value;
+  final ValueChanged<AppLang> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(color: c.raised, borderRadius: BorderRadius.circular(9), border: Border.all(color: c.hair)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final l in AppLang.values)
+            Tooltip(
+              message: l.name,
+              waitDuration: const Duration(milliseconds: 500),
+              child: Pressable(
+                key: ValueKey('lang-${l.name.toLowerCase()}'),
+                onTap: () => onChanged(l),
+                radius: 7,
+                semanticLabel: l.name,
+                toggled: l == value,
+                builder: (context, s) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 140),
+                  width: 30,
+                  height: 24,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(color: l == value ? c.pane : Colors.transparent, borderRadius: BorderRadius.circular(7)),
+                  child: Text(l.short, style: txt(context, size: 11, weight: FontWeight.w600, color: l == value ? c.ink : c.ink3)),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ThemeSwitch extends StatelessWidget {
   const _ThemeSwitch({required this.value, required this.onChanged});
 
@@ -541,7 +593,7 @@ class PartyBar extends StatelessWidget {
                     key: const ValueKey('party-game'),
                     onTap: () => scope.ui.go(AppView.library),
                     leading: SizedBox(width: 42, height: 42, child: GameArt(colors: game?.art ?? noGameArt, radius: 9, coverUrl: game == null ? null : coverFor(scope.client.catalog, game))),
-                    label: 'Game',
+                    label: t('Game'),
                     value: game?.name ?? 'No game yet',
                   ),
                 ),
@@ -561,7 +613,7 @@ class PartyBar extends StatelessWidget {
                           decoration: BoxDecoration(shape: BoxShape.circle, color: st.seats[i] != null ? c.seat[i] : c.hairStrong),
                         ),
                     ]),
-                    label: 'Players',
+                    label: t('Players'),
                     value: n == 0 ? 'Nobody yet' : names,
                   ),
                 ),
@@ -572,7 +624,7 @@ class PartyBar extends StatelessWidget {
                     key: const ValueKey('party-layout'),
                     onTap: () => scope.ui.go(AppView.screens),
                     leading: MiniScreens(state: st),
-                    label: 'Screens',
+                    label: t('Screens'),
                     value: screensSummary(st),
                   ),
                 ),
