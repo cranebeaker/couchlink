@@ -347,11 +347,12 @@ impl Hub {
                 self.sync_profile_refs();
                 Ok(json!({ "state": self.model.state() }))
             }
-            Command::GetLog => Ok(json!({
+            Command::GetLog => {
                 // Made here too, so "Open log folder" works before anything was logged.
-                "dir": { let d = crate::logfile::dir(); let _ = std::fs::create_dir_all(&d); d },
-                "text": crate::logfile::report(self.session_info.recipe.as_deref()),
-            })),
+                let dir = crate::logfile::dir();
+                let _ = std::fs::create_dir_all(&dir);
+                Ok(json!({ "dir": dir, "text": crate::logfile::report(self.session_info.recipe.as_deref()) }))
+            }
             Command::GetCatalog => {
                 let catalog = self.catalog.clone().unwrap_or_else(Catalog::empty);
                 Ok(json!({ "catalog": catalog, "refreshing": self.fetching }))
