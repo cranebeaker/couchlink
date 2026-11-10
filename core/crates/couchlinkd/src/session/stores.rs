@@ -201,7 +201,7 @@ pub fn add_own(state_dir: &Path, path: &Path, name: Option<&str>) -> Result<Othe
         let exe = if cfg!(target_os = "linux") { guess_native(path) } else { None }.or_else(|| guess_exe_named(path, &hint));
         (path.to_path_buf(), Some(exe.ok_or_else(|| format!("no game program was found in {}", path.display()))?))
     } else if path.is_file() {
-        let dir = path.parent().ok_or("the file has no folder")?.to_path_buf();
+        let dir = game_root(path.parent().ok_or("the file has no folder")?);
         (dir.clone(), relative(&dir, path))
     } else {
         return Err(format!("{} does not exist", path.display()));
@@ -218,6 +218,23 @@ pub fn add_own(state_dir: &Path, path: &Path, name: Option<&str>) -> Result<Othe
     all.push(game.clone());
     save_own(state_dir, &all)?;
     Ok(game)
+}
+
+/// Folders a game keeps its program in, below the game's own folder (`Binaries/Win64`, `bin`, Unreal's `System`).
+const PROGRAM_FOLDERS: [&str; 13] = ["bin", "bin32", "bin64", "binaries", "win32", "win64", "x64", "x86", "x86_64", "amd64", "retail", "shipping", "system"];
+
+/// The game's own folder for a program picked in `dir`: up past folders that only hold programs. A game's copies
+/// are made of that folder, so its data next to `Binaries` comes along, and it is named after the game, not `Binaries`.
+fn game_root(dir: &Path) -> PathBuf {
+    let mut root = dir;
+    while let (Some(name), Some(parent)) = (root.file_name(), root.parent()) {
+        let generic = PROGRAM_FOLDERS.iter().any(|g| name.to_string_lossy().eq_ignore_ascii_case(g));
+        if !generic || parent.file_name().is_none() {
+            break;
+        }
+        root = parent;
+    }
+    root.to_path_buf()
 }
 
 /// Forget a game the player added, by its recipe id. False when there is none.
@@ -364,17 +381,17 @@ mod tests {
         std::fs::write(game.join("bin").join("game.exe"), vec![0u8; 2048]).unwrap();
         assert!(add_own(&state, &state.join("nothing"), None).is_err());
         let g = add_own(&state, &game.join("bin").join("game.exe"), Some("  ")).unwrap();
-        assert_eq!((g.name.as_str(), g.exe.as_deref()), ("bin", Some("game.exe")), "a picked program: its folder is the game");
+        assert_eq!((g.name.as_str(), g.exe.as_deref()), ("Old Game", Some("bin/game.exe")), "a picked program in bin: the game is the folder above");
         let g = add_own(&state, &game, Some("Old Game")).unwrap();
         assert_eq!((g.name.as_str(), g.exe.as_deref()), ("Old Game", Some("bin/game.exe")), "a picked folder: the program is found");
-        assert_eq!(own_games(&state).len(), 2);
+        assert_eq!(own_games(&state).len(), 1, "the same game both ways");
         let tried = try_recipes(&state, &[], false);
         let r = tried.iter().find(|r| r.id == g.recipe_id()).expect("the folder becomes a Try it game");
         assert_eq!((r.game.as_str(), r.launch.exe.as_str(), r.source.as_str()), ("Old Game", "bin/game.exe", "try"));
         assert_eq!(locator(state.clone())(r), Some(game.clone()), "and is found where it is");
         assert_eq!(remove_own(&state, &g.recipe_id()), Ok(true));
         assert_eq!(remove_own(&state, &g.recipe_id()), Ok(false));
-        assert_eq!(own_games(&state).len(), 1);
+        assert_eq!(own_games(&state).len(), 0);
         let _ = std::fs::remove_dir_all(&state);
         let _ = std::fs::remove_dir_all(game.parent().unwrap());
     }
@@ -392,5 +409,19 @@ mod tests {
         assert_eq!(try_recipes_for(&[gog], &[]).len(), 1, "without the recipe it does");
         let _ = std::fs::remove_dir_all(&state);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod game_root_tests {
+    use super::*;
+
+    #[test]
+    fn a_program_in_binaries_belongs_to_the_folder_above() {
+        assert_eq!(game_root(Path::new("/g/TimeShift/Binaries/Win32")), PathBuf::from("/g/TimeShift"));
+        assert_eq!(game_root(Path::new("/g/Deus Ex/System")), PathBuf::from("/g/Deus Ex"));
+        assert_eq!(game_root(Path::new("/g/Celeste")), PathBuf::from("/g/Celeste"), "a program in the game's own folder");
+        assert_eq!(game_root(Path::new("/g/Game/Tools")), PathBuf::from("/g/Game/Tools"), "only program folders are climbed");
+        assert_eq!(game_root(Path::new("/bin")), PathBuf::from("/bin"), "never up to the drive itself");
     }
 }
