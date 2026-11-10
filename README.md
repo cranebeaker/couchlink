@@ -80,8 +80,8 @@ way the game already supports: LAN, a co-op mod's server, or Steam. Any game tha
 - Everything Couchlink changes on your PC is written to a journal first and put back when you stop, also after a
   crash.
 - Updates from inside the app.
-- In English and Russian: the app follows your system's language, and Settings (the cog at the bottom of the sidebar)
-  has an EN / RU switch.
+- In English, Russian and Brazilian Portuguese: the app follows your system's language, and Settings (the cog at the
+  bottom of the sidebar) has an EN / RU / PT switch.
 
 ## Get it
 
@@ -123,7 +123,7 @@ cd core && cargo build --release -p couchlinkd
 cd ../app && flutter build windows --release
 ```
 
-`python -I tools/release/package.py --version 0.1.19` builds the release zip from a neutral folder and checks every file
+`python -I tools/release/package.py --version 0.1.20` builds the release zip from a neutral folder and checks every file
 before writing it. Tests: `cd core && cargo test --workspace` and `cd app && flutter test`.
 
 Layout: `core/` (Rust: the `couchlinkd` service and its crates), `app/` (Flutter), `hook/` (C++ input hook),

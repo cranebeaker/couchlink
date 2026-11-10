@@ -3,6 +3,22 @@
 What changed in each Couchlink release. Downloads and older notes are on the
 [releases page](https://github.com/cranebeaker/couchlink/releases).
 
+## 0.1.20
+
+### Added
+
+- **Couchlink in Brazilian Portuguese.** It follows a Portuguese system language, and Settings has a PT switch next to
+  EN and RU. Thanks to CaduGimenes.
+
+### Fixed
+
+- **A game added by its program showed up as "Binaries"** (or "bin", "Win64"), and its copies held only that folder,
+  without the game's data next to it. Couchlink now takes the game's own folder above those, and names the game after it.
+- **Linux: a player's own Steam crashed on start and was never seen running.** Each player's Steam now gets an IPC
+  address Linux Steam accepts, and Couchlink finds it while it runs. Thanks to CaduGimenes.
+- **Linux: Proton games quit on start for a player on their own Steam** (older Steamworks games, such as Dead Island
+  Riptide). The copy now keeps your home folder and still reaches that player's Steam. Thanks to CaduGimenes.
+
 ## 0.1.19
 
 ### Added
