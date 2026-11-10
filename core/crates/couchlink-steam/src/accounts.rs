@@ -37,9 +37,18 @@ impl AccountsConfig {
     pub fn user_name(&self) -> String {
         format!("{ACCOUNT_PREFIX}Seat{}", self.seat as u32 + 1)
     }
-    /// Value for `-master_ipc_name_override`.
+    /// The seat's IPC name, as Windows Steam takes it in `-master_ipc_name_override`; also the base of
+    /// [`overlay_suffix`](Self::overlay_suffix).
     pub fn ipc_name(&self) -> String {
         format!("couchlink_seat{}", self.seat as u32 + 1)
+    }
+    /// Value for `-master_ipc_name_override` and the `steam_master_ipc_name_override` variable on this system: the
+    /// IPC name on Windows, an `address:port` on Linux (see `accounts_linux::ipc_address`).
+    pub fn ipc_override(&self) -> Result<String> {
+        #[cfg(target_os = "linux")]
+        return imp::ipc_address(self);
+        #[cfg(not(target_os = "linux"))]
+        return Ok(self.ipc_name());
     }
     /// Windows Credential Manager target holding the helper user's password.
     pub fn credential_target(&self) -> String {
