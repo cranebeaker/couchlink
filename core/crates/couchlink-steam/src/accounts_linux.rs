@@ -485,6 +485,13 @@ mod tests {
         let _ = std::fs::remove_dir_all(&proc);
     }
 
+    /// Tests that take loopback ports take turns: the system can hand one test a port another test has just let go of
+    /// and is about to bind again.
+    fn ports() -> std::sync::MutexGuard<'static, ()> {
+        static PORTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        PORTS.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// A folder of seat homes for one test.
     fn seats(name: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!("couchlink-seats-{name}-{}", std::process::id()));
@@ -494,6 +501,7 @@ mod tests {
 
     #[test]
     fn a_seats_steam_ipc_is_a_loopback_port_of_its_own_and_kept() {
+        let _ports = ports();
         let root = seats("kept");
         let home = root.join("steam-seat-2");
         let first = ipc_address_in(&home, Client::Stopped).unwrap();
@@ -516,6 +524,7 @@ mod tests {
 
     #[test]
     fn a_running_steam_keeps_the_address_it_was_started_with() {
+        let _ports = ports();
         let root = seats("running");
         let home = root.join("steam-seat-2");
         let kept = ipc_address_in(&home, Client::Stopped).unwrap();
@@ -535,6 +544,7 @@ mod tests {
 
     #[test]
     fn a_game_prepared_while_its_steam_starts_gets_that_steams_address() {
+        let _ports = ports();
         let root = seats("startup");
         let home = root.join("steam-seat-2");
         // The seat's Steam is being started with this address...
@@ -551,6 +561,7 @@ mod tests {
 
     #[test]
     fn two_seats_never_share_an_address() {
+        let _ports = ports();
         let root = seats("two");
         let (two, three) = (root.join("steam-seat-2"), root.join("steam-seat-3"));
         let a = ipc_address_in(&two, Client::Stopped).unwrap();
@@ -565,6 +576,7 @@ mod tests {
 
     #[test]
     fn callers_at_once_agree_on_one_address_per_seat() {
+        let _ports = ports();
         let root = seats("race");
         let homes: Vec<PathBuf> = (2..=4).map(|n| root.join(format!("steam-seat-{n}"))).collect();
         let first = ipc_address_in(&homes[0], Client::Stopped).unwrap();
@@ -588,6 +600,7 @@ mod tests {
 
     #[test]
     fn an_address_that_cannot_be_kept_is_an_error() {
+        let _ports = ports();
         // The seat home cannot be made.
         let file = std::env::temp_dir().join(format!("couchlink-seat-ipc-file-{}", std::process::id()));
         std::fs::write(&file, "").unwrap();
