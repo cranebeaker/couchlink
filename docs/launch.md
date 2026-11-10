@@ -221,8 +221,10 @@ desktop is needed; gamescope is recommended.
    and moved onto the seat's region; gamescope runs with `SDL_VIDEODRIVER=x11` so this works on Wayland desktops through
    XWayland. Without an X display the desktop places the windows.
 6. **Own Steam account** (`couchlink-steam/src/accounts_linux.rs`): no helper user. An extra seat's Steam runs with a
-   home of its own (`~/.local/share/couchlink/steam-seat-<n>`), and the seat's copy runs with that home, so it talks to
-   that Steam (for Proton copies `XDG_DATA_HOME` stays the user's, so umu's runtime is shared). Linux Steam takes
+   home of its own (`~/.local/share/couchlink/steam-seat-<n>`). A native copy runs with that home, so it talks to that
+   Steam. A Proton copy keeps the user's home (with the seat's home Proton cannot load older games' `steamclient64.dll`);
+   `steam_master_ipc_name_override` alone points it at the seat's Steam, and its saves stay in the seat's own Wine
+   prefix. Linux Steam takes
    `-master_ipc_name_override` as `address:port` (a bare name crashes it on start), so each seat's Steam gets a free
    loopback port picked by the system and kept in its home (`.couchlink-steam-ipc`); its copy gets the same value in
    `steam_master_ipc_name_override`. The choice is made under a lock next to the seat homes, so no two seats get the
