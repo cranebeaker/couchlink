@@ -1,14 +1,16 @@
-// App languages: English (the source text) and Russian.
+// App languages: English (the source text), Russian and Brazilian Portuguese.
 //
 // Every visible string goes through [t] with its English text as the key, so a missing translation shows English
 // instead of nothing. Placeholders are written `{name}` and filled from [args].
 import 'dart:io' show Platform;
 
+import 'pt.dart';
 import 'ru.dart';
 
 enum AppLang {
   en('EN', 'English'),
-  ru('RU', 'Русский');
+  ru('RU', 'Русский'),
+  pt('PT', 'Português');
 
   const AppLang(this.short, this.name);
   final String short;
@@ -16,12 +18,16 @@ enum AppLang {
 }
 
 AppLang _systemLang() {
-  // `--dart-define=COUCHLINK_LANG=ru` starts in Russian (screenshots, layout checks).
+  // `--dart-define=COUCHLINK_LANG=ru` (or `pt`) starts in that language (screenshots, layout checks).
   const forced = String.fromEnvironment('COUCHLINK_LANG');
   if (forced == 'ru') return AppLang.ru;
+  if (forced == 'pt') return AppLang.pt;
   if (forced == 'en') return AppLang.en;
   try {
-    return Platform.localeName.toLowerCase().startsWith('ru') ? AppLang.ru : AppLang.en;
+    final locale = Platform.localeName.toLowerCase();
+    if (locale.startsWith('ru')) return AppLang.ru;
+    if (locale.startsWith('pt')) return AppLang.pt;
+    return AppLang.en;
   } catch (_) {
     return AppLang.en;
   }
@@ -32,7 +38,11 @@ AppLang currentLang = _systemLang();
 
 /// [en] in the current language, with `{key}` placeholders filled from [args].
 String t(String en, [Map<String, Object?> args = const {}]) {
-  var s = currentLang == AppLang.ru ? (ruStrings[en] ?? en) : en;
+  var s = switch (currentLang) {
+    AppLang.en => en,
+    AppLang.ru => ruStrings[en] ?? en,
+    AppLang.pt => ptStrings[en] ?? en,
+  };
   for (final e in args.entries) {
     s = s.replaceAll('{${e.key}}', '${e.value}');
   }
@@ -48,9 +58,15 @@ String ruPlural(int n, String one, String few, String many) {
 }
 
 /// "1 game" / "3 games" in the current language.
-String countGames(int n) =>
-    currentLang == AppLang.ru ? '$n ${ruPlural(n, 'игра', 'игры', 'игр')}' : '$n ${n == 1 ? 'game' : 'games'}';
+String countGames(int n) => switch (currentLang) {
+      AppLang.ru => '$n ${ruPlural(n, 'игра', 'игры', 'игр')}',
+      AppLang.pt => '$n ${n == 1 ? 'jogo' : 'jogos'}',
+      AppLang.en => '$n ${n == 1 ? 'game' : 'games'}',
+    };
 
 /// "1 player" / "3 players" in the current language.
-String countPlayers(int n) =>
-    currentLang == AppLang.ru ? '$n ${ruPlural(n, 'игрок', 'игрока', 'игроков')}' : '$n ${n == 1 ? 'player' : 'players'}';
+String countPlayers(int n) => switch (currentLang) {
+      AppLang.ru => '$n ${ruPlural(n, 'игрок', 'игрока', 'игроков')}',
+      AppLang.pt => '$n ${n == 1 ? 'jogador' : 'jogadores'}',
+      AppLang.en => '$n ${n == 1 ? 'player' : 'players'}',
+    };

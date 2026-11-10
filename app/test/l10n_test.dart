@@ -1,4 +1,5 @@
 import 'package:couchlink/l10n/l10n.dart';
+import 'package:couchlink/l10n/pt.dart';
 import 'package:couchlink/l10n/ru.dart';
 import 'package:couchlink/ui/app_state.dart';
 import 'package:flutter/material.dart';
@@ -38,6 +39,42 @@ void main() {
       final b = ph.allMatches(e.value).map((m) => m[0]).toSet();
       expect(b, a, reason: e.key);
     }
+  });
+
+  test('Portuguese text, placeholders and counts', () {
+    currentLang = AppLang.pt;
+    expect(t('Library'), 'Biblioteca');
+    expect(t('{first} and {last}', {'first': 'Maya', 'last': 'Theo'}), 'Maya e Theo');
+    expect(t('Something nobody translated'), 'Something nobody translated');
+    expect(countGames(1), '1 jogo');
+    expect(countGames(3), '3 jogos');
+    expect(countPlayers(1), '1 jogador');
+    expect(countPlayers(2), '2 jogadores');
+  });
+
+  test('Portuguese has every Russian entry and keeps the placeholders of its English key', () {
+    expect(ptStrings.keys.toSet(), ruStrings.keys.toSet());
+    final ph = RegExp(r'\{\w+\}');
+    for (final e in ptStrings.entries) {
+      final a = ph.allMatches(e.key).map((m) => m[0]).toSet();
+      final b = ph.allMatches(e.value).map((m) => m[0]).toSet();
+      expect(b, a, reason: e.key);
+    }
+  });
+
+  testWidgets('the language switch in Settings turns the app Portuguese and back', (tester) async {
+    await pumpApp(tester, newFake(), view: AppView.library);
+    await tester.tap(find.byKey(const ValueKey('settings-open')));
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.tap(find.byKey(const ValueKey('lang-português')));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Ajustes'), findsOneWidget);
+    expect(find.text('Idioma'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('lang-english')));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Settings'), findsOneWidget);
   });
 
   testWidgets('the language switch in Settings turns the app Russian and back', (tester) async {
