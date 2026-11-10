@@ -185,12 +185,10 @@ pub fn copy_line(spec: &LaunchSpec, seat: &LinuxSeat, tools: &Tools, pad_paths: 
         line.push(program.display().to_string());
         line.extend(args);
         umu = through_umu;
-        if let Some(home) = &steam_home {
-            // umu keeps its runtime under the user's data folder, shared by every seat.
-            let data = std::env::var("XDG_DATA_HOME").ok().filter(|d| !d.is_empty()).unwrap_or_else(|| format!("{}/.local/share", std::env::var("HOME").unwrap_or_default()));
-            env.insert("XDG_DATA_HOME".into(), data);
-            env.insert("HOME".into(), home.display().to_string());
-        }
+        // A Proton copy keeps the user's home even on a seat with its own Steam: `steam_master_ipc_name_override`
+        // already points its steamclient at that seat's Steam, and with the seat's home Proton could not load the
+        // game's `steamclient64.dll` for older Steamworks builds (`SteamAPI_Init` failed with c0000135), so the game
+        // quit on start. The copy's saves are its own anyway: they live in the seat's Wine prefix.
     } else if let Some(home) = &steam_home {
         env.insert("HOME".into(), home.display().to_string());
     } else {
@@ -445,6 +443,20 @@ mod tests {
         assert_eq!(l.env["ENABLE_GAMESCOPE_WSI"], "0");
         assert_eq!(l.env["SteamAppId"], "264710", "the recipe's environment is kept");
         assert!(!l.env.contains_key("PROTONPATH") && !l.env.contains_key("HOME"));
+    }
+
+    #[test]
+    fn a_proton_copy_on_a_seat_with_its_own_steam_keeps_the_users_home() {
+        let own = LaunchSpec {
+            run_as: Some(couchlink_steam::AccountsConfig { seat: 1, steam_exe: "/usr/bin/steam".into(), library_dirs: vec![] }),
+            ..spec("/state/instances/x/1/Game.exe")
+        };
+        let l = copy_line(&own, &seat(LinuxOpts::default()), &tools(), &[], Sandbox::Bwrap).unwrap();
+        assert!(!l.env.contains_key("HOME") && !l.env.contains_key("XDG_DATA_HOME"), "inherited, never the seat's Steam home: {:?}", l.env);
+        // A native copy on that seat still runs with that Steam's home.
+        let native = LaunchSpec { exe: "/state/instances/x/1/game.x86_64".into(), ..own };
+        let l = copy_line(&native, &seat(LinuxOpts::default()), &tools(), &[], Sandbox::Bwrap).unwrap();
+        assert!(l.env["HOME"].ends_with("couchlink/steam-seat-2"), "{}", l.env["HOME"]);
     }
 
     #[test]
