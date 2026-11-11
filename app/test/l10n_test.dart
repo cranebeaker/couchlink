@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:couchlink/l10n/l10n.dart';
 import 'package:couchlink/l10n/pt.dart';
 import 'package:couchlink/l10n/ru.dart';
@@ -8,6 +10,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'helpers.dart';
 
 void main() {
+  test('the chosen language and theme are kept for the next start', () {
+    final dir = Directory.systemTemp.createTempSync('couchlink-prefs');
+    addTearDown(() {
+      currentLang = AppLang.en;
+      dir.deleteSync(recursive: true);
+    });
+    final file = '${dir.path}/state/app.json';
+    currentLang = AppLang.ru;
+    final first = UiState()..loadPrefs(file);
+    expect(currentLang, AppLang.ru, reason: 'nothing kept yet: as it was');
+    first.setLang(AppLang.en);
+    first.setThemeMode(ThemeMode.dark);
+    // The next start, on a PC whose own language is Russian.
+    currentLang = AppLang.ru;
+    final next = UiState()..loadPrefs(file);
+    expect(currentLang, AppLang.en);
+    expect(next.themeMode, ThemeMode.dark);
+  });
+
   tearDown(() => currentLang = AppLang.en);
 
   test('placeholders are filled and a missing translation falls back to English', () {

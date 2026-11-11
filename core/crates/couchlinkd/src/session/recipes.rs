@@ -438,17 +438,51 @@ pub fn steam_locator() -> Locator {
     })
 }
 
-/// The first `steamapps/common/<game>` folder of these libraries that has `exe` at its top.
+/// The first `steamapps/common/<game>` folder of these libraries that has `exe` at its top. Every game folder's own
+/// listing is read once and kept for a moment: the game list asks this for every recipe, and checking each recipe's
+/// exe in each game folder took minutes on a PC with hundreds of games.
 pub fn find_in_common(libraries: &[PathBuf], exe: &str) -> Option<PathBuf> {
+    let first = Path::new(exe).components().next()?.as_os_str().to_string_lossy().to_lowercase();
     for lib in libraries {
-        let Ok(dirs) = std::fs::read_dir(lib.join("steamapps").join("common")) else { continue };
-        let mut found: Vec<PathBuf> = dirs.flatten().map(|e| e.path()).filter(|d| d.join(exe).is_file()).collect();
+        let mut found: Vec<PathBuf> = common_listing(&lib.join("steamapps").join("common"))
+            .into_iter()
+            .filter(|(_, names)| names.contains(&first))
+            .map(|(d, _)| d)
+            .filter(|d| d.join(exe).is_file())
+            .collect();
         found.sort();
         if let Some(d) = found.into_iter().next() {
             return Some(d);
         }
     }
     None
+}
+
+type CommonListing = Vec<(PathBuf, std::collections::HashSet<String>)>;
+
+/// Each game folder under `common` with the names at its top (lower case).
+fn common_listing(common: &Path) -> CommonListing {
+    static KEPT: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, (std::time::Instant, Option<std::time::SystemTime>, CommonListing)>>> =
+        std::sync::Mutex::new(None);
+    let changed = std::fs::metadata(common).and_then(|m| m.modified()).ok();
+    if let Some((at, when, list)) = KEPT.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|k| k.get(common)) {
+        if at.elapsed() < std::time::Duration::from_secs(3) && *when == changed {
+            return list.clone();
+        }
+    }
+    let list: CommonListing = std::fs::read_dir(common)
+        .map(|dirs| {
+            dirs.flatten()
+                .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+                .map(|e| {
+                    let names = std::fs::read_dir(e.path()).map(|r| r.flatten().map(|f| f.file_name().to_string_lossy().to_lowercase()).collect()).unwrap_or_default();
+                    (e.path(), names)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    KEPT.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(Default::default).insert(common.to_path_buf(), (std::time::Instant::now(), changed, list.clone()));
+    list
 }
 
 /// Folders of this PC that recipes may use as `$APPDATA`, `$LOCALAPPDATA`, `$USERPROFILE` and `$DOCUMENTS`.

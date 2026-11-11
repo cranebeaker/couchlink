@@ -228,9 +228,9 @@ class _SteamAccountDialogState extends State<_SteamAccountDialog> {
     final name = widget.player;
     final body = <Widget>[];
     if (_list == null && _error == null) {
-      body.add(Text('Checking…', style: txt(context, size: 13, color: c.ink3)));
+      body.add(Text(t('Checking…'), style: txt(context, size: 13, color: c.ink3)));
     } else if (_list != null && !_list!.steam) {
-      body.add(Text('Steam is not installed on this PC.', style: txt(context, size: 13, color: c.ink2)));
+      body.add(Text(t('Steam is not installed on this PC.'), style: txt(context, size: 13, color: c.ink2)));
     } else if (a != null && a.ready) {
       body.addAll([
         Text('$name plays on their own Steam account in every game that uses Steam.', key: const ValueKey('steam-ready'), style: txt(context, size: 13, color: c.ink2, height: 1.4)),

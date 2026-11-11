@@ -461,7 +461,7 @@ class _InGame extends StatelessWidget {
           runSpacing: 10,
           spacing: 12,
           children: [
-            Text('Your desktop comes back when you end the game.', style: txt(context, size: 12, color: c.ink3)),
+            Text(t('Your desktop comes back when you end the game.'), style: txt(context, size: 12, color: c.ink3)),
             Row(mainAxisSize: MainAxisSize.min, children: [
               CButton(key: const ValueKey('launch-hide'), label: t('Hide'), small: true, onTap: scope.ui.closeLaunch),
               const SizedBox(width: 8),
@@ -494,7 +494,7 @@ class _InGameTile extends StatelessWidget {
       return Container(
         alignment: Alignment.center,
         decoration: BoxDecoration(color: const Color(0xFF15161B), borderRadius: BorderRadius.circular(9)),
-        child: Text('Free', style: txt(context, size: 13, weight: FontWeight.w700, color: const Color(0xFF55565F), display: true)),
+        child: Text(t('Free'), style: txt(context, size: 13, weight: FontWeight.w700, color: const Color(0xFF55565F), display: true)),
       );
     }
     return ClipRRect(

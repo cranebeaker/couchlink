@@ -479,9 +479,9 @@ class _Empty extends StatelessWidget {
     final c = context.c;
     return Center(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('This seat is free now.', style: txt(context, size: 16, weight: FontWeight.w600)),
+        Text(t('This seat is free now.'), style: txt(context, size: 16, weight: FontWeight.w600)),
         const SizedBox(height: 4),
-        Text('Take a seat on the Players page to change its controls.', style: txt(context, size: 13, color: c.ink2)),
+        Text(t('Take a seat on the Players page to change its controls.'), style: txt(context, size: 13, color: c.ink2)),
         const SizedBox(height: 14),
         CButton(key: const ValueKey('controls-back'), label: t('Back to Players'), onTap: onBack, primary: true),
       ]),
@@ -528,7 +528,7 @@ class _Header extends StatelessWidget {
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 CIcon(iconChevronLeft, size: 16, color: c.accent, strokeWidth: 2),
                 const SizedBox(width: 2),
-                Text('Players', style: txt(context, size: 13, color: c.accent, height: 1.3)),
+                Text(t('Players'), style: txt(context, size: 13, color: c.accent, height: 1.3)),
               ]),
             ),
           ),
@@ -756,7 +756,7 @@ class _NameDialogState extends State<_NameDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Save this profile as', style: txt(context, size: 17, weight: FontWeight.w700, display: true, height: 1.3)),
+              Text(t('Save this profile as'), style: txt(context, size: 17, weight: FontWeight.w700, display: true, height: 1.3)),
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),

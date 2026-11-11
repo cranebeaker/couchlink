@@ -220,8 +220,39 @@ Future<void> renameLayoutDialog(BuildContext context, ScreensController ctl, Lay
 
 Future<void> deleteLayoutNow(BuildContext context, ScreensController ctl, LayoutInfo l) async {
   final toaster = Scope.of(context).toaster;
+  final sure = await showDialog<bool>(context: context, builder: (_) => _DeleteDialog(text: t('Delete the layout {name}? This cannot be undone.', {'name': l.name})));
+  if (sure != true) return;
   final err = await ctl.deleteLayout(l.id);
   toaster.show(err ?? t('Deleted {name}', {'name': l.name}), error: err != null);
+}
+
+class _DeleteDialog extends StatelessWidget {
+  const _DeleteDialog({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Dialog(
+      backgroundColor: c.window,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: BorderSide(color: c.hairStrong)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 380),
+        child: Padding(
+          padding: const EdgeInsets.all(22),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(text, style: txt(context, size: 14, height: 1.4)),
+            const SizedBox(height: 16),
+            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              CButton(key: const ValueKey('layout-delete-cancel'), label: t('Cancel'), small: true, onTap: () => Navigator.of(context).pop(false)),
+              const SizedBox(width: 8),
+              CButton(key: const ValueKey('layout-delete-yes'), label: t('Delete'), small: true, primary: true, onTap: () => Navigator.of(context).pop(true)),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
 }
 
 class _NameDialog extends StatefulWidget {
@@ -244,9 +275,14 @@ class _NameDialogState extends State<_NameDialog> {
     super.dispose();
   }
 
+  bool _empty = false;
+
   void _ok() {
     final name = _ctl.text.trim();
-    if (name.isEmpty || name.length > 40) return;
+    if (name.isEmpty || name.length > 40) {
+      setState(() => _empty = name.isEmpty);
+      return;
+    }
     Navigator.of(context).pop(name);
   }
 
@@ -279,9 +315,16 @@ class _NameDialogState extends State<_NameDialog> {
                   buildCounter: (context, {required currentLength, required isFocused, required maxLength}) => null,
                   decoration: InputDecoration.collapsed(hintText: widget.hint),
                   style: txt(context, size: 14, height: 1.3),
+                  onChanged: (_) {
+                    if (_empty) setState(() => _empty = false);
+                  },
                   onSubmitted: (_) => _ok(),
                 ),
               ),
+              if (_empty) ...[
+                const SizedBox(height: 8),
+                Text(t('Type a name first.'), key: const ValueKey('layout-name-problem'), style: txt(context, size: 12, color: c.danger, height: 1.3)),
+              ],
               const SizedBox(height: 16),
               Row(mainAxisAlignment: MainAxisAlignment.end, children: [
                 CButton(key: const ValueKey('layout-name-cancel'), label: t('Cancel'), small: true, onTap: () => Navigator.of(context).pop()),

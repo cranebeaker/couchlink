@@ -1116,6 +1116,21 @@ impl Hub {
             }
         }
         if info != self.session_info {
+            // The log tells a session's story: Copy log is what players send when a game does not start.
+            let recipe = info.recipe.as_deref().or(self.session_info.recipe.as_deref()).unwrap_or("?").to_string();
+            if info.state != self.session_info.state && info.state != SessionState::Failed {
+                crate::logfile::write("info", &format!("session {recipe}: {}", format!("{:?}", info.state).to_lowercase()));
+            }
+            for s in &info.seats {
+                let before = self.session_info.seats.iter().find(|o| o.seat == s.seat);
+                if before.map(|o| o.step) != Some(s.step) {
+                    let pid = s.pid.map(|p| format!(" (pid {p})")).unwrap_or_default();
+                    crate::logfile::write("info", &format!("session {recipe}: player {} {}{pid}", s.seat + 1, format!("{:?}", s.step).to_lowercase()));
+                }
+                if s.error.is_some() && before.and_then(|o| o.error.as_ref()) != s.error.as_ref() && info.state != SessionState::Failed {
+                    crate::logfile::write("warn", &format!("session {recipe}: player {}: {}", s.seat + 1, s.error.as_deref().unwrap_or_default()));
+                }
+            }
             if info.state == SessionState::Failed && self.session_info.state != SessionState::Failed {
                 let recipe = info.recipe.as_deref().unwrap_or("?");
                 let mut text = format!("{recipe} failed: {}", info.error.as_deref().unwrap_or("no reason given"));

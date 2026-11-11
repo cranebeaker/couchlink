@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../l10n/l10n.dart';
 
 import '../theme/tokens.dart';
-import 'app_state.dart';
 import 'kit.dart';
 import 'shell.dart';
 
@@ -13,7 +12,6 @@ class DevView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.c;
-    final toaster = Scope.of(context).toaster;
     Widget tier(Widget tag, String text) => Panel(
           padding: const EdgeInsets.all(14),
           radius: 14,
@@ -33,12 +31,6 @@ class DevView extends StatelessWidget {
           PageHead(
             title: t('Add your game'),
             subtitle: t('Made a co-op mod? Three steps and Couchlink can launch it split-screen for everyone on the Co-op Anything list.'),
-            trailing: CButton(
-              key: const ValueKey('validate'),
-              label: t('Check my couchlink.json'),
-              small: true,
-              onTap: () => toaster.show(t('couchlink.json looks good: 2 to 4 players, instances, SDK found')),
-            ),
           ),
           LayoutBuilder(builder: (context, box) {
             final cols = box.maxWidth >= 760 ? 4 : 2;
@@ -57,13 +49,13 @@ class DevView extends StatelessWidget {
               _Step(
                 n: t('Step 1'),
                 title: t('Describe the game'),
-                body: Text('Drop a couchlink.json next to your mod. Couchlink reads it when the game is found.', style: txt(context, size: 12.5, color: c.ink2)),
+                body: Text(t('Drop a couchlink.json next to your mod. Couchlink reads it when the game is found.'), style: txt(context, size: 12.5, color: c.ink2)),
                 code: '{\n  "game": "Fallout: New Vegas",\n  "steamAppId": 22380,\n  "players": [2, 4],\n  "mode": "instances",\n  "exe": "FalloutNV.exe",\n  "join": { "loopback": 27960 },\n  "sdk": "couchlink_seat.dll"\n}',
               ),
               _Step(
                 n: t('Step 2'),
                 title: t('Ask for your seat'),
-                body: Text('Optional. Link the tiny SDK and your mod knows its player, pad and screen rectangle.', style: txt(context, size: 12.5, color: c.ink2)),
+                body: Text(t('Optional. Link the tiny SDK and your mod knows its player, pad and screen rectangle.'), style: txt(context, size: 12.5, color: c.ink2)),
                 code: '// C, C++, C#, Lua bindings\nCouchlinkSeat s;\nif (couchlink_get_seat(&s)) {\n  join("127.0.0.1", s.port);\n  use_pad(s.pad);\n  name_player(s.name);\n}',
               ),
               _Step(

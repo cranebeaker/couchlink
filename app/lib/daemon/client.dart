@@ -72,6 +72,9 @@ abstract class CouchClient extends ChangeNotifier {
   /// Recipe files couchlinkd could not read, from the last `list_games`.
   List<GameFileError> get gameProblems => const [];
 
+  /// Why the game list could not be had the last time it was asked for; null once it came.
+  String? get gamesError => null;
+
   /// The game session, from `session` events. [SessionInfo.idle] when nothing runs.
   SessionInfo get session => SessionInfo.idle;
 

@@ -63,6 +63,8 @@ struct SeatRun {
     saves: Vec<(PathBuf, PathBuf)>,
     /// When the copy was started, to tell a window process that began after it (`window.exe`).
     launched_at: SystemTime,
+    /// An error box of this copy was reported already.
+    error_noted: bool,
     /// The process that owns the window when it is not the one launched (`window.exe`).
     window_pid: Option<u32>,
     /// Keeps that process in a job of its own so it ends with the session.
@@ -133,6 +135,7 @@ pub fn run(plan: Plan, deps: Deps, stop: Arc<AtomicBool>, report: Report) {
             prep: super::SeatPrep::default(),
             saves: Vec::new(),
             launched_at: SystemTime::now(),
+            error_noted: false,
             window_pid: None,
             followed: None,
             #[cfg(target_os = "linux")]
@@ -721,6 +724,10 @@ impl Run {
             if follow.is_none() || self.seats[idx].window_pid.is_some() {
                 let root = self.seats[idx].window_pid.unwrap_or(pid);
                 let rect = self.seats[idx].plan.rect;
+                // A copy that shows an error box instead of the game has not started, however alive its process is.
+                if let Some(text) = super::window::error_dialog(root) {
+                    return Err(self.seat_failed(idx, Step::Place, format!("the game did not start, it shows an error: {text}")));
+                }
                 let waiting = Instant::now() < deadline
                     && recipe.window.place_after.as_ref().is_some_and(|after| !place_after_met(after, &self.seats[idx].dir, self.seats[idx].launched_at));
                 if !waiting {
@@ -842,6 +849,19 @@ impl Run {
         }
         if !self.hidden && self.last_maintain.elapsed() >= MAINTAIN_EVERY {
             self.last_maintain = Instant::now();
+            // An error box that comes up later (a copy that lost its Steam, say) is said once, on the seat and in the log.
+            for idx in 0..self.seats.len() {
+                let s = &self.seats[idx];
+                if s.exited || s.error_noted {
+                    continue;
+                }
+                let Some(pid) = s.window_pid.or_else(|| s.child.as_ref().map(|c| c.pid())) else { continue };
+                if let Some(text) = super::window::error_dialog(pid) {
+                    self.seats[idx].error_noted = true;
+                    crate::logfile::write("warn", &format!("player {}'s game shows an error: {text}", self.seats[idx].plan.seat + 1));
+                    self.set_step(idx, Step::Running, Some(format!("the game shows an error: {text}")));
+                }
+            }
             let borderless = self.plan.recipe.window.borderless;
             for s in self.seats.iter().filter(|s| !s.exited) {
                 if let Some(pid) = s.window_pid.or_else(|| s.child.as_ref().map(|c| c.pid())) {

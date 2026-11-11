@@ -70,3 +70,10 @@ String countPlayers(int n) => switch (currentLang) {
       AppLang.pt => '$n ${n == 1 ? 'jogador' : 'jogadores'}',
       AppLang.en => '$n ${n == 1 ? 'player' : 'players'}',
     };
+
+/// "3 votes" in the current language (0 and 1 have texts of their own).
+String countVotes(int n) => switch (currentLang) {
+      AppLang.ru => '$n ${ruPlural(n, 'голос', 'голоса', 'голосов')}',
+      AppLang.pt => '$n votos',
+      AppLang.en => '$n votes',
+    };

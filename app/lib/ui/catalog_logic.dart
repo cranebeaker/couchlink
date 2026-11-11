@@ -78,7 +78,7 @@ String stageLabel(String stage) => switch (stage) {
 String votesLabel(int votes) => switch (votes) {
       0 => t('No votes yet'),
       1 => t('1 vote'),
-      _ => '$votes votes',
+      _ => countVotes(votes),
     };
 
 /// "just now", "5 minutes ago", "3 hours ago", "2 days ago".

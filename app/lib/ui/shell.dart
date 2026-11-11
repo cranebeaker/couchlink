@@ -690,10 +690,10 @@ class _BindingsTab extends StatelessWidget {
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(t('These work while a game has the focus.'), style: txt(context, size: 12, color: c.ink2, height: 1.4)),
           const SizedBox(height: 12),
-          _KeyBinding(id: 'stop', label: 'Close the games', keys: st.stopKeys, onSet: (k) => client.setStopShortcut(keys: k)),
-          _KeyBinding(id: 'front', label: 'Keep the games on top (on and off)', keys: st.frontKeys, onSet: (k) => client.setWindowKeys(front: k)),
-          _KeyBinding(id: 'hide', label: 'Hide the games', keys: st.hideKeys, onSet: (k) => client.setWindowKeys(hide: k)),
-          _KeyBinding(id: 'control', label: 'Take every keyboard and mouse (on and off)', keys: st.controlKeys, onSet: (k) => client.setHostControl(keys: k)),
+          _KeyBinding(id: 'stop', label: t('Close the games'), keys: st.stopKeys, onSet: (k) => client.setStopShortcut(keys: k)),
+          _KeyBinding(id: 'front', label: t('Keep the games on top (on and off)'), keys: st.frontKeys, onSet: (k) => client.setWindowKeys(front: k)),
+          _KeyBinding(id: 'hide', label: t('Hide the games'), keys: st.hideKeys, onSet: (k) => client.setWindowKeys(hide: k)),
+          _KeyBinding(id: 'control', label: t('Take every keyboard and mouse (on and off)'), keys: st.controlKeys, onSet: (k) => client.setHostControl(keys: k)),
           Text(
             t('Point at a game with the mouse to use it, for example to change its settings. Press the keys again to give the keyboards and mice back to their players.'),
             style: txt(context, size: 11, color: c.ink3, height: 1.35),
@@ -745,7 +745,7 @@ class _BindingsTab extends StatelessWidget {
             for (final (v, l) in _pads)
               CChip(
                 key: ValueKey('stop-pad-$v'),
-                label: l,
+                label: t(l),
                 selected: st.stopPad == v,
                 onTap: () async {
                   final err = await client.setStopShortcut(pad: v);
@@ -762,7 +762,7 @@ class _BindingsTab extends StatelessWidget {
             for (final (v, l) in _pads)
               CChip(
                 key: ValueKey('turn-off-pad-$v'),
-                label: l,
+                label: t(l),
                 selected: st.turnOffPad == v,
                 onTap: () async {
                   final err = await client.setTurnOffPad(v);
@@ -849,7 +849,24 @@ class _UpdatesSectionState extends State<_UpdatesSection> {
                     label: t('Check for updates'),
                     small: true,
                     leading: CIcon(iconRefresh, size: 14, color: c.ink, strokeWidth: 1.8),
-                    onTap: () => runCmd(context, client.checkUpdate),
+                    onTap: () async {
+                      final toaster = scope.toaster;
+                      final err = await client.checkUpdate();
+                      if (err != null) {
+                        toaster.show(err, error: true);
+                        return;
+                      }
+                      // The check runs in the service; its answer comes with the next state.
+                      for (var i = 0; i < 40 && client.update?.checking != false; i++) {
+                        await Future<void>.delayed(const Duration(milliseconds: 250));
+                      }
+                      final u = client.update;
+                      if (u?.error != null) {
+                        toaster.show(t('Could not check for updates: {error}', {'error': u!.error}), error: true);
+                      } else if (u?.latest == null) {
+                        toaster.show(t('Checked just now: you have the newest version.'));
+                      }
+                    },
                   ),
           ),
           if (_auto != null) ...[
@@ -960,7 +977,7 @@ class _SettingsPanel extends StatelessWidget {
       action('settings-save-report', iconFileText, 'Save full report', () => saveReport(scope), primary: true),
       action('settings-open-logs', iconFolderOpen, 'Open log folder', () => openLogFolder(scope)),
       const SizedBox(height: 18),
-      heading('Players’ own Steam'),
+      heading(t('Players’ own Steam')),
       const _SteamCloseSection(),
     ];
     return Column(

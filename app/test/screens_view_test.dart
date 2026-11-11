@@ -50,7 +50,10 @@ void main() {
     expect((fake.state as DaemonState).displays.any((d) => d.id == kStreamDisplayId), isTrue);
     expect(byKey('screen-$kStreamDisplayId'), findsOneWidget, reason: 'it is a screen players can be put on');
     expect(find.text('Remove virtual display'), findsOneWidget);
+    expect(find.textContaining('Virtual display added'), findsOneWidget, reason: 'adding says so');
     await tester.tap(byKey('stream-display'));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Virtual display removed'), findsOneWidget, reason: 'removing does not say added');
     await tester.pump(const Duration(milliseconds: 500));
     expect(byKey('screen-$kStreamDisplayId'), findsNothing);
     await tester.pump(const Duration(seconds: 5));

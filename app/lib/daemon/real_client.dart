@@ -425,14 +425,33 @@ class DaemonClient extends CouchClient {
 
   @override
   Future<String?> listGames() async {
-    final r = await _request('list_games', const {});
-    if (r['ok'] != true) return _errorOf(r);
+    // Looking through every store and Steam library can take a while on a PC with many games.
+    final r = await _request('list_games', const {}, timeout: const Duration(seconds: 90));
+    if (_disposed) return null;
+    if (r['ok'] != true) {
+      _gamesError = _errorOf(r);
+      notifyListeners();
+      // Without a list the Library is empty and added games never show: ask again.
+      _gamesRetry?.cancel();
+      _gamesRetry = Timer(const Duration(seconds: 5), () {
+        if (!_disposed && _socket != null) unawaited(listGames());
+      });
+      return _gamesError;
+    }
+    _gamesRetry?.cancel();
+    _gamesError = null;
     final list = GameList.fromJson(r);
     _games = list.games;
     _gameProblems = list.errors;
     notifyListeners();
     return null;
   }
+
+  String? _gamesError;
+  Timer? _gamesRetry;
+
+  @override
+  String? get gamesError => _gamesError;
 
   @override
   Future<({String? recipe, String? error})> addGame(String path) async {

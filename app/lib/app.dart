@@ -1,7 +1,10 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'daemon/client.dart';
+import 'daemon/locate.dart';
 import 'l10n/l10n.dart';
 import 'theme/tokens.dart';
 import 'ui/app_state.dart';
@@ -31,6 +34,7 @@ class _CouchlinkAppState extends State<CouchlinkApp> {
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_onKey);
+    if (!widget.client.isFake) _ui.loadPrefs('${stateDir()}${Platform.pathSeparator}app.json');
     widget.client.start();
   }
 

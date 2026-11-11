@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
@@ -130,7 +132,40 @@ class UiState extends ChangeNotifier {
   void setLang(AppLang l) {
     if (l == currentLang) return;
     currentLang = l;
+    _savePrefs();
     notifyListeners();
+  }
+
+  /// The file the language and the theme are kept in between runs; null (nothing kept) in tests.
+  String? prefsFile;
+
+  /// Takes the language and theme chosen in an earlier run from [file], and keeps later choices there.
+  void loadPrefs(String file) {
+    prefsFile = file;
+    try {
+      final j = jsonDecode(File(file).readAsStringSync());
+      if (j is! Map) return;
+      for (final l in AppLang.values) {
+        if (l.name == j['lang']) currentLang = l;
+      }
+      for (final m in ThemeMode.values) {
+        if (m.name == j['theme']) themeMode = m;
+      }
+    } catch (_) {
+      // No file yet, or one that cannot be read: the system's language and theme.
+    }
+  }
+
+  void _savePrefs() {
+    final file = prefsFile;
+    if (file == null) return;
+    try {
+      File(file)
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync(jsonEncode({'lang': currentLang.name, 'theme': themeMode.name}));
+    } catch (_) {
+      // The choice still holds for this run.
+    }
   }
 
   /// The sidebar shows Settings (appearance, language, logs) in place of the pages.
@@ -152,6 +187,7 @@ class UiState extends ChangeNotifier {
   void setThemeMode(ThemeMode m) {
     if (m == themeMode) return;
     themeMode = m;
+    _savePrefs();
     notifyListeners();
   }
 

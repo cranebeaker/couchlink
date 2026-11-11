@@ -173,7 +173,7 @@ class _DevicesRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (state.devices.isEmpty) {
-      return Text('No controllers found. Plug one in and it shows up here.', style: txt(context, size: 13, color: context.c.ink3));
+      return Text(t('No controllers found. Plug one in and it shows up here.'), style: txt(context, size: 13, color: context.c.ink3));
     }
     return Wrap(
       spacing: 10,
@@ -375,9 +375,9 @@ class _EmptySeat extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            Text('Seat ${index + 1} is free', style: txt(context, size: 13, weight: FontWeight.w700, color: c.ink2)),
+            Text(t('Seat {n} is free', {'n': index + 1}), style: txt(context, size: 13, weight: FontWeight.w700, color: c.ink2)),
             const SizedBox(height: 2),
-            Text('Press a button to sit here', style: txt(context, size: 12, color: c.ink3)),
+            Text(t('Press a button to sit here'), style: txt(context, size: 12, color: c.ink3)),
           ],
         ),
       ),
@@ -521,7 +521,7 @@ class _SeatCardState extends State<_SeatCard> with SingleTickerProviderStateMixi
             Row(children: [
               CIcon(iconPad, size: 20, color: c.warn),
               const SizedBox(width: 8),
-              Expanded(child: Text('Controller disconnected', maxLines: 1, overflow: TextOverflow.ellipsis, style: txt(context, size: 12.5, color: c.warn, height: 1.3))),
+              Expanded(child: Text(t('Controller disconnected'), maxLines: 1, overflow: TextOverflow.ellipsis, style: txt(context, size: 12.5, color: c.warn, height: 1.3))),
             ])
           else
             for (final d in devices.take(2))
@@ -748,7 +748,7 @@ class _LiveInput extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            Flexible(child: Text('Live input', maxLines: 1, overflow: TextOverflow.ellipsis, style: txt(context, size: 11.5, color: c.ink3, height: 1.3))),
+            Flexible(child: Text(t('Live input'), maxLines: 1, overflow: TextOverflow.ellipsis, style: txt(context, size: 11.5, color: c.ink3, height: 1.3))),
           ],
         );
       },

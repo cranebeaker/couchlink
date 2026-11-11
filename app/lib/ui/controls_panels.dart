@@ -295,7 +295,7 @@ class _StickCard extends StatelessWidget {
           Row(children: [
             Container(width: 10, height: 10, decoration: BoxDecoration(color: c.warn.withValues(alpha: .3), shape: BoxShape.circle, border: Border.all(color: c.warn))),
             const SizedBox(width: 8),
-            Flexible(child: Text('Dead zone: small wobbles here are ignored', style: txt(context, size: 12, color: c.ink2, height: 1.3))),
+            Flexible(child: Text(t('Dead zone: small wobbles here are ignored'), style: txt(context, size: 12, color: c.ink2, height: 1.3))),
           ]),
           FieldLabel(t('Acts as')),
           Seg<String>(
@@ -596,7 +596,7 @@ class LayersPanel extends StatelessWidget {
         title: t('Normal'),
         sub: t('What the buttons do when no layer is held.'),
         child: base.isEmpty
-            ? Text('Nothing is changed.', style: txt(context, size: 12.5, color: c.ink3, height: 1.3))
+            ? Text(t('Nothing is changed.'), style: txt(context, size: 12.5, color: c.ink3, height: 1.3))
             : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 for (final b in base)
                   if (profile.bindingOf(b).type == 'layer')
@@ -619,7 +619,7 @@ class LayersPanel extends StatelessWidget {
           key: const ValueKey('layers-empty'),
           title: t('No layers yet'),
           sub: t('A layer swaps what the buttons do while you hold one button. On the Buttons tab, set a button to send a layer.'),
-          child: Row(children: [CIcon(iconLayers, size: 16, color: c.ink3), const SizedBox(width: 8), Text('Layers in this profile: 0', style: txt(context, size: 12.5, color: c.ink3, height: 1.3))]),
+          child: Row(children: [CIcon(iconLayers, size: 16, color: c.ink3), const SizedBox(width: 8), Text(t('Layers in this profile: 0'), style: txt(context, size: 12.5, color: c.ink3, height: 1.3))]),
         )
       else
         Column(children: [
@@ -631,7 +631,7 @@ class LayersPanel extends StatelessWidget {
                 title: l.name,
                 sub: profile.holderOf(l.id) == null ? t('No button holds this layer yet.') : t('While holding {name}.', {'name': style.label(profile.holderOf(l.id)!).name}),
                 child: l.buttons.isEmpty
-                    ? Text('No buttons changed in this layer.', style: txt(context, size: 12.5, color: c.ink3, height: 1.3))
+                    ? Text(t('No buttons changed in this layer.'), style: txt(context, size: 12.5, color: c.ink3, height: 1.3))
                     : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [for (final e in l.buttons.entries) _row(context, e.key, e.value)]),
               ),
             ),

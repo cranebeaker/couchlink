@@ -151,6 +151,9 @@ void main() {
     expect(byKey('layout-delete-l2'), findsOneWidget);
     await tester.tap(byKey('layout-delete-l2'));
     await tester.pumpAndSettle();
+    // Deleting asks first.
+    await tester.tap(byKey('layout-delete-yes'));
+    await tester.pumpAndSettle();
     expect(byKey('layout-card-l2'), findsNothing);
     expect((await fake.listLayouts()).layouts.map((l) => l.name), ['Sofa']);
     expect(find.text('Deleted Desk'), findsOneWidget);
@@ -200,6 +203,9 @@ void main() {
     await tester.tap(byKey('layout-menu-l1'));
     await tester.pumpAndSettle();
     await tester.tap(byKey('layout-delete-l1'));
+    await tester.pumpAndSettle();
+    // Deleting asks first.
+    await tester.tap(byKey('layout-delete-yes'));
     await tester.pumpAndSettle();
     expect((await fake.listLayouts()).pins, isEmpty);
     await tester.pump(const Duration(seconds: 3));

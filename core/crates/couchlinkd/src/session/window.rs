@@ -201,6 +201,27 @@ pub fn kill_process(pid: u32) {
     let _ = pid;
 }
 
+/// The error a game copy is showing in a message box instead of starting (Steam's "Application load error", a missing
+/// DLL): its title and text. Windows only; `root_pid` is the copy's process, its children count too.
+pub fn error_dialog(root_pid: u32) -> Option<String> {
+    #[cfg(windows)]
+    {
+        win::error_dialog(root_pid)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = root_pid;
+        None
+    }
+}
+
+/// True for the title of a message box that reports an error, in the languages Couchlink's players use.
+#[cfg(any(windows, test))]
+fn is_error_title(title: &str) -> bool {
+    let t = title.to_lowercase();
+    ["error", "ошибка", "erro", "fehler", "erreur"].iter().any(|w| t.contains(w))
+}
+
 /// True when a visible window on this PC has `text` in its title (any case).
 pub fn window_titled(text: &str) -> bool {
     #[cfg(windows)]
@@ -355,6 +376,53 @@ mod win {
             }
         }
         1
+    }
+
+    fn text_of(hwnd: HWND) -> String {
+        let mut buf = [0u16; 512];
+        // SAFETY: the buffer outlives the call and its length is passed.
+        let n = unsafe { GetWindowTextW(hwnd, buf.as_mut_ptr(), buf.len() as i32) };
+        String::from_utf16_lossy(&buf[..n.max(0) as usize])
+    }
+
+    fn class_of(hwnd: HWND) -> String {
+        let mut buf = [0u16; 64];
+        // SAFETY: the buffer outlives the call and its length is passed.
+        let n = unsafe { GetClassNameW(hwnd, buf.as_mut_ptr(), buf.len() as i32) };
+        String::from_utf16_lossy(&buf[..n.max(0) as usize])
+    }
+
+    unsafe extern "system" fn visit_child_text(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        // SAFETY: `lparam` is the `&mut Vec<String>` passed to EnumChildWindows below.
+        let out = unsafe { &mut *(lparam as *mut Vec<String>) };
+        if class_of(hwnd).eq_ignore_ascii_case("Static") {
+            let text = text_of(hwnd);
+            if !text.trim().is_empty() {
+                out.push(text.split_whitespace().collect::<Vec<_>>().join(" "));
+            }
+        }
+        1
+    }
+
+    /// A message box (the system dialog class) of the copy with an error title: "title: its text".
+    pub fn error_dialog(root: u32) -> Option<String> {
+        let found = search(root);
+        for hwnd in found.all {
+            // SAFETY: plain query on a window EnumWindows gave us.
+            if unsafe { IsWindowVisible(hwnd) } == 0 || class_of(hwnd) != "#32770" {
+                continue;
+            }
+            let title = text_of(hwnd);
+            if !super::is_error_title(&title) {
+                continue;
+            }
+            let mut lines: Vec<String> = Vec::new();
+            // SAFETY: `lines` outlives the call; `visit_child_text` only uses it during the call.
+            unsafe { EnumChildWindows(hwnd, Some(visit_child_text), &mut lines as *mut Vec<String> as LPARAM) };
+            let text: String = lines.join(" ").chars().take(300).collect();
+            return Some(if text.is_empty() { title } else { format!("{title}: {text}") });
+        }
+        None
     }
 
     pub fn titled(text: &str) -> bool {
@@ -733,6 +801,15 @@ mod win {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_error_box_is_told_from_a_games_own_dialogs() {
+        assert!(is_error_title("Steam Error"));
+        assert!(is_error_title("Ошибка"));
+        assert!(is_error_title("Fatal error!"));
+        assert!(!is_error_title("Game Launcher"));
+        assert!(!is_error_title("Settings"));
+    }
 
     fn procs() -> Vec<ProcInfo> {
         vec![

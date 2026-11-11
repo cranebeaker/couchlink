@@ -74,7 +74,7 @@ class _DiscoverViewState extends State<DiscoverView> {
                 _emptyState(context, client, cat),
               if (all.isNotEmpty && rows.isEmpty)
                 Panel(
-                  child: Text('No projects match that search.', key: const ValueKey('catalog-none'), style: txt(context, size: 14, color: context.c.ink3)),
+                  child: Text(t('No projects match that search.'), key: const ValueKey('catalog-none'), style: txt(context, size: 14, color: context.c.ink3)),
                 ),
             ],
           ),
@@ -127,13 +127,13 @@ class _DiscoverViewState extends State<DiscoverView> {
             CChip(key: ValueKey('cfilter-$k'), label: l, selected: ui.catalogFilter == k, onTap: () => ui.setCatalogFilter(k)),
         ]),
         Row(mainAxisSize: MainAxisSize.min, children: [
-          Text('Sort', style: txt(context, size: 12, color: context.c.ink3, height: 1.3)),
+          Text(t('Sort'), style: txt(context, size: 12, color: context.c.ink3, height: 1.3)),
           const SizedBox(width: 8),
           Seg<CatalogSort>(
             keyPrefix: 'csort',
             value: ui.catalogSort,
             onChanged: ui.setCatalogSort,
-            options: [for (final (s, l) in catalogSorts) (s, l)],
+            options: [for (final (s, l) in catalogSorts) (s, t(l))],
           ),
         ]),
       ],
@@ -148,7 +148,7 @@ class _DiscoverViewState extends State<DiscoverView> {
     final parts = [
       shown == cat.entries.length ? '${cat.entries.length} projects' : t('{shown} of {length} projects', {'shown': shown, 'length': cat.entries.length}),
       updated,
-      if (offline) 'Offline, showing the saved list',
+      if (offline) t('Offline, showing the saved list'),
     ];
     return Row(
       children: [
@@ -185,9 +185,9 @@ class _DiscoverViewState extends State<DiscoverView> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Spinner(size: 30, color: c.accent),
             const SizedBox(height: 14),
-            Text('Loading the game list', style: txt(context, size: 14, weight: FontWeight.w600, height: 1.3)),
+            Text(t('Loading the game list'), style: txt(context, size: 14, weight: FontWeight.w600, height: 1.3)),
             const SizedBox(height: 4),
-            Text('Fetching it from coopanything.app.', style: txt(context, size: 13, color: c.ink2, height: 1.3)),
+            Text(t('Fetching it from coopanything.app.'), style: txt(context, size: 13, color: c.ink2, height: 1.3)),
           ]),
         ),
       );
@@ -199,7 +199,7 @@ class _DiscoverViewState extends State<DiscoverView> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           CIcon(iconWarn, size: 34, color: c.warn),
           const SizedBox(height: 14),
-          Text('The game list is not available yet', style: txt(context, size: 14, weight: FontWeight.w600, height: 1.3)),
+          Text(t('The game list is not available yet'), style: txt(context, size: 14, weight: FontWeight.w600, height: 1.3)),
           const SizedBox(height: 4),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),

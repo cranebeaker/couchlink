@@ -82,7 +82,7 @@ class _ScreensViewState extends State<ScreensView> {
               _PlayersBar(ctl: ctl),
               const SizedBox(height: 18),
               if (ctl.screens.isEmpty)
-                Panel(child: SizedBox(height: 120, child: Center(child: Text('No screens found.', style: txt(context, size: 13, color: context.c.ink3)))))
+                Panel(child: SizedBox(height: 120, child: Center(child: Text(t('No screens found.'), style: txt(context, size: 13, color: context.c.ink3)))))
               else
                 _Room(ctl: ctl, flash: _flash),
             ],
@@ -112,22 +112,26 @@ class _StreamDisplayButtonState extends State<_StreamDisplayButton> {
   Future<void> _toggle() async {
     final scope = Scope.of(context);
     final client = scope.client;
+    // Asked now: by the time the daemon answers, this button already shows the other state.
+    final adding = !widget.on;
     setState(() => _busy = true);
     String? err;
-    if (!widget.on && await client.virtualScreensReady() != true) {
+    if (adding && await client.virtualScreensReady() != true) {
       err = await client.setupVirtualScreens();
       // The setup waits for the Windows prompt and the install.
       for (var i = 0; err == null && i < 90 && await client.virtualScreensReady() != true; i++) {
         await Future<void>.delayed(const Duration(seconds: 2));
       }
     }
-    err ??= await client.setStreamDisplay(!widget.on);
+    err ??= await client.setStreamDisplay(adding);
     if (!mounted) return;
     setState(() => _busy = false);
     if (err != null) {
       scope.toaster.show(err, long: true);
-    } else if (!widget.on) {
+    } else if (adding) {
       scope.toaster.show(t('Virtual display added: put players on it, then stream it with Steam Link or another streaming app'), long: true);
+    } else {
+      scope.toaster.show(t('Virtual display removed'));
     }
   }
 
@@ -282,7 +286,7 @@ class _PlayersBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 12, children: [
-            Text('Players', style: txt(context, size: 14, weight: FontWeight.w700, height: 1.3)),
+            Text(t('Players'), style: txt(context, size: 14, weight: FontWeight.w700, height: 1.3)),
             if (picked != null) ...[
               Text('Now click the screen for ${st.seats[picked]?.name ?? 'them'}.', style: txt(context, size: 12.5, color: c.ink2, height: 1.3)),
               Pressable(
@@ -290,7 +294,7 @@ class _PlayersBar extends StatelessWidget {
                 onTap: () => ctl.pick(null),
                 radius: 6,
                 semanticLabel: t('Cancel'),
-                builder: (context, s) => Text('Cancel', style: txt(context, size: 12.5, weight: FontWeight.w600, color: c.accent, height: 1.3)),
+                builder: (context, s) => Text(t('Cancel'), style: txt(context, size: 12.5, weight: FontWeight.w600, color: c.accent, height: 1.3)),
               ),
             ] else
               Text(
@@ -387,7 +391,7 @@ class _OffZone extends StatelessWidget {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           CIcon(iconClose, size: 10, color: cand.isNotEmpty ? c.danger : c.ink3, strokeWidth: 1.8),
           const SizedBox(width: 8),
-          Text('Drop here to take someone off', style: txt(context, size: 12, color: cand.isNotEmpty ? c.danger : c.ink3, height: 1.2)),
+          Text(t('Drop here to take someone off'), style: txt(context, size: 12, color: cand.isNotEmpty ? c.danger : c.ink3, height: 1.2)),
         ]),
       ),
     );
@@ -494,7 +498,7 @@ class _ScreenCard extends StatelessWidget {
                     Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
                       CIcon(iconPlus, size: 18, color: c.ink3, strokeWidth: 2),
                       const SizedBox(height: 4),
-                      Text('Drag a player here', textAlign: TextAlign.center, style: txt(context, size: 12, color: c.ink3)),
+                      Text(t('Drag a player here'), textAlign: TextAlign.center, style: txt(context, size: 12, color: c.ink3)),
                     ]))
                   else ...[
                     if (e.isCustom) CustomPaint(painter: StripesPainter(c.raised, c.pane)),
@@ -924,7 +928,7 @@ class _SplitEditor extends StatelessWidget {
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(e.display.name, style: txt(context, size: 21, weight: FontWeight.w700, display: true, ls: -.02, height: 1.2)),
-                      Text('${e.display.resolution} · ${e.display.hzLabel} · ${n == 0 ? 'nobody yet' : '$n ${n == 1 ? 'player' : 'players'}'}', style: txt(context, size: 12.5, color: c.ink3, height: 1.4)),
+                      Text('${e.display.resolution} · ${e.display.hzLabel} · ${n == 0 ? t('nobody yet') : countPlayers(n)}', style: txt(context, size: 12.5, color: c.ink3, height: 1.4)),
                     ]),
                   ),
                   CButton(
@@ -956,7 +960,7 @@ class _SplitEditor extends StatelessWidget {
                         style: txt(context, size: 12, color: c.ink3, height: 1.4),
                       ),
                       if (e.isCustom && clashing(e.custom!).isNotEmpty)
-                        Text('Some players overlap; move them apart.', style: txt(context, size: 12, weight: FontWeight.w600, color: c.danger, height: 1.4)),
+                        Text(t('Some players overlap; move them apart.'), style: txt(context, size: 12, weight: FontWeight.w600, color: c.danger, height: 1.4)),
                       const SizedBox(height: 14),
                       _PresentRow(ctl: ctl, edit: e),
                     ]),
@@ -981,9 +985,9 @@ class _ShapeRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.c;
     final n = edit.seats.length;
-    if (n == 0) return Text('Add players to choose how the screen is split.', style: txt(context, size: 12.5, color: c.ink3));
+    if (n == 0) return Text(t('Add players to choose how the screen is split.'), style: txt(context, size: 12.5, color: c.ink3));
     return Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-      Text('Shape', style: txt(context, size: 12, color: c.ink3)),
+      Text(t('Shape'), style: txt(context, size: 12, color: c.ink3)),
       for (final s in shapesFor[n]!)
         Tooltip(
           message: shapeNames[s]!,
@@ -1028,7 +1032,7 @@ class _ShapeRow extends StatelessWidget {
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               CIcon(iconCustomLayout, size: 18, color: edit.isCustom ? c.accent : c.ink2, strokeWidth: 1.8),
               const SizedBox(width: 6),
-              Text('Custom', style: txt(context, size: 12, weight: FontWeight.w600, color: edit.isCustom ? c.accent : c.ink2)),
+              Text(t('Custom'), style: txt(context, size: 12, weight: FontWeight.w600, color: edit.isCustom ? c.accent : c.ink2)),
             ]),
           ),
         ),
@@ -1112,7 +1116,7 @@ class _PresentRowState extends State<_PresentRow> {
     final missing = virtual && _ready == false;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Wrap(spacing: 10, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        Text('Show games as', style: txt(context, size: 12, color: c.ink3)),
+        Text(t('Show games as'), style: txt(context, size: 12, color: c.ink3)),
         Seg<String>(
           keyPrefix: 'present',
           value: edit.present,
@@ -1223,7 +1227,7 @@ class _EditorCanvasState extends State<_EditorCanvas> {
                 child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
                   CIcon(iconPlus, size: 20, color: c.ink3, strokeWidth: 2),
                   const SizedBox(height: 6),
-                  Text('Drag a player here, or add one from the list', style: txt(context, size: 13, color: c.ink3)),
+                  Text(t('Drag a player here, or add one from the list'), style: txt(context, size: 13, color: c.ink3)),
                 ])),
               ),
             if (gap != null)
@@ -1241,7 +1245,7 @@ class _EditorCanvasState extends State<_EditorCanvas> {
                         Row(mainAxisSize: MainAxisSize.min, children: [
                           CIcon(iconMonitor, size: 15, color: c.ink2),
                           const SizedBox(width: 6),
-                          Text('Your desktop shows here', style: txt(context, size: 12, weight: FontWeight.w600, color: c.ink2)),
+                          Text(t('Your desktop shows here'), style: txt(context, size: 12, weight: FontWeight.w600, color: c.ink2)),
                         ]),
                         Text('${(e.display.w * gap.w).round()} x ${(e.display.h * gap.h).round()} free', style: txt(context, size: 11, color: c.ink3)),
                       ]),
@@ -1415,7 +1419,7 @@ class _EditorSide extends StatelessWidget {
         );
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       heading('On this screen'),
-      if (e.seats.isEmpty) Text('Nobody yet.', style: txt(context, size: 12.5, color: c.ink3)),
+      if (e.seats.isEmpty) Text(t('Nobody yet.'), style: txt(context, size: 12.5, color: c.ink3)),
       for (final s in e.seats)
         Builder(builder: (context) {
           final b = boxes[s] ?? const Box(0, 0, 1, 1);

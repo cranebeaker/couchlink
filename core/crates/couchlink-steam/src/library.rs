@@ -150,11 +150,23 @@ pub fn parse_libraryfolders(text: &str) -> Vec<PathBuf> {
 
 /// All Steam library roots on this PC (the Steam install first). Empty when Steam is not found.
 pub fn steam_libraries() -> Vec<PathBuf> {
-    match steam_root() {
-        Some(root) => libraries_from_root(&root),
-        None => Vec::new(),
+    // Asked once per game when the game list is built: the answer is kept for a moment.
+    static KEPT: std::sync::Mutex<Option<(std::time::Instant, Option<PathBuf>, Vec<PathBuf>)>> = std::sync::Mutex::new(None);
+    let root = steam_root();
+    let mut kept = KEPT.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((at, r, libs)) = kept.as_ref() {
+        if at.elapsed() < SCAN_KEPT && *r == root {
+            return libs.clone();
+        }
     }
+    let libs = root.as_deref().map(libraries_from_root).unwrap_or_default();
+    *kept = Some((std::time::Instant::now(), root, libs.clone()));
+    libs
 }
+
+/// How long a library scan is reused. Building the game list looks up every game, and reading every manifest of every
+/// library for each of them took minutes on a PC with hundreds of games.
+const SCAN_KEPT: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// Parse one `appmanifest_*.acf` text. `library` is the library root that holds `steamapps`.
 pub fn parse_manifest(text: &str, library: &Path) -> Option<InstalledApp> {
@@ -173,8 +185,26 @@ pub fn parse_manifest(text: &str, library: &Path) -> Option<InstalledApp> {
     })
 }
 
-/// Apps installed in one library (manifest present and its install folder exists).
+/// Apps installed in one library (manifest present and its install folder exists). A scan is reused for a moment while
+/// the library's manifests stay as they were.
 pub fn scan_library(library: &Path) -> Vec<InstalledApp> {
+    type Scans = std::collections::HashMap<PathBuf, (std::time::Instant, Option<std::time::SystemTime>, Vec<InstalledApp>)>;
+    static KEPT: std::sync::Mutex<Option<Scans>> = std::sync::Mutex::new(None);
+    let changed = std::fs::metadata(library.join("steamapps")).and_then(|m| m.modified()).ok();
+    {
+        let kept = KEPT.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((at, when, apps)) = kept.as_ref().and_then(|k| k.get(library)) {
+            if at.elapsed() < SCAN_KEPT && *when == changed {
+                return apps.clone();
+            }
+        }
+    }
+    let apps = scan_library_now(library);
+    KEPT.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(Default::default).insert(library.to_path_buf(), (std::time::Instant::now(), changed, apps.clone()));
+    apps
+}
+
+fn scan_library_now(library: &Path) -> Vec<InstalledApp> {
     let mut apps = Vec::new();
     let Ok(rd) = std::fs::read_dir(library.join("steamapps")) else { return apps };
     for e in rd.flatten() {
@@ -293,5 +323,34 @@ mod tests {
         assert!(find_app_in(&libs, 30).is_none());
         assert!(find_app_in(&libs, 99).is_none());
         std::fs::remove_dir_all(&root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod speed_tests {
+    use super::*;
+
+    #[test]
+    fn looking_up_every_game_of_a_big_library_stays_quick() {
+        let lib = std::env::temp_dir().join(format!("cl-steam-big-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&lib);
+        std::fs::create_dir_all(lib.join("steamapps").join("common")).unwrap();
+        for id in 1..=400u32 {
+            std::fs::create_dir_all(lib.join("steamapps").join("common").join(format!("Game{id}"))).unwrap();
+            let text = format!("\"AppState\"\n{{\n\"appid\" \"{id}\"\n\"name\" \"Game {id}\"\n\"installdir\" \"Game{id}\"\n}}\n");
+            std::fs::write(lib.join("steamapps").join(format!("appmanifest_{id}.acf")), text).unwrap();
+        }
+        let libs = vec![lib.clone()];
+        let start = std::time::Instant::now();
+        // As the game list does: one lookup per recipe, a few hundred of them.
+        for id in 1..=400u32 {
+            assert_eq!(find_app_in(&libs, id).map(|a| a.app_id), Some(id));
+        }
+        assert!(start.elapsed() < std::time::Duration::from_secs(2), "took {:?}", start.elapsed());
+        // A game installed since is seen: the library folder changed.
+        std::fs::create_dir_all(lib.join("steamapps").join("common").join("New")).unwrap();
+        std::fs::write(lib.join("steamapps").join("appmanifest_999.acf"), "\"AppState\"\n{\n\"appid\" \"999\"\n\"installdir\" \"New\"\n}\n").unwrap();
+        assert!(find_app_in(&libs, 999).is_some());
+        let _ = std::fs::remove_dir_all(&lib);
     }
 }

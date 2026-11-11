@@ -95,7 +95,7 @@ class ReconnectBanner extends StatelessWidget {
                     children: [
                       Spinner(size: 14, width: 2, color: c.warn),
                       const SizedBox(width: 10),
-                      Text('Lost the Couchlink service. Reconnecting.', style: txt(context, size: 12.5, color: c.ink2, height: 1.3)),
+                      Text(t('Lost the Couchlink service. Reconnecting.'), style: txt(context, size: 12.5, color: c.ink2, height: 1.3)),
                     ],
                   ),
                 )
