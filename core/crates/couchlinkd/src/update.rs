@@ -194,7 +194,7 @@ mod tests {
         assert!(newer("0.1.14", "0.1.13"));
         assert!(newer("0.1.15", "0.1.14"));
         assert!(newer("0.1.16", "0.1.15"));
-        assert!(newer("0.1.20", "0.1.19"));
+        assert!(newer("0.1.21", "0.1.20"));
         assert!(newer("v0.2.0", "0.1.9"));
         assert!(newer("0.1.4", "0.1.4-dev"));
         assert!(!newer("0.1.3", "0.1.4"));

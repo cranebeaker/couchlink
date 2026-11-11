@@ -3,6 +3,26 @@
 What changed in each Couchlink release. Downloads and older notes are on the
 [releases page](https://github.com/cranebeaker/couchlink/releases).
 
+## 0.1.21
+
+### Fixed
+
+- **The Library stayed empty on a PC with many Steam games** ("Looking for your games"), so added games never showed
+  either. Couchlink looked through every Steam library once for each game, which took most of a minute with a few
+  hundred games, and the app stopped waiting after five seconds. The list now takes a second or two, and the app waits
+  for it and asks again if it fails.
+- **A game that showed an error box instead of starting still counted as playing** (Steam's "Application load error",
+  a missing DLL). The session now fails and shows the box's text.
+- **The language and theme you pick are kept** for the next start.
+- **Removing the virtual display said it was added**, and adding it said nothing.
+- **Check for updates** now says how it went.
+- **Saving a layout without a name** says to type one, and deleting a layout asks first.
+- **Russian and Portuguese:** texts that were still English are translated (seat cards, Screens, the catalog, Settings),
+  and two Settings buttons no longer cut off their Russian labels.
+- The log now tells a session's story (start, each player's steps, errors, end), so "Copy log" can explain a failed
+  start.
+- "Add your game" no longer has a "Check my couchlink.json" button that checked nothing.
+
 ## 0.1.20
 
 ### Added

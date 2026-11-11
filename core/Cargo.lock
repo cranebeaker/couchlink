@@ -112,7 +112,7 @@ checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
 
 [[package]]
 name = "couchlink-core"
-version = "0.1.20"
+version = "0.1.21"
 dependencies = [
  "serde",
  "serde_json",
@@ -122,7 +122,7 @@ dependencies = [
 
 [[package]]
 name = "couchlink-hook"
-version = "0.1.20"
+version = "0.1.21"
 dependencies = [
  "couchlink-core",
  "serde",
@@ -132,7 +132,7 @@ dependencies = [
 
 [[package]]
 name = "couchlink-sign"
-version = "0.1.20"
+version = "0.1.21"
 dependencies = [
  "base64 0.22.1",
  "couchlink-core",
@@ -145,7 +145,7 @@ dependencies = [
 
 [[package]]
 name = "couchlink-steam"
-version = "0.1.20"
+version = "0.1.21"
 dependencies = [
  "bzip2",
  "libc",
@@ -160,7 +160,7 @@ dependencies = [
 
 [[package]]
 name = "couchlinkd"
-version = "0.1.20"
+version = "0.1.21"
 dependencies = [
  "couchlink-core",
  "couchlink-hook",
@@ -1457,7 +1457,7 @@ dependencies = [
 
 [[package]]
 name = "testgame"
-version = "0.1.20"
+version = "0.1.21"
 dependencies = [
  "windows-sys 0.61.2",
  "x11rb",
