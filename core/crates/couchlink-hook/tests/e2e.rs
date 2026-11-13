@@ -380,8 +380,11 @@ fn two_copies(arch: &str) {
     for (r, saves_dir, docs_to) in [(&ra, &saves_a, &docs_a), (&rb, &saves_b, &docs_b)] {
         let sv = &r["saves"];
         assert_eq!(sv["write_ok"], true, "{sv}");
+        assert_eq!(sv["move_ok"], true, "{sv}");
+        assert_eq!(sv["move_w_ok"], true, "{sv}");
         assert_eq!(sv["attrs_ok"], true);
         assert_eq!(read(&saves_dir.join("slot1.sav")), "save-data\n");
+        assert_eq!(read(&saves_dir.join("slot2.sav")), "save-data-w\n");
         assert!(saves_dir.join("sub").is_dir());
         let listing: Vec<&str> = sv["listing"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
         assert!(listing.contains(&"slot1.sav") && listing.contains(&"sub"), "{listing:?}");
@@ -1467,6 +1470,42 @@ fn proxy_two_copies(arch: &str, stand_in: &str, xinput: &str) {
     }
     a.finish();
     b.finish();
+}
+
+fn proxy_save_atomic_moves(arch: &str) {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let s = Scratch::new(&format!("proxy-save-moves-{arch}"));
+    let real_saves = s.dir("real-saves");
+    let seat_saves = s.path("seat-saves");
+    let cfg = HookConfig { saves: vec![(real_saves.clone(), seat_saves.clone())], ..Default::default() };
+    let args = ["--xinput", "none", "--save-dir", real_saves.to_str().unwrap()];
+    let mut copy = proxy_start(arch, &s, "save-copy", "version", Some((&cfg, &HookOptions::default())), &args);
+    let result = copy.result();
+    let saves = &result["saves"];
+    assert_eq!(saves["move_ok"], true, "{saves}");
+    assert_eq!(saves["move_w_ok"], true, "{saves}");
+    assert_eq!(saves["replace_ok"], true, "{saves}");
+    assert_eq!(fs::read_to_string(seat_saves.join("slot1.sav")).unwrap(), "save-data\n");
+    assert_eq!(fs::read_to_string(seat_saves.join("slot2.sav")).unwrap(), "save-data-w\n");
+    assert_eq!(fs::read_to_string(seat_saves.join("slot3.sav")).unwrap(), "new-save\n");
+    assert!(!real_saves.join("slot1.sav").exists());
+    assert!(!real_saves.join("slot3.sav").exists());
+    assert!(copy.status().counter("file_moves") >= 2);
+    assert_eq!(copy.status().counter("file_moves_failed"), 0);
+    assert!(copy.status().counter("file_replaces") >= 1);
+    assert_eq!(copy.status().counter("file_replaces_failed"), 0);
+    assert!(copy.status().notes.is_empty());
+    copy.finish();
+}
+
+#[test]
+fn proxy_save_atomic_moves_x64() {
+    proxy_save_atomic_moves("x64");
+}
+
+#[test]
+fn proxy_save_atomic_moves_x86() {
+    proxy_save_atomic_moves("x86");
 }
 
 #[test]
