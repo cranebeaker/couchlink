@@ -12,7 +12,8 @@
     "args": "--window ${WIDTH}x$HEIGHT",
     "env": {
       "NV_COOP": "local:$SEAT",
-      "NV_COOP_NAME": "$PLAYER"
+      "NV_COOP_NAME": "$PLAYER",
+      "NV_PAD": "0"
     }
   },
   "files": {
@@ -31,32 +32,6 @@
   "locks": [],
   "input": { "xinput": true, "dinput": false, "rawinput": false },
   "window": { "exe": "FalloutNV.exe", "borderless": true, "settle_ms": 8000, "wait_ms": 300000 },
-  "controls": {
-    "id": "fallout-new-vegas-nvrs-pad",
-    "name": "New Vegas (nv-rs) on a controller",
-    "buttons": {
-      "south": { "type": "key", "value": "Space" },
-      "east": { "type": "key", "value": "Tab" },
-      "west": { "type": "key", "value": "R" },
-      "north": { "type": "key", "value": "E" },
-      "left_shoulder": { "type": "key", "value": "V" },
-      "right_shoulder": { "type": "key", "value": "Z" },
-      "left_trigger": { "type": "mouse", "value": "right" },
-      "right_trigger": { "type": "mouse", "value": "left" },
-      "left_stick": { "type": "key", "value": "Ctrl" },
-      "right_stick": { "type": "key", "value": "F" },
-      "dpad_up": { "type": "key", "value": "Up" },
-      "dpad_down": { "type": "key", "value": "Down" },
-      "dpad_left": { "type": "key", "value": "Left" },
-      "dpad_right": { "type": "key", "value": "Right" },
-      "start": { "type": "key", "value": "Esc" },
-      "back": { "type": "key", "value": "Enter" }
-    },
-    "sticks": {
-      "left": { "as": "wasd" },
-      "right": { "as": "mouse" }
-    }
-  },
   "requires": [
     {
       "file": "READ ME co-op.txt",
@@ -70,7 +45,7 @@
   "tips": [
     "Player 1 hosts the story, everyone else joins on this PC by themselves: no join code is needed.",
     "Everybody presses New Game. Each player makes their own character at Doc Mitchell's.",
-    "The game reads no controllers itself, so a controller plays it as keyboard and mouse. Change the layout under Controls.",
+    "Each player's controller is read by the game as its own pad (NV_PAD). A player on keyboard and mouse needs no controller.",
     "Each seat keeps its own saves and settings in its own copy of the package. Saves of the package folder itself are not used."
   ]
 }

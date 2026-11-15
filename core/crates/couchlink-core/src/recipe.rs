@@ -1028,7 +1028,8 @@ mod tests {
         assert_eq!(expand(&nv.launch.exe, &seat("1")).unwrap(), "C:/c/1/Play.exe", "each seat starts its own copy");
         assert_eq!(nv.window.exe.as_deref(), Some("FalloutNV.exe"), "Play.exe starts the game program");
         assert!(nv.files.exclude_dirs.iter().any(|d| d == "userdata/game"), "each seat makes its own saves and settings");
-        assert!(crate::profile::Profile::from_value(nv.controls.as_ref().unwrap()).unwrap().sends_kbm(), "a pad plays it as keyboard and mouse");
+        assert_eq!(nv.launch.env["NV_PAD"], "0", "the game reads the seat's pad, which the hook gives it as the first XInput pad");
+        assert!(nv.controls.is_none(), "the pad is read as a pad, not as keys");
     }
 
     #[test]
