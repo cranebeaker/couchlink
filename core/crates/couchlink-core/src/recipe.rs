@@ -1017,6 +1017,18 @@ mod tests {
         let oot = &seen["zelda-oot-anchor"];
         assert_eq!(oot.launch.env["SHIP_HOME"], "$GAMEDIR", "each copy keeps its own settings and saves");
         assert!(oot.edits[0].per_seat);
+        // FNV Co-Op's package on nv-rs, next to the recipe for the older co-op build.
+        assert!(seen.contains_key("fallout-new-vegas-coop"));
+        let nv = &seen["fallout-new-vegas-nvrs-coop"];
+        assert_eq!(nv.matching.steam_app_id, None, "found as the package folder, never as the Steam install");
+        let seat = |n: &str| vars(&[("SEAT", n), ("WIDTH", "960"), ("HEIGHT", "540"), ("PLAYER", "Player 2"), ("GAMEDIR", "C:/c/1")]);
+        assert_eq!(expand(nv.launch.args_for(1), &seat("1")).unwrap(), "--window 960x540");
+        assert_eq!(expand(&nv.launch.env["NV_COOP"], &seat("0")).unwrap(), "local:0", "player 1 hosts on this PC");
+        assert_eq!(expand(&nv.launch.env["NV_COOP"], &seat("2")).unwrap(), "local:2", "the others join it");
+        assert_eq!(expand(&nv.launch.exe, &seat("1")).unwrap(), "C:/c/1/Play.exe", "each seat starts its own copy");
+        assert_eq!(nv.window.exe.as_deref(), Some("FalloutNV.exe"), "Play.exe starts the game program");
+        assert!(nv.files.exclude_dirs.iter().any(|d| d == "userdata/game"), "each seat makes its own saves and settings");
+        assert!(crate::profile::Profile::from_value(nv.controls.as_ref().unwrap()).unwrap().sends_kbm(), "a pad plays it as keyboard and mouse");
     }
 
     #[test]
