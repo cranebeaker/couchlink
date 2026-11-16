@@ -1,0 +1,14 @@
+[package]
+name = "couchlink-remote"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Couchlink remote input: another PC's keyboard, mouse and controllers over the local network"
+
+[dependencies]
+couchlink-core = { path = "../couchlink-core" }
+getrandom = "0.3"
+hmac = "0.12"
+sha2 = "0.10"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+chacha20poly1305 = "0.10"

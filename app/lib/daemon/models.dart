@@ -44,7 +44,10 @@ class Device {
   bool get isKbm => kind == 'kbm' || family == 'kbm';
 
   /// One physical keyboard or mouse (ids from the raw input list); the shared desktop one is neither.
-  bool get isKeyboard => id.startsWith('kbd:');
+  bool get isKeyboard => id.startsWith('kbd:') && !isRemote;
+
+  /// Another PC lends it over the network (its keyboard and mouse are one device).
+  bool get isRemote => connection == 'network' || id.startsWith('kbd:net-') || id.startsWith('pad:net-');
   bool get isMouse => id.startsWith('mouse:');
 
   factory Device.fromJson(Map<String, dynamic> j) => Device(
@@ -928,4 +931,129 @@ class UpdateInfo {
   /// The updater has taken over: the app closes now and comes back as the new version.
   final bool restarting;
   final String? error;
+}
+
+// ------------------------------------------------------------------ remote input (docs/remote-input.md)
+
+/// A PC paired to send its keyboard, mouse and controllers to this one.
+class RemoteSender {
+  const RemoteSender({required this.id, required this.name, this.connected = false, this.device = ''});
+
+  factory RemoteSender.fromJson(Map<String, dynamic> j) =>
+      RemoteSender(id: _str(j['id']), name: _str(j['name'], 'Another PC'), connected: j['connected'] == true, device: _str(j['device']));
+
+  final String id;
+  final String name;
+
+  /// Sending right now.
+  final bool connected;
+
+  /// The id its keyboard and mouse has in the device list.
+  final String device;
+}
+
+/// The `remote_input` answer: this PC as the one the games run on.
+class RemoteInputStatus {
+  const RemoteInputStatus({this.listening = false, this.name = '', this.code, this.seconds = 0, this.senders = const []});
+
+  factory RemoteInputStatus.fromJson(Map<String, dynamic> j) {
+    final p = j['pairing'];
+    return RemoteInputStatus(
+      listening: j['listening'] == true,
+      name: _str(j['name']),
+      code: p is Map ? _strOrNull(p['code']) : _strOrNull(j['code']),
+      seconds: p is Map ? _num(p['seconds']).toInt() : _num(j['seconds']).toInt(),
+      senders: [
+        if (j['senders'] is List)
+          for (final x in j['senders'] as List)
+            if (x is Map) RemoteSender.fromJson(x.cast<String, dynamic>()),
+      ],
+    );
+  }
+
+  final bool listening;
+
+  /// This PC's name as the other PC shows it.
+  final String name;
+
+  /// The open pairing code, when one is open.
+  final String? code;
+  final int seconds;
+  final List<RemoteSender> senders;
+}
+
+/// A PC that takes input, as `remote_find` lists it.
+class RemoteHost {
+  const RemoteHost({required this.id, required this.name, this.addr, this.pairing = false, this.paired = false, this.online = false});
+
+  factory RemoteHost.fromJson(Map<String, dynamic> j) => RemoteHost(
+        id: _str(j['id']),
+        name: _str(j['name'], 'Another PC'),
+        addr: _strOrNull(j['addr']),
+        pairing: j['pairing'] == true,
+        paired: j['paired'] == true,
+        online: j['online'] == true,
+      );
+
+  final String id;
+  final String name;
+  final String? addr;
+
+  /// A code is open on it right now.
+  final bool pairing;
+
+  /// Paired before: no code needed.
+  final bool paired;
+
+  /// It answered just now.
+  final bool online;
+}
+
+/// The `remote_find` answer.
+class RemoteHosts {
+  const RemoteHosts({this.looking = false, this.hosts = const [], this.keyboardAndMouse = true, this.pauseKeys = ''});
+
+  factory RemoteHosts.fromJson(Map<String, dynamic> j) => RemoteHosts(
+        looking: j['looking'] == true,
+        hosts: [
+          if (j['hosts'] is List)
+            for (final x in j['hosts'] as List)
+              if (x is Map) RemoteHost.fromJson(x.cast<String, dynamic>()),
+        ],
+        keyboardAndMouse: j['keyboard_and_mouse'] != false,
+        pauseKeys: _str(j['pause_keys']),
+      );
+
+  final bool looking;
+  final List<RemoteHost> hosts;
+
+  /// This PC can lend its keyboard and mouse (Windows); controllers always.
+  final bool keyboardAndMouse;
+  final String pauseKeys;
+}
+
+/// The `remote_send_status` answer: this PC lending its devices to another.
+class RemoteSendStatus {
+  const RemoteSendStatus({this.state = 'idle', this.host = '', this.error, this.paused = false, this.pauseKeys = '', this.keyboardAndMouse = true});
+
+  factory RemoteSendStatus.fromJson(Map<String, dynamic> j) => RemoteSendStatus(
+        state: _str(j['state'], 'idle'),
+        host: _str(j['host']),
+        error: _strOrNull(j['error']),
+        paused: j['paused'] == true,
+        pauseKeys: _str(j['pause_keys']),
+        keyboardAndMouse: j['keyboard_and_mouse'] != false,
+      );
+
+  /// `idle`, `pairing`, `connecting`, `sending` or `failed`.
+  final String state;
+  final String host;
+  final String? error;
+
+  /// The pause keys gave this PC its keyboard and mouse back for a moment.
+  final bool paused;
+  final String pauseKeys;
+  final bool keyboardAndMouse;
+
+  bool get busy => state == 'pairing' || state == 'connecting' || state == 'sending';
 }

@@ -11,6 +11,7 @@ mod launchers;
 mod layouts;
 mod update;
 mod logfile;
+mod netinput;
 mod play;
 mod poweroff;
 mod profiles;

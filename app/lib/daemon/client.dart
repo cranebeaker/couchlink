@@ -256,6 +256,35 @@ abstract class CouchClient extends ChangeNotifier {
   /// `bluetooth_pair`: pairs with a listed controller. Replies at once; `bluetoothDevices` shows the outcome.
   Future<String?> bluetoothPair(String id);
 
+  // ---- remote input: another PC's keyboard, mouse and controllers (docs/remote-input.md)
+
+  /// `remote_input`: whether this PC takes input from other PCs, the open code, the paired PCs.
+  Future<({RemoteInputStatus? value, String? error})> remoteInput();
+
+  /// `remote_pair_open`: opens a 6 digit code for two minutes.
+  Future<({RemoteInputStatus? value, String? error})> remotePairOpen();
+
+  /// `remote_pair_close`.
+  Future<String?> remotePairClose();
+
+  /// `remote_forget`: the PC can no longer send until it pairs again.
+  Future<String?> remoteForget(String pc);
+
+  /// `remote_find`: looks for PCs to send to (call it again to look again).
+  Future<({RemoteHosts? value, String? error})> remoteFind();
+
+  /// `remote_send_start`: sends this PC's keyboard, mouse and controllers to [target] (an id or an address).
+  Future<String?> remoteSendStart(String target, {String? code});
+
+  /// `remote_send_stop`.
+  Future<String?> remoteSendStop();
+
+  /// `remote_send_status`.
+  Future<RemoteSendStatus> remoteSendStatus();
+
+  /// `remote_host_forget`.
+  Future<String?> remoteHostForget(String pc);
+
   /// Fake client only: acts as pressing key 1 to 4.
   void debugKey(int n) {}
 

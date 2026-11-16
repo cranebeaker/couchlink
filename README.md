@@ -34,6 +34,8 @@ way the game already supports: LAN, a co-op mod's server, or Steam. Any game tha
 - Couchlink remembers your last setup: devices go back to their seats and players back on their screens, also a
   controller turned on later.
 - Move a controller, keyboard or mouse to another player while the games run.
+- A laptop on the same network can be one more player: its keyboard, mouse and controllers show up in Players and
+  take a seat like any other device, no driver needed ([`docs/remote-input.md`](docs/remote-input.md)).
 - Remap controls per player, with profiles you can save.
 - Controllers: pair one over Bluetooth from the app (Windows), and turn a wireless one off from the app or with a
   button combo.
@@ -111,7 +113,8 @@ Give your coding agent the skill: [`skills/couchlink-sdk/SKILL.md`](skills/couch
    host at `127.0.0.1` on your port. No input tricks needed.
 3. **Use Couchlink's parts in your own launcher.** Drive the local service over WebSocket
    ([`docs/protocol.md`](docs/protocol.md)), or take the crates: `couchlink-hook` (per-copy controllers, keyboard and
-   mouse), `couchlink-steam` (per-copy Steam), `couchlink-core` (recipes, seats, screens).
+   mouse), `couchlink-steam` (per-copy Steam), `couchlink-core` (recipes, seats, screens), `couchlink-remote` (another PC's
+   input over the network).
 
 ## Building
 
@@ -154,6 +157,8 @@ Couchlink запускает отдельную копию игры для ка�
 - Couchlink помнит последнюю настройку: устройства возвращаются на свои места, а игроки на свои экраны, даже если
   геймпад включили позже.
 - Геймпад, клавиатуру или мышь можно передать другому игроку прямо во время игры.
+- Ноутбук в той же сети может стать ещё одним игроком: его клавиатура, мышь и геймпады появляются в «Игроках» и
+  занимают место, как любое другое устройство, без драйверов.
 - Своя раскладка управления у каждого игрока, с профилями, которые можно сохранять.
 - Геймпады: сопряжение по Bluetooth прямо из приложения (Windows), беспроводной можно выключить из приложения или
   сочетанием кнопок.

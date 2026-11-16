@@ -574,12 +574,71 @@ impl Registry {
             .seats
             .iter()
             .enumerate()
-            .map(|(i, s)| (i, s.devices.iter().map(|id| self.device(id).map(|d| d.handle).unwrap_or(0)).collect()))
+            .map(|(i, s)| (i, s.devices.iter().map(|id| self.device(id).map(|d| feed_handle(d.handle)).unwrap_or(0)).collect()))
             .collect();
         for (i, h) in handles {
             self.seats[i].feed.set_devices(&h);
         }
     }
+}
+
+/// Handles of remote devices (another PC's keyboard and mouse, see `netinput`) start here; real Raw Input handles
+/// are far smaller. They only tell the registry's devices apart.
+const REMOTE_HANDLE_BASE: u64 = 0x7E00_0000_0000_0000;
+
+/// The `hDevice` a feed reports for a device: a remote device has no Raw Input handle, so the hook makes one up (as
+/// for a pad's keys).
+fn feed_handle(handle: u64) -> u64 {
+    if handle >= REMOTE_HANDLE_BASE { 0 } else { handle }
+}
+
+/// The id of another PC's keyboard and mouse, from that PC's id (hex): one device, it carries both.
+pub fn remote_id(peer_hex: &str) -> String {
+    format!("{KEYBOARD_PREFIX}net-{peer_hex}")
+}
+
+/// True for the id of another PC's keyboard and mouse.
+pub fn is_remote(id: &str) -> bool {
+    id.starts_with(KEYBOARD_PREFIX) && id[KEYBOARD_PREFIX.len()..].starts_with("net-")
+}
+
+/// Another PC's keyboard and mouse arrived over the network (`netinput`): listed like a keyboard plugged in here, so
+/// it can be put on a seat and its input reaches that seat's feed. Announced to subscribers with `Added`.
+pub fn add_remote(id: &str, name: &str) {
+    let events = {
+        let mut reg = registry();
+        if reg.device(id).is_some() {
+            return;
+        }
+        let handle = REMOTE_HANDLE_BASE | (fnv1a64(id.as_bytes()) >> 8);
+        let dev = RawDevice { id: id.to_string(), kind: Kind::Keyboard, name: name.to_string(), path: format!("remote:{id}"), handle };
+        reg.add_device(dev)
+    };
+    deliver(events);
+}
+
+/// The other PC left: its device goes away (`Removed`).
+pub fn remove_remote(id: &str) {
+    let events: Vec<RawKbmEvent> = {
+        let mut reg = registry();
+        let handles: Vec<u64> = reg.devices.iter().filter(|d| d.id == id).map(|d| d.handle).collect();
+        handles.into_iter().filter_map(|h| reg.remove_device(h)).collect()
+    };
+    deliver(events);
+}
+
+/// Input from another PC's keyboard and mouse, routed as if it came from a device plugged in here (press to join
+/// included).
+pub fn push_remote(id: &str, inputs: &[Input]) {
+    deliver(route_remote(id, inputs));
+}
+
+fn route_remote(id: &str, inputs: &[Input]) -> Vec<RawKbmEvent> {
+    let mut reg = registry();
+    if reg.device(id).is_none() {
+        return Vec::new();
+    }
+    inputs.iter().filter_map(|i| reg.route(id, *i)).collect()
 }
 
 fn deliver(events: Vec<RawKbmEvent>) {
@@ -1854,6 +1913,38 @@ mod tests {
         test_input(&spare.id, Input::Mouse { dx: 1, dy: 0, flags: 0, wheel: 0 });
         assert_eq!(head(a.name()), 3);
         drop((a, b));
+        test_reset();
+    }
+}
+
+#[cfg(test)]
+mod remote_tests {
+    use super::*;
+
+    #[test]
+    fn another_pcs_keyboard_and_mouse_feed_the_seat_it_sits_on() {
+        let _l = test_lock();
+        test_reset();
+        let id = remote_id("0102030405060708");
+        assert!(is_remote(&id) && is_kbm_id(&id) && !is_remote("kbd:12345678"));
+        add_remote(&id, "Laptop keyboard + mouse");
+        let d = device(&id).expect("listed");
+        assert_eq!((d.kind, d.name.as_str()), (Kind::Keyboard, "Laptop keyboard + mouse"));
+        assert_eq!(feed_handle(d.handle), 0, "the hook makes up the handle");
+        // Not on a seat: Enter asks for one, anything else does nothing.
+        let enter = Input::Key { vk: VK_RETURN, scan: 0x1C, flags: 0 };
+        assert_eq!(route_remote(&id, &[Input::Key { vk: 0x41, scan: 0x1E, flags: 0 }]), vec![]);
+        assert_eq!(route_remote(&id, &[enter]), vec![RawKbmEvent::Press(id.clone())]);
+        // On a seat: keys and mouse go into its feed.
+        let name = feed_name("rt", 0);
+        let _g = test_attach(&name, &[id.clone()]).unwrap();
+        let before = feed_head(&name).unwrap();
+        let none = route_remote(&id, &[Input::Key { vk: 0x41, scan: 0x1E, flags: 0 }, Input::Mouse { dx: 4, dy: -2, flags: 0, wheel: 0 }]);
+        assert!(none.is_empty());
+        assert_eq!(feed_head(&name).unwrap(), before + 2);
+        remove_remote(&id);
+        assert!(device(&id).is_none());
+        assert!(route_remote(&id, &[enter]).is_empty(), "gone devices are ignored");
         test_reset();
     }
 }

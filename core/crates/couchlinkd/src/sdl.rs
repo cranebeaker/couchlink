@@ -301,7 +301,7 @@ impl Worker {
                 next_input = now + INPUT_PERIOD;
                 self.sample_inputs();
             }
-            if crate::session::padfeed::active() || linux_pads_active() {
+            if crate::session::padfeed::active() || linux_pads_active() || crate::netinput::sender::wants_pads() {
                 self.feed_pads();
             }
             if now >= next_combo {
@@ -519,9 +519,11 @@ impl Worker {
             crate::session::uipad_linux::publish(&format!("pad:{id}"), &sample);
             // Each seat's feed plays the sample through the seat's profile (session/padfeed.rs).
             publish_sample(&format!("pad:{id}"), &sample);
+            // Sending this PC's controllers to another PC (remote input).
+            crate::netinput::sender::publish_pad(id, &sample);
         }
         for (id, pad) in self.pads.iter_mut() {
-            let rumble = take_rumble(&format!("pad:{id}"));
+            let rumble = take_rumble(&format!("pad:{id}")).or_else(|| crate::netinput::sender::take_rumble(*id));
             #[cfg(target_os = "linux")]
             let rumble = rumble.or_else(|| crate::session::uipad_linux::take_rumble(&format!("pad:{id}")));
             if let Some((low, high)) = rumble {

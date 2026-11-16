@@ -133,6 +133,8 @@ pub enum HubMsg {
     VirtualScreensDone(Result<(), String>),
     /// Work done off the hub task (adding a game to Steam): what to tell the player.
     Note(LogLevel, String),
+    /// Remote input: another PC's controllers, and what its network threads report (`netinput`).
+    Net(crate::netinput::NetMsg),
 }
 
 struct Client {
@@ -257,6 +259,8 @@ impl Hub {
     /// Work to start once the hub runs (it needs the tokio runtime).
     fn on_start(&mut self) {
         self.check_update_on_start();
+        // Other PCs paired before can send again (nothing listens until the first one is paired).
+        crate::netinput::receiver::start_if_paired(self.self_tx.clone());
     }
 
     /// Hand the close-the-games shortcut to the keyboard hotkey and the pad watcher.
@@ -447,6 +451,7 @@ impl Hub {
                     self.broadcast(&Event::GamesChanged);
                 }
                 HubMsg::Note(level, text) => self.log(level, text),
+                HubMsg::Net(m) => self.handle_net(m),
             }
         }
         self.sdl
@@ -904,6 +909,21 @@ impl Hub {
                 Ok(none)
             }
             Command::VirtualScreens => Ok(crate::vscreen_setup::status()),
+            Command::RemoteInput => Ok(crate::netinput::receiver::status()),
+            Command::RemotePairOpen => crate::netinput::receiver::open_pairing(self.self_tx.clone()),
+            Command::RemotePairClose => {
+                crate::netinput::receiver::close_pairing();
+                Ok(none)
+            }
+            Command::RemoteForget { pc } => crate::netinput::receiver::forget(&pc).map(|_| none),
+            Command::RemoteFind => Ok(crate::netinput::sender::find()),
+            Command::RemoteSendStart { target, code } => crate::netinput::sender::start(&target, code.as_deref(), self.self_tx.clone()).map(|_| none),
+            Command::RemoteSendStop => {
+                crate::netinput::sender::stop();
+                Ok(none)
+            }
+            Command::RemoteSendStatus => Ok(crate::netinput::sender::status()),
+            Command::RemoteHostForget { pc } => crate::netinput::sender::forget(&pc).map(|_| none),
             Command::SetupVirtualScreens => {
                 // The Windows prompt waits for the person at the PC: off the hub task, reported with VirtualScreensDone.
                 let tx = self.self_tx.clone();
@@ -1211,7 +1231,7 @@ player {}: {}", s.seat + 1, s.error.as_deref().unwrap_or_default());
                     self.broadcast_state();
                 }
             }
-            SdlEvent::Input(samples) => self.input_samples(samples),
+            SdlEvent::Input(samples) => self.input_samples(samples.into_iter().map(|(id, s)| (format!("pad:{id}"), s)).collect()),
             SdlEvent::StopCombo => self.stop_shortcut(),
             SdlEvent::TurnOffCombo(id) => {
                 if let Err(e) = self.turn_off_pad(id) {
@@ -1229,7 +1249,7 @@ player {}: {}", s.seat + 1, s.error.as_deref().unwrap_or_default());
                     kind: DeviceKind::Kbm,
                     name: d.name.clone(),
                     family: Family::Kbm,
-                    connection: Connection::Unknown,
+                    connection: if session::rawkbm::is_remote(&d.id) { Connection::Network } else { Connection::Unknown },
                     battery: None,
                     charging: false,
                     can_turn_off: false,
@@ -1252,8 +1272,47 @@ player {}: {}", s.seat + 1, s.error.as_deref().unwrap_or_default());
         }
     }
 
+    /// Remote input (`netinput`): another PC's controllers come and go like local ones; its keyboard and mouse
+    /// arrive through `session::rawkbm` as a `Kbm` event.
+    fn handle_net(&mut self, m: crate::netinput::NetMsg) {
+        use crate::netinput::NetMsg;
+        match m {
+            NetMsg::PadAdded { id, name, family } => {
+                self.model.seats.upsert_device(Device {
+                    id: id.clone(),
+                    kind: DeviceKind::Gamepad,
+                    name: name.clone(),
+                    family,
+                    connection: Connection::Network,
+                    battery: None,
+                    charging: false,
+                    can_turn_off: false,
+                    seat: None,
+                });
+                self.restore_setup();
+                self.log(LogLevel::Info, format!("Controller connected from another PC: {name}"));
+                self.broadcast_state();
+            }
+            NetMsg::PadRemoved(id) => {
+                let Some(dev) = self.model.seats.device(&id).cloned() else { return };
+                let seat = self.model.seats.remove_device(&id);
+                self.applied.remove(&id);
+                self.procs.remove(&id);
+                match seat {
+                    Some(_) => self.log(LogLevel::Warn, format!("Controller disconnected: {} (on another PC)", dev.name)),
+                    None => self.log(LogLevel::Info, format!("Controller disconnected: {}", dev.name)),
+                }
+                self.broadcast_state();
+            }
+            NetMsg::PadPress(id) => self.press_to_join(&id),
+            NetMsg::Samples(samples) => self.input_samples(samples),
+            NetMsg::Note(level, text) => self.log(level, text),
+        }
+    }
+
     fn pad_added(&mut self, info: PadInfo) {
         let id = format!("pad:{}", info.id);
+        crate::netinput::sender::set_pad_info(info.id, &info.name, info.family);
         if info.is_virtual {
             self.virtual_pads.insert(id.clone());
         } else {
@@ -1278,6 +1337,7 @@ player {}: {}", s.seat + 1, s.error.as_deref().unwrap_or_default());
     }
 
     fn pad_removed(&mut self, id: u32) {
+        crate::netinput::sender::remove_pad(id);
         let dev_id = format!("pad:{id}");
         let Some(dev) = self.model.seats.device(&dev_id).cloned() else { return };
         let seat = self.model.seats.remove_device(&dev_id);
@@ -1336,14 +1396,13 @@ player {}: {}", s.seat + 1, s.error.as_deref().unwrap_or_default());
         }
     }
 
-    fn input_samples(&mut self, samples: Vec<(u32, InputSample)>) {
+    fn input_samples(&mut self, samples: Vec<(String, InputSample)>) {
         if !self.clients.values().any(|c| c.subscribed) {
             return;
         }
         let now = self.started.elapsed().as_millis() as u64;
         let mut inputs: BTreeMap<String, InputSample> = BTreeMap::new();
-        for (id, mut sample) in samples {
-            let dev = format!("pad:{id}");
+        for (dev, mut sample) in samples {
             let Some(seat) = self.model.seats.seat_of(&dev) else { continue };
             let state = self.procs.entry(dev.clone()).or_default();
             sample.out = Some(process(&self.seat_profiles[seat], state, now, &sample));
@@ -1367,7 +1426,8 @@ fn err_text(e: SeatError) -> String {
 /// What stays the same for a device between runs: a keyboard's or mouse's id does, a controller's does not. None for
 /// a device that should not come back (a virtual pad).
 fn lasting_key(pad_keys: &HashMap<String, String>, device: &str) -> Option<String> {
-    if device.starts_with("pad:") {
+    // Another PC's controller keeps its id (that PC's id and its number there).
+    if device.starts_with("pad:") && !crate::netinput::is_remote_pad(device) {
         pad_keys.get(device).cloned()
     } else {
         Some(device.to_string())

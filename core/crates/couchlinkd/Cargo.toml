@@ -9,6 +9,7 @@ couchlink-core = { path = "../couchlink-core" }
 couchlink-steam = { path = "../couchlink-steam" }
 couchlink-hook = { path = "../couchlink-hook" }
 couchlink-sign = { path = "../couchlink-sign" }
+couchlink-remote = { path = "../couchlink-remote" }
 sdl3 = { version = "0.20", features = ["build-from-source-static"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "signal"] }
 tokio-tungstenite = "0.27"
@@ -71,4 +72,8 @@ embed-resource = "3"
 
 [[test]]
 name = "integration"
+harness = false
+
+[[test]]
+name = "remote_input"
 harness = false

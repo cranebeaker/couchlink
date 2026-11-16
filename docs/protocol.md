@@ -64,6 +64,15 @@ Daemon to client (events, no id): `{"event": "<name>", ...}`
 | `bluetooth_devices` | | `{"available": bool, "scanning": bool, "devices": [{"id", "name", "kind", "state", "error"}]}`. `available` is false without a Bluetooth radio and on Linux. `kind` is `PlayStation 4`, `PlayStation 5`, `Xbox`, `Switch` or empty; `state` is `found`, `pairing`, `paired` or `failed` (`error` says why). Only controllers are listed: Class of Device peripheral gamepad or joystick, or a name such as `Wireless Controller`, `DualSense`, `Xbox`, `Pro Controller`, `Joy-Con`. Once paired, the controller connects and shows up in `state` like any other. |
 | `bluetooth_pair` | `id` (from `bluetooth_devices`) | Replies at once and pairs in the background (`pairing`, then `paired` or `failed`). Error text if the controller is no longer listed. |
 | `remove_steam_account` | `seat` | Like setup, in reverse: one Windows prompt, then the seat plays on the PC owner's account again. The helper user's profile folder is left in place. |
+| `remote_input` | | Remote input, this PC as the one the games run on ([remote-input.md](remote-input.md)): `{"listening", "port", "name", "pairing": {"code", "seconds"} or null, "senders": [{"id", "name", "connected", "device"}]}`. `device` is the id the sender's keyboard and mouse has in `devices`. |
+| `remote_pair_open` | | Starts listening (UDP 47800) and opens a 6 digit pairing code for two minutes: `{"code", "seconds", "port", "name"}`. A new call replaces the code. A PC that pairs is saved and can send again later without a code. |
+| `remote_pair_close` | | Closes the open code. |
+| `remote_forget` | `pc` (a sender id from `remote_input`) | That PC can no longer send; its devices go away at once. |
+| `remote_find` | | This PC as the sender: looks for PCs that take input (a broadcast, in the background) and replies at once with what answered so far: `{"looking", "hosts": [{"id", "name", "addr", "pairing", "paired", "online"}], "keyboard_and_mouse", "pause_keys"}`. Call again to look again. |
+| `remote_send_start` | `target` (an id from `remote_find`, or an address such as `192.168.1.20` or `192.168.1.20:47800`), optional `code` (the 6 digits; needed unless paired before) | Replies at once and starts sending this PC's keyboard, mouse and controllers there; `remote_send_status` follows it. While sending, this PC's own keyboard and mouse do nothing here; `pause_keys` (Ctrl+Alt+Backspace) gives them back and sends again. |
+| `remote_send_stop` | | Stops sending; the other PC lets go of everything at once. |
+| `remote_send_status` | | `{"state": "idle" \| "pairing" \| "connecting" \| "sending" \| "failed", "host", "addr", "error", "paused", "pause_keys", "keyboard_and_mouse"}`. |
+| `remote_host_forget` | `pc` (an id from `remote_find`) | Forgets a PC this one sent to. |
 
 ## Events
 
@@ -116,9 +125,9 @@ Daemon to client (events, no id): `{"event": "<name>", ...}`
 
 - `show_cursors`, `only_in_front`: the two switches above (`set_show_cursors`, `set_only_in_front`), both true by default.
 
-- `devices[].id`: `pad:<SDL joystick instance id>` for gamepads, `kbm:system` for the combined system keyboard and mouse. Ids are unique for the life of the connection.
+- `devices[].id`: `pad:<SDL joystick instance id>` for gamepads, `kbm:system` for the combined system keyboard and mouse. <a id="remote-input"></a>Remote input: `kbd:net-<PC id>` is another PC's keyboard and mouse (one device) and `pad:net-<PC id>-<n>` its controllers; their `connection` is `network`. Ids are unique for the life of the connection.
 - `devices[].family`: `xbox` \| `playstation` \| `switch` \| `steam` \| `generic` \| `kbm`.
-- `devices[].connection`: `usb` \| `wireless` \| `unknown`. `battery`: 0..100 or null (no battery, or the pad does not say). `charging`: true while plugged in and charging; `battery` still holds the level (100 when full). `can_turn_off`: true when `disconnect_device` can turn the controller off (wireless, with a Bluetooth address or an XInput slot Couchlink knows).
+- `devices[].connection`: `usb` \| `wireless` \| `unknown` \| `network` (another PC lends it, see remote input). `battery`: 0..100 or null (no battery, or the pad does not say). `charging`: true while plugged in and charging; `battery` still holds the level (100 when full). `can_turn_off`: true when `disconnect_device` can turn the controller off (wireless, with a Bluetooth address or an XInput slot Couchlink knows).
 - `seats`: always 4 entries; `null` = free. Seat colours are fixed: `#0A84FF`, `#FF6B5B`, `#30D158`, `#FFD60A`. Default names `Player 1`..`Player 4`.
 - `displays[]`: desktop coordinates in physical pixels; `scale` is the OS content scale; `hz` the refresh rate.
 

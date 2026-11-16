@@ -277,6 +277,30 @@ pub enum Command {
     /// Virtual screens: whether the display driver is ready, and its one-time setup (one Windows prompt).
     VirtualScreens,
     SetupVirtualScreens,
+    /// Remote input, receiving side: whether this PC listens, the open code, the paired PCs.
+    RemoteInput,
+    /// Opens a pairing code for two minutes (and starts listening).
+    RemotePairOpen,
+    RemotePairClose,
+    /// Forgets a paired sending PC (`pc`: its id from `remote_input`; `id` is the request's own).
+    RemoteForget {
+        pc: String,
+    },
+    /// Remote input, sending side: looks for receiving PCs and lists them.
+    RemoteFind,
+    /// Starts sending this PC's keyboard, mouse and controllers to `target` (an id from `remote_find`, or an
+    /// address); `code` pairs first.
+    RemoteSendStart {
+        target: String,
+        #[serde(default)]
+        code: Option<String>,
+    },
+    RemoteSendStop,
+    RemoteSendStatus,
+    /// Forgets a receiving PC this one sent to (`pc`: its id from `remote_find`).
+    RemoteHostForget {
+        pc: String,
+    },
 }
 
 impl Request {
@@ -703,7 +727,7 @@ mod tests {
         ] {
             assert_eq!(serde_json::to_value(f).unwrap(), json!(s));
         }
-        for (c, s) in [(Connection::Usb, "usb"), (Connection::Wireless, "wireless"), (Connection::Unknown, "unknown")] {
+        for (c, s) in [(Connection::Usb, "usb"), (Connection::Wireless, "wireless"), (Connection::Unknown, "unknown"), (Connection::Network, "network")] {
             assert_eq!(serde_json::to_value(c).unwrap(), json!(s));
         }
         assert_eq!(serde_json::to_value(Layout::PerDisplay).unwrap(), json!("per_display"));

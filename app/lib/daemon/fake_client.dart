@@ -483,6 +483,95 @@ class FakeClient extends CouchClient {
     return null;
   }
 
+  // ---- remote input: opening a code pairs a pretend laptop a moment later, whose keyboard and mouse then shows up.
+
+  String? _remoteCode;
+  final List<RemoteSender> _remoteSenders = [];
+  String _sendState = 'idle';
+
+  /// The pretend laptop's keyboard and mouse.
+  static const String fakeRemoteDevice = 'kbd:net-1122334455667788';
+
+  RemoteInputStatus _remoteStatus() => RemoteInputStatus(
+        listening: _remoteCode != null || _remoteSenders.isNotEmpty,
+        name: 'Living room PC',
+        code: _remoteCode,
+        seconds: _remoteCode == null ? 0 : 120,
+        senders: List.unmodifiable(_remoteSenders),
+      );
+
+  @override
+  Future<({RemoteInputStatus? value, String? error})> remoteInput() async => (value: _remoteStatus(), error: null);
+
+  @override
+  Future<({RemoteInputStatus? value, String? error})> remotePairOpen() async {
+    _remoteCode = '482913';
+    Timer(const Duration(milliseconds: 1200), () {
+      if (_remoteCode == null) return;
+      _remoteCode = null;
+      _remoteSenders
+        ..removeWhere((s) => s.id == '1122334455667788')
+        ..add(const RemoteSender(id: '1122334455667788', name: 'Laptop', connected: true, device: fakeRemoteDevice));
+      if (!_state.devices.any((d) => d.id == fakeRemoteDevice)) {
+        _setDevices([
+          ..._state.devices,
+          const Device(id: fakeRemoteDevice, kind: 'kbm', name: 'Laptop keyboard + mouse', family: 'kbm', connection: 'network'),
+        ]);
+      }
+    });
+    return (value: _remoteStatus(), error: null);
+  }
+
+  @override
+  Future<String?> remotePairClose() async {
+    _remoteCode = null;
+    return null;
+  }
+
+  @override
+  Future<String?> remoteForget(String pc) async {
+    final gone = _remoteSenders.where((s) => s.id == pc).map((s) => s.device).toSet();
+    _remoteSenders.removeWhere((s) => s.id == pc);
+    _setDevices([for (final d in _state.devices) if (!gone.contains(d.id)) d]);
+    return null;
+  }
+
+  @override
+  Future<({RemoteHosts? value, String? error})> remoteFind() async => (
+        value: const RemoteHosts(
+          hosts: [RemoteHost(id: '99aabbccddeeff00', name: 'Living room PC', addr: '192.168.1.20:47800', pairing: true, online: true)],
+          pauseKeys: 'Ctrl+Alt+Backspace',
+        ),
+        error: null,
+      );
+
+  @override
+  Future<String?> remoteSendStart(String target, {String? code}) async {
+    if (target.trim().isEmpty) return 'Pick a PC or type its address.';
+    _sendState = 'sending';
+    return null;
+  }
+
+  @override
+  Future<String?> remoteSendStop() async {
+    _sendState = 'idle';
+    return null;
+  }
+
+  @override
+  Future<RemoteSendStatus> remoteSendStatus() async =>
+      RemoteSendStatus(state: _sendState, host: _sendState == 'idle' ? '' : 'Living room PC', pauseKeys: 'Ctrl+Alt+Backspace');
+
+  @override
+  Future<String?> remoteHostForget(String pc) async => null;
+
+  /// The state with another device list.
+  void _setDevices(List<Device> devices) {
+    final s = _state;
+    _state = DaemonState(devices: devices, seats: s.seats, displays: s.displays, screens: s.screens, layout: s.layout, fpsLimit: s.fpsLimit, stopKeys: s.stopKeys, stopPad: s.stopPad, turnOffPad: s.turnOffPad, frontKeys: s.frontKeys, hideKeys: s.hideKeys, hostControl: s.hostControl, controlKeys: s.controlKeys, showCursors: s.showCursors, onlyInFront: s.onlyInFront, dev: s.dev);
+    notifyListeners();
+  }
+
   final List<Profile> _seatProfiles = List.generate(kMaxSeats, (_) => builtinProfiles().first);
   final Map<String, Profile> _saved = {};
 

@@ -26,6 +26,8 @@ pub enum Connection {
     Usb,
     Wireless,
     Unknown,
+    /// Another PC lends it over the local network (remote input).
+    Network,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

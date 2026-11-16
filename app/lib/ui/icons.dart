@@ -47,9 +47,9 @@ final IconSpec iconMouse = IconSpec(32, [
   'M16 5.5v6.5M10.5 12h11',
 ], const []);
 
-/// The icon for a device: a keyboard, a mouse, both (the shared desktop pair), or a controller.
+/// The icon for a device: a keyboard, a mouse, both (the shared desktop pair, or another PC's), or a controller.
 IconSpec deviceIcon(String id, bool isKbm) =>
-    id.startsWith('kbd:') ? iconKeyboard : id.startsWith('mouse:') ? iconMouse : isKbm ? iconKbm : iconPad;
+    id.startsWith('kbd:net-') ? iconKbm : id.startsWith('kbd:') ? iconKeyboard : id.startsWith('mouse:') ? iconMouse : isKbm ? iconKbm : iconPad;
 
 final IconSpec iconKbm = IconSpec(32, [
   _rect(2.5, 11, 19, 11, 2),
@@ -216,6 +216,11 @@ final IconSpec iconCrosshair = IconSpec(24, [_circle(12, 12, 10), 'M22 12h-4M6 1
 final IconSpec iconDownload = IconSpec(24, ['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'm7 10 5 5 5-5', 'M12 15V3'], const []);
 final IconSpec iconUpload = IconSpec(24, ['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'm17 8-5-5-5 5', 'M12 3v12'], const []);
 final IconSpec iconPlus = IconSpec(24, ['M5 12h14M12 5v14'], const []);
+/// Lucide "laptop": another PC that lends its keyboard, mouse and controllers.
+final IconSpec iconLaptop = IconSpec(24, [
+  'M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2z',
+  'M20.054 15.987H3.946',
+], const []);
 final IconSpec iconTrash = IconSpec(24, ['M3 6h18', 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6', 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2', 'M10 11v6M14 11v6'], const []);
 final IconSpec iconSave = IconSpec(24, ['M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z', 'M17 21v-8H7v8', 'M7 3v5h8'], const []);
 final IconSpec iconUndo = IconSpec(24, ['M3 7v6h6', 'M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13'], const []);

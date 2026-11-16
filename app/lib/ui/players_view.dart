@@ -14,6 +14,7 @@ import 'icons.dart';
 import 'kit.dart';
 import 'shell.dart';
 import 'pair_dialog.dart';
+import 'remote_dialog.dart';
 import 'steam_account_dialog.dart';
 import 'status.dart';
 
@@ -181,6 +182,7 @@ class _DevicesRow extends StatelessWidget {
       children: [
         for (final d in visibleDevices(state)) _DeviceChip(key: ValueKey('device-${d.id}'), device: d, seat: state.seatOfDevice(d.id), breath: breath),
         const PairTile(),
+        const RemoteTile(),
       ],
     );
   }
@@ -196,7 +198,7 @@ class _DeviceChip extends StatelessWidget {
   Widget _body(BuildContext context, {bool hover = false, bool power = false}) {
     final c = context.c;
     final seated = seat != null;
-    final kind = device.isKeyboard ? t('Keyboard') : device.isMouse ? t('Mouse') : null;
+    final kind = device.isRemote ? t('Other PC') : device.isKeyboard ? t('Keyboard') : device.isMouse ? t('Mouse') : null;
     final what = seated ? t('Player {seat_1}', {'seat_1': seat! + 1}) : (device.isKbm ? t('Click to join') : t('Press A to join'));
     final status = kind == null ? what : '$kind · $what';
     final small = txt(context, size: 11.5, color: seated ? c.ink3 : c.accent, height: 1.3);

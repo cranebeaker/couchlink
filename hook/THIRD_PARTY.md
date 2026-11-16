@@ -79,3 +79,13 @@ it through its settings file and its named pipe, and the settings layout it writ
 https://github.com/nefarius/nefcon, release v1.14.0 (`nefcon_v1.14.0.zip`). The virtual screens setup downloads it
 (SHA-256 checked) and runs `nefconw` once to create the display driver's device, then deletes it. Couchlink does not
 ship it. Copyright (c) 2022-2026 Nefarius Software Solutions e.U., MIT License.
+
+## Remote input (`core/crates/couchlink-remote/`, `core/crates/couchlinkd/src/netinput/`)
+
+No third-party code is copied. The design ([`docs/remote-input.md`](../docs/remote-input.md)) was weighed against
+usbip-win2 (BSD-2-Clause), VIIPER (GPL-3.0 server, MIT clients), HIDMaestro (MIT), Input Leap, Barrier and Deskflow
+(GPL-2.0 with an OpenSSL exception), Lan Mouse (GPL-3.0), Sunshine (GPL-3.0) and ViGEmBus (BSD-3-Clause); from the
+GPL projects only ideas were taken (a full held-key state with every packet so no key sticks, a key combination that
+hands the keyboard back). The crypto comes from these crates, linked as Cargo dependencies under their own licences:
+`x25519-dalek` and `curve25519-dalek` (BSD-3-Clause, the Dalek Cryptography authors), `chacha20poly1305`, `hmac` and
+`sha2` (MIT or Apache-2.0, the RustCrypto developers).

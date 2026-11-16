@@ -576,6 +576,50 @@ class DaemonClient extends CouchClient {
   @override
   Future<String?> bluetoothPair(String id) => _cmd('bluetooth_pair', {'id': id});
 
+  @override
+  Future<({RemoteInputStatus? value, String? error})> remoteInput() async {
+    final r = await _request('remote_input', const {});
+    if (r['ok'] != true) return (value: null, error: _errorOf(r));
+    return (value: RemoteInputStatus.fromJson(r), error: null);
+  }
+
+  @override
+  Future<({RemoteInputStatus? value, String? error})> remotePairOpen() async {
+    final r = await _request('remote_pair_open', const {});
+    if (r['ok'] != true) return (value: null, error: _errorOf(r));
+    return remoteInput();
+  }
+
+  @override
+  Future<String?> remotePairClose() => _cmd('remote_pair_close');
+
+  @override
+  Future<String?> remoteForget(String pc) => _cmd('remote_forget', {'pc': pc});
+
+  @override
+  Future<({RemoteHosts? value, String? error})> remoteFind() async {
+    final r = await _request('remote_find', const {});
+    if (r['ok'] != true) return (value: null, error: _errorOf(r));
+    return (value: RemoteHosts.fromJson(r), error: null);
+  }
+
+  @override
+  Future<String?> remoteSendStart(String target, {String? code}) =>
+      _cmd('remote_send_start', {'target': target, if (code != null && code.trim().isNotEmpty) 'code': code.trim()});
+
+  @override
+  Future<String?> remoteSendStop() => _cmd('remote_send_stop');
+
+  @override
+  Future<RemoteSendStatus> remoteSendStatus() async {
+    final r = await _request('remote_send_status', const {});
+    if (r['ok'] != true) return RemoteSendStatus(state: 'failed', error: _errorOf(r));
+    return RemoteSendStatus.fromJson(r);
+  }
+
+  @override
+  Future<String?> remoteHostForget(String pc) => _cmd('remote_host_forget', {'pc': pc});
+
   // ---- controller profiles
 
   static String _errorOf(Map<String, dynamic> r) {

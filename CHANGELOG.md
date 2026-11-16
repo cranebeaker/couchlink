@@ -3,6 +3,14 @@
 What changed in each Couchlink release. Downloads and older notes are on the
 [releases page](https://github.com/cranebeaker/couchlink/releases).
 
+## Unreleased
+
+### New
+
+- **A laptop as one more player.** Another PC on the same network lends its keyboard, mouse and controllers: pair
+  it once with a 6 digit code (Players, Another PC), and "Laptop keyboard + mouse" and its controllers show up as
+  devices that take a seat. No driver on either PC. See `docs/remote-input.md`.
+
 ## 0.1.21
 
 ### Fixed
