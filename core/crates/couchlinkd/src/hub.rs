@@ -902,7 +902,7 @@ impl Hub {
                 Ok(none)
             }
             Command::BluetoothDevices => Ok(self.bluetooth.devices()),
-            Command::BluetoothPair { id } => self.bluetooth.pair(&id).map(|_| none),
+            Command::BluetoothPair { device } => self.bluetooth.pair(&device).map(|_| none),
             Command::CloseSteamAccount { seat } => crate::accounts::close(seat).map(|_| none),
             Command::SetSteamCloseOnEnd { on } => {
                 save_setting("steam_close_on_end", json!(on));

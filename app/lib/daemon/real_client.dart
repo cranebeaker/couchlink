@@ -574,7 +574,7 @@ class DaemonClient extends CouchClient {
   Future<String?> bluetoothScan(bool on) => _cmd('bluetooth_scan', {'on': on});
 
   @override
-  Future<String?> bluetoothPair(String id) => _cmd('bluetooth_pair', {'id': id});
+  Future<String?> bluetoothPair(String id) => _cmd('bluetooth_pair', {'device': id});
 
   @override
   Future<({RemoteInputStatus? value, String? error})> remoteInput() async {

@@ -272,7 +272,8 @@ pub enum Command {
     BluetoothDevices,
     /// Pair with a controller `bluetooth_devices` listed. Replies at once.
     BluetoothPair {
-        id: String,
+        /// The controller's id from `bluetooth_devices` (not `id`: that name is the request's own id).
+        device: String,
     },
     /// Virtual screens: whether the display driver is ready, and its one-time setup (one Windows prompt).
     VirtualScreens,
@@ -508,6 +509,11 @@ mod tests {
         assert_eq!(parse(json!({"id": 14, "cmd": "refresh_catalog"})).cmd, Command::RefreshCatalog);
         assert_eq!(parse(json!({"id": 3, "cmd": "join", "device": "pad:7"})).cmd, Command::Join { device: "pad:7".into() });
         assert_eq!(parse(json!({"id": 4, "cmd": "leave", "seat": 2})).cmd, Command::Leave { seat: 2 });
+        // The controller goes in `device`: an `id` argument would replace the request's own id.
+        assert_eq!(
+            parse(json!({"id": 40, "cmd": "bluetooth_pair", "device": "bt:aa:bb"})),
+            Request { id: 40, cmd: Command::BluetoothPair { device: "bt:aa:bb".into() } }
+        );
         assert_eq!(parse(json!({"id": 5, "cmd": "swap", "a": 0, "b": 3})).cmd, Command::Swap { a: 0, b: 3 });
         assert_eq!(
             parse(json!({"id": 6, "cmd": "assign", "device": "kbm:system", "seat": 1})).cmd,
