@@ -871,7 +871,17 @@ int wmain(int argc, wchar_t** argv) {
         BOOL mk = CreateDirectoryW((dir + L"\\sub").c_str(), nullptr);
         DWORD mkerr = GetLastError();
         DWORD err = 0;
-        bool wrote = AppendTo(dir + L"\\slot1.sav", "save-data\n", false, CREATE_ALWAYS, &err);
+        bool wrote = AppendTo(dir + L"\\slot1.sav.tmp", "save-data\n", false, CREATE_ALWAYS, &err);
+        BOOL moved = wrote && MoveFileExW((dir + L"\\slot1.sav.tmp").c_str(), (dir + L"\\slot1.sav").c_str(), MOVEFILE_REPLACE_EXISTING);
+        DWORD moveerr = GetLastError();
+        bool wrote_w = AppendTo(dir + L"\\slot2.sav.tmp", "save-data-w\n", false, CREATE_ALWAYS, &err);
+        BOOL moved_w = wrote_w && MoveFileW((dir + L"\\slot2.sav.tmp").c_str(), (dir + L"\\slot2.sav").c_str());
+        DWORD move_w_err = GetLastError();
+        bool wrote_r = AppendTo(dir + L"\\slot3.sav", "old-save\n", false, CREATE_ALWAYS, &err);
+        bool wrote_r_tmp = AppendTo(dir + L"\\slot3.sav.tmp", "new-save\n", false, CREATE_ALWAYS, &err);
+        BOOL replaced = wrote_r && wrote_r_tmp && ReplaceFileW((dir + L"\\slot3.sav").c_str(),
+                                     (dir + L"\\slot3.sav.tmp").c_str(), nullptr, 0, nullptr, nullptr);
+        DWORD replaceerr = GetLastError();
         DWORD attrs = GetFileAttributesW((dir + L"\\slot1.sav").c_str());
         std::string names;
         WIN32_FIND_DATAW fd;
@@ -887,7 +897,10 @@ int wmain(int argc, wchar_t** argv) {
             FindClose(f);
         }
         j += ",\"saves\":{\"mkdir_ok\":" + B(mk != FALSE) + ",\"mkdir_error\":" + std::to_string(mkerr) +
-             ",\"write_ok\":" + B(wrote) + ",\"write_error\":" + std::to_string(err) + ",\"attrs_ok\":" + B(attrs != INVALID_FILE_ATTRIBUTES) +
+               ",\"write_ok\":" + B(wrote) + ",\"write_error\":" + std::to_string(err) + ",\"move_ok\":" + B(moved != FALSE) +
+             ",\"move_error\":" + std::to_string(moveerr) + ",\"move_w_ok\":" + B(moved_w != FALSE) +
+             ",\"move_w_error\":" + std::to_string(move_w_err) + ",\"replace_ok\":" + B(replaced != FALSE) +
+             ",\"replace_error\":" + std::to_string(replaceerr) + ",\"attrs_ok\":" + B(attrs != INVALID_FILE_ATTRIBUTES) +
              ",\"listing\":[" + names + "]}";
     }
     if (a.known_docs) {

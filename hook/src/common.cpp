@@ -22,6 +22,8 @@ const char* const kCounterNames[C_COUNT] = {
     "children_hooked",    "children_failed",   "children_skipped",
     "pads_hidden",
     "overlay_opened",
+    "file_moves",         "file_moves_failed",
+    "file_replaces",      "file_replaces_failed",
 };
 
 std::atomic<uint64_t> g_counters[C_COUNT];

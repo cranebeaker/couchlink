@@ -28,6 +28,9 @@ HANDLE(WINAPI* o_FindFirstFileW)(LPCWSTR, LPWIN32_FIND_DATAW) = nullptr;
 HANDLE(WINAPI* o_FindFirstFileExW)(LPCWSTR, FINDEX_INFO_LEVELS, LPVOID, FINDEX_SEARCH_OPS, LPVOID, DWORD) = nullptr;
 BOOL(WINAPI* o_DeleteFileW)(LPCWSTR) = nullptr;
 BOOL(WINAPI* o_RemoveDirectoryW)(LPCWSTR) = nullptr;
+BOOL(WINAPI* o_MoveFileExW)(LPCWSTR, LPCWSTR, DWORD) = nullptr;
+BOOL(WINAPI* o_MoveFileWithProgressW)(LPCWSTR, LPCWSTR, LPPROGRESS_ROUTINE, LPVOID, DWORD) = nullptr;
+BOOL(WINAPI* o_ReplaceFileW)(LPCWSTR, LPCWSTR, LPCWSTR, DWORD, LPVOID, LPVOID) = nullptr;
 HRESULT(WINAPI* o_SHGetKnownFolderPath)(REFKNOWNFOLDERID, DWORD, HANDLE, PWSTR*) = nullptr;
 HRESULT(WINAPI* o_SHGetFolderPathW)(HWND, int, HANDLE, DWORD, LPWSTR) = nullptr;
 
@@ -267,6 +270,80 @@ BOOL WINAPI d_RemoveDirectoryW(LPCWSTR name) {
     return o_RemoveDirectoryW(red ? path.c_str() : name);
 }
 
+BOOL WINAPI d_MoveFileExW(LPCWSTR existing, LPCWSTR target, DWORD flags) {
+    Bump(C_FILE_MOVES);
+    if (Skip(existing) || !g_saves) return o_MoveFileExW(existing, target, flags);
+    std::wstring from, to;
+    bool from_red = Redirect(existing, from);
+    bool to_red = Redirect(target, to);
+    if (to_red) {
+        ReentryGuard guard;
+        EnsureParents(to);
+    }
+    ReentryGuard call_guard;
+    BOOL ok = o_MoveFileExW(from_red ? from.c_str() : existing, to_red ? to.c_str() : target, flags);
+    if (!ok) {
+        DWORD error = GetLastError();
+        Bump(C_FILE_MOVES_FAILED);
+        Note("MoveFileExW failed (" + std::to_string(error) + "): " + Narrow(existing ? existing : L"") +
+             " -> " + Narrow(target ? target : L""));
+        SetLastError(error);
+    }
+    return ok;
+}
+
+BOOL WINAPI d_MoveFileWithProgressW(LPCWSTR existing, LPCWSTR target, LPPROGRESS_ROUTINE progress, LPVOID data, DWORD flags) {
+    Bump(C_FILE_MOVES);
+    if (Skip(existing) || !g_saves) return o_MoveFileWithProgressW(existing, target, progress, data, flags);
+    std::wstring from, to;
+    bool from_red = Redirect(existing, from);
+    bool to_red = Redirect(target, to);
+    if (to_red) {
+        ReentryGuard guard;
+        EnsureParents(to);
+    }
+    ReentryGuard call_guard;
+    BOOL ok = o_MoveFileWithProgressW(from_red ? from.c_str() : existing, to_red ? to.c_str() : target, progress, data, flags);
+    if (!ok) {
+        DWORD error = GetLastError();
+        Bump(C_FILE_MOVES_FAILED);
+        Note("MoveFileWithProgressW failed (" + std::to_string(error) + "): " + Narrow(existing ? existing : L"") +
+             " -> " + Narrow(target ? target : L""));
+        SetLastError(error);
+    }
+    return ok;
+}
+
+BOOL WINAPI d_ReplaceFileW(LPCWSTR replaced, LPCWSTR replacement, LPCWSTR backup, DWORD flags, LPVOID exclude, LPVOID reserved) {
+    Bump(C_FILE_REPLACES);
+    if (Skip(replaced) || !g_saves) return o_ReplaceFileW(replaced, replacement, backup, flags, exclude, reserved);
+    std::wstring replaced_path, replacement_path, backup_path;
+    bool replaced_red = Redirect(replaced, replaced_path);
+    bool replacement_red = Redirect(replacement, replacement_path);
+    bool backup_red = backup && Redirect(backup, backup_path);
+    if (replaced_red) {
+        ReentryGuard guard;
+        EnsureParents(replaced_path);
+    }
+    if (backup_red) {
+        ReentryGuard guard;
+        EnsureParents(backup_path);
+    }
+    ReentryGuard call_guard;
+    BOOL ok = o_ReplaceFileW(replaced_red ? replaced_path.c_str() : replaced,
+                             replacement_red ? replacement_path.c_str() : replacement,
+                             backup_red ? backup_path.c_str() : backup,
+                             flags, exclude, reserved);
+    if (!ok) {
+        DWORD error = GetLastError();
+        Bump(C_FILE_REPLACES_FAILED);
+        Note("ReplaceFileW failed (" + std::to_string(error) + "): " + Narrow(replacement ? replacement : L"") +
+             " -> " + Narrow(replaced ? replaced : L""));
+        SetLastError(error);
+    }
+    return ok;
+}
+
 // The shell checks and creates the real folder with ordinary file calls; those must not be redirected, so the
 // original runs under the guard. The returned string is rewritten afterwards.
 HRESULT WINAPI d_SHGetKnownFolderPath(REFKNOWNFOLDERID id, DWORD flags, HANDLE token, PWSTR* out) {
@@ -349,6 +426,9 @@ void InstallFiles() {
         HK(k, FindFirstFileExW);
         HK(k, DeleteFileW);
         HK(k, RemoveDirectoryW);
+        HK(k, MoveFileExW);
+        HK(k, MoveFileWithProgressW);
+        HK(k, ReplaceFileW);
         HMODULE sh = GetModuleHandleW(L"shell32.dll");
         if (!sh) sh = LoadLibraryW(L"shell32.dll");
         HK(sh, SHGetKnownFolderPath);

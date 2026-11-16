@@ -107,6 +107,10 @@ enum Counter {
     C_CHILDREN_SKIPPED,
     C_PADS_HIDDEN,
     C_OVERLAY_OPENED,
+    C_FILE_MOVES,
+    C_FILE_MOVES_FAILED,
+    C_FILE_REPLACES,
+    C_FILE_REPLACES_FAILED,
     C_COUNT
 };
 void Bump(Counter c, uint64_t n = 1);
