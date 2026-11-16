@@ -1917,7 +1917,8 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+// The seat feed is shared memory that only exists on Windows.
+#[cfg(all(test, windows))]
 mod remote_tests {
     use super::*;
 
