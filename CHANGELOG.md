@@ -3,13 +3,21 @@
 What changed in each Couchlink release. Downloads and older notes are on the
 [releases page](https://github.com/cranebeaker/couchlink/releases).
 
-## Unreleased
+## 0.1.22
 
 ### New
 
 - **A laptop as one more player.** Another PC on the same network lends its keyboard, mouse and controllers: pair
   it once with a 6 digit code (Players, Another PC), and "Laptop keyboard + mouse" and its controllers show up as
   devices that take a seat. No driver on either PC. See `docs/remote-input.md`.
+- **Fallout: New Vegas co-op on nv-rs** (the FNV Co-Op package): a copy of the package per seat, player 1 hosts and
+  the others join on this PC without a join code, and each window reads its seat's controller itself.
+
+### Fixed
+
+- **Saves that a game writes to a temporary file and then moves into place** (Moon Sweepers) now land in each
+  player's own save folder, so they no longer fail or end up half written. Thanks to tloftis on GitHub.
+- **Pairing a Bluetooth controller** from the app did nothing: the request lost its own id on the way.
 
 ## 0.1.21
 
