@@ -18,8 +18,9 @@ use std::sync::Mutex;
 use windows_sys::Win32::Foundation::{LPARAM, LRESULT, POINT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
+use windows_sys::Win32::UI::HiDpi::{SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, DispatchMessageW, GetCursorPos, GetMessageW, GetSystemMetrics, PostThreadMessageW, SetCursorPos, SetWindowsHookExW,
+    CallNextHookEx, DispatchMessageW, GetMessageW, GetPhysicalCursorPos, GetSystemMetrics, PostThreadMessageW, SetCursorPos, SetWindowsHookExW,
     UnhookWindowsHookEx, KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, SM_CXSCREEN, SM_CYSCREEN, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_QUIT,
 };
 
@@ -154,6 +155,11 @@ fn hook_thread() {
     // SAFETY: standard low-level hook setup; the procs only touch the statics above and return quickly.
     unsafe {
         THREAD.store(GetCurrentThreadId(), Ordering::SeqCst);
+        // The hooks run on this thread. A hook's point is in physical pixels; without per-monitor awareness the
+        // pointer reads come back scaled (125% or 150% on most laptops), every move looked like a large jump and the
+        // other PC's cursor sat in a corner. Physical everywhere: the hook, the pointer read and the centring.
+        SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        center();
         let module = GetModuleHandleW(null_mut());
         let kb = SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), module, 0);
         let ms = SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), module, 0);
@@ -224,8 +230,8 @@ fn on_mouse(msg: u32, m: &MSLLHOOKSTRUCT) -> bool {
     let mut guard = state();
     let Some(s) = guard.as_mut() else { return false };
     let mut cur = POINT { x: 0, y: 0 };
-    // SAFETY: out parameter on the stack.
-    unsafe { GetCursorPos(&mut cur) };
+    // SAFETY: out parameter on the stack. Physical, like `m.pt` (see `hook_thread`).
+    unsafe { GetPhysicalCursorPos(&mut cur) };
     if let Some(ev) = mouse_event(msg, m.mouseData, m.pt.x - cur.x, m.pt.y - cur.y) {
         s.held.track(&ev);
         s.events.push(ev);

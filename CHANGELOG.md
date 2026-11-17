@@ -3,6 +3,15 @@
 What changed in each Couchlink release. Downloads and older notes are on the
 [releases page](https://github.com/cranebeaker/couchlink/releases).
 
+## 0.1.23
+
+### Fixed
+
+- **A laptop's mouse did not move the other PC's cursor** (the buttons and keys worked). On a laptop with display
+  scaling (125% or 150%, as most have) every mouse move was read as a large jump, so the player's cursor stuck in a
+  corner of their window. Mouse movement now reads the same pixels the laptop's pointer does. Thanks to ShadySaiyan
+  for the report.
+
 ## 0.1.22
 
 ### New
