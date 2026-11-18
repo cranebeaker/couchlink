@@ -3,6 +3,14 @@
 What changed in each Couchlink release. Downloads and older notes are on the
 [releases page](https://github.com/cranebeaker/couchlink/releases).
 
+## Unreleased
+
+### Added
+
+- **Win+D puts the games down too.** The games sit above every other window, so Win+D left them on screen. While a
+  session runs, Win+D now hides them with the rest of the desktop, and the next Win+D brings them back. Asked for by
+  ShadySaiyan.
+
 ## 0.1.23
 
 ### Fixed

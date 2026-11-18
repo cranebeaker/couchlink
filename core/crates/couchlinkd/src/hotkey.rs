@@ -185,7 +185,42 @@ mod win {
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
         MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, MOD_WIN, RegisterHotKey, UnregisterHotKey,
     };
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetMessageW, MSG, PeekMessageW, PostThreadMessageW, PM_NOREMOVE, WM_APP, WM_HOTKEY};
+    use windows_sys::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+    use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LWIN, VK_RWIN};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        CallNextHookEx, GetMessageW, SetWindowsHookExW, UnhookWindowsHookEx, KBDLLHOOKSTRUCT, MSG, PeekMessageW, PostThreadMessageW, PM_NOREMOVE,
+        WH_KEYBOARD_LL, WM_APP, WM_HOTKEY, WM_KEYDOWN, WM_SYSKEYDOWN,
+    };
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::OnceLock;
+
+    /// Where Win+D is reported (the hub hears it only while a game session runs).
+    static DESKTOP_KEY: OnceLock<UnboundedSender<HubMsg>> = OnceLock::new();
+    /// Whether the last Win+D hid the games, so the next one brings them back.
+    static DESKTOP_HIDDEN: AtomicBool = AtomicBool::new(false);
+    const VK_D: u32 = 0x44;
+    const LLKHF_INJECTED: u32 = 0x10;
+
+    /// Win+D shows the desktop, but the games sit above every other window and stay put. Watching the key (without
+    /// taking it, Windows still does its part) lets the games go down with the rest, and the second press brings them
+    /// back. `RegisterHotKey` cannot do this: Windows keeps Win+D for itself.
+    unsafe extern "system" fn desktop_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+        if code >= 0 && (wparam as u32 == WM_KEYDOWN || wparam as u32 == WM_SYSKEYDOWN) {
+            // SAFETY: for HC_ACTION, lparam points to a KBDLLHOOKSTRUCT for the duration of the call.
+            let k = unsafe { &*(lparam as *const KBDLLHOOKSTRUCT) };
+            // SAFETY: plain key state reads.
+            let win = unsafe { (GetAsyncKeyState(VK_LWIN as i32) | GetAsyncKeyState(VK_RWIN as i32)) as u16 & 0x8000 != 0 };
+            if k.vkCode == VK_D && win && k.flags & LLKHF_INJECTED == 0 {
+                if let Some(tx) = DESKTOP_KEY.get() {
+                    let was_hidden = DESKTOP_HIDDEN.fetch_xor(true, Ordering::Relaxed);
+                    let _ = tx.send(HubMsg::WindowsShortcut(was_hidden));
+                }
+            }
+        }
+        // SAFETY: passes the event on unchanged.
+        unsafe { CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam) }
+    }
 
     const WM_SET: u32 = WM_APP + 1;
 
@@ -212,6 +247,9 @@ mod win {
                     // SAFETY: plain Win32 calls on this thread's own message queue; `msg` is a valid out buffer.
                     unsafe { PeekMessageW(&mut msg, std::ptr::null_mut(), 0, 0, PM_NOREMOVE) }; // makes the queue
                     let _ = id_tx.send(unsafe { GetCurrentThreadId() });
+                    let _ = DESKTOP_KEY.set(tx.clone());
+                    // SAFETY: a low-level hook on this thread, which runs the message loop below.
+                    let desktop_hook = unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(desktop_proc), GetModuleHandleW(std::ptr::null()), 0) };
                     let mut registered = [false; Action::ALL.len()];
                     while unsafe { GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) } > 0 {
                         match msg.message {
@@ -249,6 +287,10 @@ mod win {
                             }
                             _ => {}
                         }
+                    }
+                    if !desktop_hook.is_null() {
+                        // SAFETY: the hook this thread installed.
+                        unsafe { UnhookWindowsHookEx(desktop_hook) };
                     }
                 })
                 .expect("hotkey thread");
