@@ -169,6 +169,11 @@ fn kill_game() {
 
 #[tokio::main]
 async fn main() {
+    // The watcher reads Windows' process list and windows; other systems have nothing to run here.
+    if !cfg!(windows) {
+        println!("SKIP launcher watching is Windows only");
+        return;
+    }
     let mut c = Checks { failed: 0 };
     let testgame = Path::new(env!("CARGO_BIN_EXE_couchlinkd")).with_file_name("testgame.exe");
     if !testgame.is_file() {
