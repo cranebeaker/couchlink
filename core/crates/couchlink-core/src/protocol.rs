@@ -109,6 +109,22 @@ pub enum Command {
         on: bool,
     },
     GetAddLauncherGames,
+    /// The launchers Couchlink watches for games they start (full paths of their programs); `get_watched_launchers`
+    /// answers `{"paths": [...]}`. A game one of them starts is offered to play with Couchlink (`launcher_game`).
+    SetWatchedLaunchers {
+        paths: Vec<String>,
+    },
+    GetWatchedLaunchers,
+    /// The answer to a `launcher_game` event: play it with Couchlink (the copy the launcher started is closed) or leave
+    /// it. `remember` keeps the answer for that game.
+    LauncherGameAnswer {
+        exe: String,
+        run: bool,
+        #[serde(default)]
+        remember: bool,
+    },
+    /// Forget the answers kept for games found through a launcher, so they are asked about again.
+    ClearLauncherChoices,
     /// The virtual display for streaming in the display list (`session::STREAM_DISPLAY_ID`), on or off.
     SetStreamDisplay {
         on: bool,
@@ -447,6 +463,8 @@ pub enum Event {
         restarting: bool,
         error: Option<String>,
     },
+    /// A launcher Couchlink watches started this game: ask whether to play it with Couchlink (`launcher_game_answer`).
+    LauncherGame { exe: String, name: String, launcher: String },
     /// The game session changed (see docs/launch.md).
     Session {
         state: crate::session::SessionState,

@@ -405,6 +405,34 @@ class FakeClient extends CouchClient {
   @override
   Future<bool?> virtualScreensReady() async => _virtualScreens;
 
+  /// Tests: an event as if couchlinkd had sent it.
+  void raise(ClientEvent e) => _events.add(e);
+
+  List<String> watched = [];
+  final List<({String exe, bool run, bool remember})> launcherAnswers = [];
+  int launcherChoicesCleared = 0;
+
+  @override
+  Future<List<String>?> watchedLaunchers() async => List.of(watched);
+
+  @override
+  Future<String?> setWatchedLaunchers(List<String> paths) async {
+    watched = List.of(paths);
+    return null;
+  }
+
+  @override
+  Future<String?> answerLauncherGame(String exe, {required bool run, bool remember = false}) async {
+    launcherAnswers.add((exe: exe, run: run, remember: remember));
+    return null;
+  }
+
+  @override
+  Future<String?> clearLauncherChoices() async {
+    launcherChoicesCleared++;
+    return null;
+  }
+
   bool addLauncherGamesOn = true;
 
   @override

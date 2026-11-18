@@ -9,7 +9,7 @@ import 'locate.dart';
 import 'models.dart';
 import 'profile.dart';
 
-const String appVersion = '0.1.23';
+const String appVersion = '0.1.24';
 
 /// Start of the `log` warning couchlinkd sends when a catalog download fails.
 const String catalogFailurePrefix = 'Game catalog could not be refreshed';
@@ -104,6 +104,23 @@ class DaemonClient extends CouchClient {
 
   @override
   Future<String?> setAddLauncherGames(bool on) => _cmd('set_add_launcher_games', {'on': on});
+
+  @override
+  Future<List<String>?> watchedLaunchers() async {
+    final r = await _request('get_watched_launchers', const {});
+    final p = r['paths'];
+    return r['ok'] == true && p is List ? [for (final e in p) if (e is String) e] : null;
+  }
+
+  @override
+  Future<String?> setWatchedLaunchers(List<String> paths) => _cmd('set_watched_launchers', {'paths': paths});
+
+  @override
+  Future<String?> answerLauncherGame(String exe, {required bool run, bool remember = false}) =>
+      _cmd('launcher_game_answer', {'exe': exe, 'run': run, 'remember': remember});
+
+  @override
+  Future<String?> clearLauncherChoices() => _cmd('clear_launcher_choices');
 
   @override
   Future<String?> setStreamDisplay(bool on) => _cmd('set_stream_display', {'on': on});
@@ -314,6 +331,11 @@ class DaemonClient extends CouchClient {
         _update = UpdateInfo.fromJson(j);
         notifyListeners();
         if (_update!.restarting) onRestartForUpdate?.call();
+      case 'launcher_game':
+        final exe = j['exe'];
+        if (exe is String && exe.isNotEmpty) {
+          _events.add(LauncherGameEvent(exe, j['name'] is String ? j['name'] as String : exe, j['launcher'] is String ? j['launcher'] as String : ''));
+        }
       case 'games_changed':
         // New live recipes arrived after the list this client already has.
         unawaited(listGames());

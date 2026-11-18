@@ -77,3 +77,7 @@ harness = false
 [[test]]
 name = "remote_input"
 harness = false
+
+[[test]]
+name = "launcher_watch"
+harness = false

@@ -217,6 +217,16 @@ abstract class CouchClient extends ChangeNotifier {
   Future<bool?> addLauncherGames();
   Future<String?> setAddLauncherGames(bool on);
 
+  /// `get_watched_launchers` / `set_watched_launchers`: the launchers (full paths of their programs) Couchlink watches
+  /// for games they start. A game one starts comes as a [LauncherGameEvent].
+  Future<List<String>?> watchedLaunchers();
+  Future<String?> setWatchedLaunchers(List<String> paths);
+
+  /// `launcher_game_answer`: play the game a launcher started with Couchlink ([run]) or leave it; [remember] keeps the
+  /// answer for that game. `clear_launcher_choices` forgets every kept answer.
+  Future<String?> answerLauncherGame(String exe, {required bool run, bool remember = false});
+  Future<String?> clearLauncherChoices();
+
   /// `set_stream_display`: the virtual display for streaming (Steam Link to a TV, say) in the display list, on or off.
   Future<String?> setStreamDisplay(bool on);
 

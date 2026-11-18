@@ -55,6 +55,25 @@ fn add_launcher_games() -> bool {
     load_settings()["add_launcher_games"].as_bool().unwrap_or(true)
 }
 
+/// The launchers watched for games they start (full paths), as saved.
+fn watched_launchers() -> Vec<String> {
+    load_settings()["watched_launchers"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect()).unwrap_or_default()
+}
+
+/// The answer kept for a game found through a launcher: "always" or "never".
+fn launcher_choice(exe: &str) -> Option<String> {
+    load_settings()["launcher_choices"][crate::launcher_watch::key(exe)].as_str().map(String::from)
+}
+
+fn keep_launcher_choice(exe: &str, choice: &str) {
+    let mut all = load_settings()["launcher_choices"].clone();
+    if !all.is_object() {
+        all = json!({});
+    }
+    all[crate::launcher_watch::key(exe)] = json!(choice);
+    save_setting("launcher_choices", all);
+}
+
 /// Settings, "Close players' own Steam when a session ends". Off unless turned on.
 fn steam_close_on_end() -> bool {
     load_settings()["steam_close_on_end"].as_bool().unwrap_or(false)
@@ -123,6 +142,8 @@ pub enum HubMsg {
     WindowsShortcut(bool),
     /// The keys that hand every keyboard and mouse to the game under the pointer (and back) were pressed.
     ControlShortcut,
+    /// A launcher Couchlink watches started a game that now shows its window (`launcher_watch.rs`).
+    LauncherGame { pid: u32, exe: String, launcher: String },
     /// `check_update` finished.
     UpdateChecked(Result<Option<crate::update::Available>, String>),
     /// `install_update` finished staging (the updater runs) or failed.
@@ -261,6 +282,8 @@ impl Hub {
         self.check_update_on_start();
         // Other PCs paired before can send again (nothing listens until the first one is paired).
         crate::netinput::receiver::start_if_paired(self.self_tx.clone());
+        crate::launcher_watch::set_watched(watched_launchers());
+        crate::launcher_watch::spawn(self.self_tx.clone());
     }
 
     /// Hand the close-the-games shortcut to the keyboard hotkey and the pad watcher.
@@ -400,6 +423,7 @@ impl Hub {
                         session::request_windows(front);
                     }
                 }
+                HubMsg::LauncherGame { pid, exe, launcher } => self.launcher_game(pid, exe, launcher),
                 HubMsg::ControlShortcut => {
                     if self.session_info.active() {
                         match session::rawkbm::toggle_takeover() {
@@ -942,6 +966,27 @@ impl Hub {
                 Ok(none)
             }
             Command::GetAddLauncherGames => Ok(json!({ "on": add_launcher_games() })),
+            Command::SetWatchedLaunchers { paths } => {
+                let paths: Vec<String> = paths.into_iter().filter(|p| !p.trim().is_empty()).collect();
+                save_setting("watched_launchers", json!(paths));
+                crate::launcher_watch::set_watched(paths);
+                Ok(none)
+            }
+            Command::GetWatchedLaunchers => Ok(json!({ "paths": watched_launchers() })),
+            Command::ClearLauncherChoices => {
+                save_setting("launcher_choices", json!({}));
+                Ok(none)
+            }
+            Command::LauncherGameAnswer { exe, run, remember } => {
+                if remember {
+                    keep_launcher_choice(&exe, if run { "always" } else { "never" });
+                }
+                let pid = crate::launcher_watch::take(&exe);
+                if !run {
+                    return Ok(none);
+                }
+                self.play_launcher_game(&exe, pid)
+            }
             Command::Play { recipe, exe } => {
                 let (id, added) = if add_launcher_games() {
                     self.session.find_or_add_game(recipe.as_deref(), exe.as_deref())?
@@ -1075,6 +1120,45 @@ impl Hub {
     #[cfg(not(windows))]
     fn add_to_steam(&mut self, _: &str) -> Result<serde_json::Value, String> {
         Err("adding to Steam is done on Windows only for now; add it by hand with the launch command".to_string())
+    }
+
+    /// A launcher Couchlink watches started a game: play it, leave it or ask, by what the player kept for it.
+    fn launcher_game(&mut self, pid: u32, exe: String, launcher: String) {
+        if self.session_info.active() {
+            return;
+        }
+        match launcher_choice(&exe).as_deref() {
+            Some("never") => {}
+            Some("always") => {
+                if let Err(e) = self.play_launcher_game(&exe, Some(pid)) {
+                    self.log(LogLevel::Warn, format!("{exe} could not be played with Couchlink: {e}"));
+                }
+            }
+            _ => {
+                crate::launcher_watch::hold(&exe, pid);
+                let name = std::path::Path::new(&exe).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| exe.clone());
+                self.log(LogLevel::Info, format!("{launcher} started {name}; asking whether to play it with Couchlink"));
+                self.broadcast(&Event::LauncherGame { exe, name, launcher });
+            }
+        }
+    }
+
+    /// Closes the copy a launcher started and plays the game through Couchlink.
+    fn play_launcher_game(&mut self, exe: &str, pid: Option<u32>) -> Result<serde_json::Value, String> {
+        let (id, added) = self.session.find_or_add_game(None, Some(exe))?;
+        // The copy the launcher started is only closed when Couchlink can play the game (players on a screen, say).
+        self.session.plan(&self.model.state(), &id, self.model.dev(), &Default::default(), false)?;
+        if let Some(pid) = pid {
+            crate::launcher_watch::close_game(pid);
+            // The copy held its files and its window a moment longer than the process list says.
+            std::thread::sleep(std::time::Duration::from_millis(800));
+        }
+        if added {
+            self.log(LogLevel::Info, format!("a launcher started {id}, added to the Library just now"));
+            self.broadcast(&Event::GamesChanged);
+        }
+        self.log(LogLevel::Info, format!("playing {id} with Couchlink, as the player asked"));
+        self.start_session(&id, &Default::default(), false)
     }
 
     fn start_session(&mut self, recipe: &str, options: &std::collections::BTreeMap<String, String>, plain: bool) -> Result<serde_json::Value, String> {

@@ -78,6 +78,8 @@ class _LaunchersViewState extends State<LaunchersView> {
               const SizedBox(height: 14),
               Panel(radius: 16, padding: const EdgeInsets.all(18), child: _steps(context, game)),
             ],
+            const SizedBox(height: 26),
+            const WatchedLaunchers(),
           ]),
         );
       },
@@ -249,4 +251,139 @@ class _AddLauncherGamesState extends State<_AddLauncherGames> {
       ),
     ]);
   }
+}
+
+/// Launchers Couchlink watches: a game one of them starts is offered to play with Couchlink (a question in the
+/// app, see [LauncherGameEvent]). Any program that starts games can be picked, an emulator front end included.
+class WatchedLaunchers extends StatefulWidget {
+  const WatchedLaunchers({super.key});
+
+  @override
+  State<WatchedLaunchers> createState() => _WatchedLaunchersState();
+}
+
+class _WatchedLaunchersState extends State<WatchedLaunchers> {
+  List<String>? _paths;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final paths = await Scope.of(context).client.watchedLaunchers();
+      if (mounted) setState(() => _paths = paths ?? const []);
+    });
+  }
+
+  Future<void> _save(List<String> paths) async {
+    setState(() => _paths = paths);
+    await runCmd(context, () => Scope.of(context).client.setWatchedLaunchers(paths));
+  }
+
+  Future<void> _add() async {
+    final path = await Scope.of(context).ui.pickLauncher();
+    if (path == null || !mounted) return;
+    final now = _paths ?? const <String>[];
+    if (now.any((p) => p.toLowerCase() == path.toLowerCase())) return;
+    await _save([...now, path]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final paths = _paths ?? const <String>[];
+    String nameOf(String p) => p.substring(p.lastIndexOf(RegExp(r'[\\/]')) + 1);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, key: const ValueKey('watched-launchers'), children: [
+      Text(t('Watch a launcher'), style: txt(context, size: 15, weight: FontWeight.w700, color: c.ink)),
+      const SizedBox(height: 4),
+      Text(
+        t('Pick the program of a launcher, a store or an emulator menu. When it starts a game, Couchlink asks whether to play that game with your players instead.'),
+        style: txt(context, size: 12, color: c.ink3, height: 1.4),
+      ),
+      const SizedBox(height: 12),
+      for (final p in paths)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Panel(
+            radius: 12,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            child: Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(nameOf(p), style: txt(context, size: 13, weight: FontWeight.w600, color: c.ink)),
+                  Text(p, maxLines: 1, overflow: TextOverflow.ellipsis, style: txt(context, size: 11, color: c.ink3)),
+                ]),
+              ),
+              const SizedBox(width: 10),
+              CButton(key: ValueKey('watched-remove-$p'), label: t('Stop watching'), small: true, onTap: () => _save([for (final q in paths) if (q != p) q])),
+            ]),
+          ),
+        ),
+      Row(children: [
+        CButton(key: const ValueKey('watched-add'), label: t('Add a launcher'), small: true, onTap: _add),
+        const SizedBox(width: 8),
+        CButton(
+          key: const ValueKey('watched-forget'),
+          label: t('Ask again about every game'),
+          small: true,
+          onTap: () {
+            final scope = Scope.of(context);
+            runCmd(context, () async {
+              final err = await scope.client.clearLauncherChoices();
+              if (err == null) scope.toaster.show(t('Couchlink will ask again.'));
+              return err;
+            });
+          },
+        ),
+      ]),
+    ]);
+  }
+}
+
+/// The question a watched launcher's game raises: play it with Couchlink, or leave it. Resolves when answered.
+Future<void> askLauncherGame(BuildContext context, LauncherGameEvent e) async {
+  var remember = false;
+  final client = Scope.of(context).client;
+  final toaster = Scope.of(context).toaster;
+  final run = await showDialog<bool>(
+    context: context,
+    builder: (_) => StatefulBuilder(builder: (context, setState) {
+      final c = context.c;
+      return Dialog(
+        backgroundColor: c.window,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: BorderSide(color: c.hairStrong)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Padding(
+            padding: const EdgeInsets.all(22),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(t('Play {name} with Couchlink?', {'name': e.name}), style: txt(context, size: 16, weight: FontWeight.w700, color: c.ink)),
+              const SizedBox(height: 8),
+              Text(
+                t('A launcher you watch started {name}. Couchlink can close that copy and start the game for your players and screens instead.', {'name': e.name}),
+                style: txt(context, size: 13, color: c.ink2, height: 1.4),
+              ),
+              const SizedBox(height: 12),
+              InkWell(
+                key: const ValueKey('launcher-remember'),
+                onTap: () => setState(() => remember = !remember),
+                child: Row(children: [
+                  Checkbox(value: remember, onChanged: (v) => setState(() => remember = v ?? false)),
+                  Expanded(child: Text(t('Remember my answer for this game'), style: txt(context, size: 12.5, color: c.ink2))),
+                ]),
+              ),
+              const SizedBox(height: 10),
+              Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                CButton(key: const ValueKey('launcher-no'), label: t('Leave it'), small: true, onTap: () => Navigator.of(context).pop(false)),
+                const SizedBox(width: 8),
+                CButton(key: const ValueKey('launcher-yes'), label: t('Play with Couchlink'), small: true, primary: true, onTap: () => Navigator.of(context).pop(true)),
+              ]),
+            ]),
+          ),
+        ),
+      );
+    }),
+  );
+  // Closing the question another way leaves the game alone and asks again next time.
+  final err = await client.answerLauncherGame(e.exe, run: run ?? false, remember: run != null && remember);
+  if (err != null) toaster.show(err, error: true);
 }

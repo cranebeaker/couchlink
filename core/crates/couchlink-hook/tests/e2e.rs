@@ -359,6 +359,11 @@ fn two_copies(arch: &str) {
         }
     }
     assert!(sa.counter("names_renamed") >= 5);
+    // --- single-instance checks by window: neither copy finds the other's window although both are up
+    for r in [&ra, &rb] {
+        assert_eq!(r["objects"]["other_copy_window_found"], false, "a copy must not see the other copy's window: {}", r["objects"]);
+    }
+    assert!(sa.counter("findwindow_skipped") + sb.counter("findwindow_skipped") >= 1, "the find calls skipped the other copy's window");
 
     // --- copy on write: each copy wrote through its own link; the base and the other copy stay as they were
     for (r, seat_dir) in [(&ra, &seat_a), (&rb, &seat_b)] {
@@ -413,6 +418,26 @@ fn two_hooked_copies_x86() {
         return;
     }
     two_copies("x86");
+}
+
+/// Two copies without the hook find each other's window, which is what a single-instance check by window class
+/// reads as "already running" (and proves the check in `two_copies` can fail).
+#[test]
+fn control_copies_without_the_hook_find_each_others_window() {
+    if skip_inject() {
+        return;
+    }
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let s = Scratch::new("control-window");
+    let a = start("x64", &s, "w1", &[], None);
+    let b = start("x64", &s, "w2", &[], None);
+    let (ra, rb) = (a.result(), b.result());
+    assert!(
+        ra["objects"]["other_copy_window_found"] == true || rb["objects"]["other_copy_window_found"] == true,
+        "plain copies see each other: {} {}",
+        ra["objects"],
+        rb["objects"]
+    );
 }
 
 /// The same checks without the hook show why it is needed (and prove the assertions above can fail).

@@ -42,6 +42,9 @@ Future<String?> pickGameWithDialog({String? folder, String? confirm}) async {
   return file?.path;
 }
 
+/// Lets the player pick the program of a launcher to watch; its path, or null when cancelled.
+Future<String?> pickLauncherWithDialog() => pickGameWithDialog(confirm: t('Watch this launcher'));
+
 /// Lets the player pick a folder; its path, or null when cancelled.
 typedef PickFolder = Future<String?> Function();
 

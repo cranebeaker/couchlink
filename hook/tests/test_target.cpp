@@ -831,6 +831,21 @@ int wmain(int argc, wchar_t** argv) {
         j += "}";
     }
 
+    // ---- other copies' windows: a single-instance check by window class must not find another copy's window
+    bool other_window = false;
+    {
+        for (int i = 0; i < 25 && !other_window; ++i) {
+            HWND found[3] = {FindWindowW(L"CouchlinkTestTarget", nullptr), FindWindowA("CouchlinkTestTarget", nullptr),
+                             FindWindowExW(nullptr, nullptr, L"CouchlinkTestTarget", nullptr)};
+            for (HWND w : found) {
+                DWORD pid = 0;
+                if (w) GetWindowThreadProcessId(w, &pid);
+                if (pid && pid != GetCurrentProcessId()) other_window = true;
+            }
+            if (!other_window) Pump(100);
+        }
+    }
+
     // ---- single-instance objects
     {
         HANDLE mu = CreateMutexW(nullptr, FALSE, L"TestGameMutex");
@@ -846,7 +861,7 @@ int wmain(int argc, wchar_t** argv) {
              ",\"mutex_reopened\":" + B(open != nullptr) + ",\"mutex_a_created\":" + B(mua != nullptr) +
              ",\"mutex_a_already_exists\":" + B(e2 == ERROR_ALREADY_EXISTS) + ",\"event_created\":" + B(ev != nullptr) +
              ",\"event_already_exists\":" + B(e3 == ERROR_ALREADY_EXISTS) + ",\"semaphore_created\":" + B(sem != nullptr) +
-             ",\"semaphore_already_exists\":" + B(e4 == ERROR_ALREADY_EXISTS) + "}";
+             ",\"semaphore_already_exists\":" + B(e4 == ERROR_ALREADY_EXISTS) + ",\"other_copy_window_found\":" + B(other_window) + "}";
     }
 
     // ---- linked files

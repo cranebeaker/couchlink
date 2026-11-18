@@ -273,6 +273,8 @@ void InstallNames() {
         HK(k, OpenFileMappingA);
     }
     g_features.names = true;
+    // A copy that may run next to others does not see their windows either (single-instance checks by window).
+    InstallFindWindow();
 }
 
 }  // namespace cl

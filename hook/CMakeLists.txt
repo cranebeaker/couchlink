@@ -37,6 +37,7 @@ add_library(hook_core OBJECT
   src/xinput_hook.cpp
   src/focus_hook.cpp
   src/names_hook.cpp
+  src/findwindow_hook.cpp
   src/files_hook.cpp
   src/msg_hook.cpp
   src/kbm_hook.cpp

@@ -15,7 +15,7 @@ namespace {
 
 const char* const kCounterNames[C_COUNT] = {
     "xinput_get_state",   "xinput_set_state", "xinput_other",   "xinput_mapped",  "xinput_blocked", "xinput_feed_reads", "xinput_feed_rumble",
-    "focus_queries",      "activate_swallowed", "windows_subclassed", "names_renamed", "cow_broken",
+    "focus_queries",      "activate_swallowed", "windows_subclassed", "names_renamed", "findwindow_skipped", "cow_broken",
     "cow_failed",         "paths_redirected",
     "kbm_events",         "kbm_key_messages", "kbm_char_messages", "kbm_mouse_messages", "kbm_raw_messages",
     "kbm_real_dropped",   "kbm_state_queries", "kbm_cursor_queries", "kbm_dinput_reads", "kbm_raw_reads",

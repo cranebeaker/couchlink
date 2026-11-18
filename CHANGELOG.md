@@ -3,13 +3,29 @@
 What changed in each Couchlink release. Downloads and older notes are on the
 [releases page](https://github.com/cranebeaker/couchlink/releases).
 
-## Unreleased
+## 0.1.24
 
 ### Added
 
+- **Watch a launcher.** Under Start from other apps, pick the program of any launcher, store or emulator menu. When it
+  starts a game, Couchlink asks whether to play that game with your players instead, closes the copy the launcher
+  started and starts it the Couchlink way. The answer can be kept for that game, and Ask again about every game
+  forgets them. Nothing is closed when the players are not on a screen yet. Asked for by ShadySaiyan.
 - **Win+D puts the games down too.** The games sit above every other window, so Win+D left them on screen. While a
   session runs, Win+D now hides them with the rest of the desktop, and the next Win+D brings them back. Asked for by
   ShadySaiyan.
+
+### Fixed
+
+- **A second copy of a game that looks for its own window.** Many games check for a window of their own before they
+  start and quit when they find one. Copies running next to another copy of the same game no longer see each other's
+  windows. Other programs' windows are found as before. Reported for Devil May Cry 4 Special Edition, which could not
+  open a second copy; that game itself has not been tried here.
+
+### Changed
+
+- The report now says when a game hides or shows the cursor of a player on a keyboard and mouse, and which call did
+  it. A cursor that goes away on a player's screen can be traced to the game's own call.
 
 ## 0.1.23
 

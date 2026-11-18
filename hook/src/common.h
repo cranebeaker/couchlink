@@ -89,6 +89,7 @@ enum Counter {
     C_ACTIVATE_SWALLOWED,
     C_WINDOWS_SUBCLASSED,
     C_NAMES_RENAMED,
+    C_FINDWINDOW_SKIPPED,
     C_COW_BROKEN,
     C_COW_FAILED,
     C_PATH_REDIRECTED,
@@ -139,6 +140,7 @@ void ApplyHooks();
 void InstallXInput();
 void InstallFocus();
 void InstallNames();
+void InstallFindWindow();
 void InstallFiles();
 void InstallMessages();  // GetMessage / PeekMessage / TranslateMessage filters shared by focus and kbm
 void InstallKbm();

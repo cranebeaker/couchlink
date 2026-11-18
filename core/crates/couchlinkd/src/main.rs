@@ -7,6 +7,7 @@ mod crash;
 mod displays;
 mod hotkey;
 mod hub;
+mod launcher_watch;
 mod launchers;
 mod layouts;
 mod update;

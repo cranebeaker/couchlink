@@ -88,9 +88,25 @@ class _ShellState extends State<Shell> {
           final name = scope.client.state?.seats[seat]?.name ?? t('Player {seat_1}', {'seat_1': seat + 1});
           scope.toaster.show(t('{name} joined as Player {seat_1}', {'name': name, 'seat_1': seat + 1}));
         });
+      case LauncherGameEvent():
+        _askLauncher(e);
       case LogEvent(:final level, :final text):
         scope.toaster.show(text, error: level != 'info');
     }
+  }
+
+  final List<LauncherGameEvent> _launcherQuestions = [];
+  bool _asking = false;
+
+  /// One question at a time when a launcher starts several games.
+  Future<void> _askLauncher(LauncherGameEvent e) async {
+    _launcherQuestions.add(e);
+    if (_asking) return;
+    _asking = true;
+    while (_launcherQuestions.isNotEmpty && mounted) {
+      await askLauncherGame(context, _launcherQuestions.removeAt(0));
+    }
+    _asking = false;
   }
 
   @override

@@ -189,6 +189,15 @@ void PublishCursor(HWND anchor) {
     g_kbm->cursor_x = g_s.cx;
     g_kbm->cursor_y = g_s.cy;
     g_kbm->cursor_visible = CursorVisible() ? 1 : 0;
+    // The game hiding and showing the cursor decides whether the fake cursor shows; the log says which call did it, so
+    // a cursor that goes away can be traced to the game's own call.
+    static int last = -1;
+    int now = g_kbm->cursor_visible;
+    if (now != last) {
+        last = now;
+        Note(std::string("fake cursor ") + (now ? "shown" : "hidden") + " (ShowCursor count " + std::to_string(g_s.show_count) +
+             ", SetCursor " + (!g_s.cursor_set ? "never called" : (g_s.hcursor ? "with a cursor" : "with none")) + ")");
+    }
     g_kbm->hook_pid = GetCurrentProcessId();
     (void)anchor;
 }

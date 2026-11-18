@@ -100,4 +100,51 @@ void main() {
     await settle(tester);
     expect(fieldText(tester, 'launch-args'), '--play sworn');
   });
+
+  testWidgets('a launcher can be picked to watch and let go of again', (tester) async {
+    final client = fake();
+    await pumpApp(tester, client, view: AppView.launchers, size: const Size(1400, 1300));
+    await settle(tester);
+    final ui = tester.element(byKey('watched-launchers')).dependOnInheritedWidgetOfExactType<Scope>()!.ui;
+    ui.pickLauncher = () async => r'C:\LaunchBox\LaunchBox.exe';
+    await tester.ensureVisible(byKey('watched-add'));
+    await tester.tap(byKey('watched-add'));
+    await settle(tester);
+    expect(client.watched, [r'C:\LaunchBox\LaunchBox.exe']);
+    expect(find.text('LaunchBox.exe'), findsOneWidget);
+    await tester.tap(byKey(r'watched-remove-C:\LaunchBox\LaunchBox.exe'));
+    await settle(tester);
+    expect(client.watched, isEmpty);
+    await tester.ensureVisible(byKey('watched-forget'));
+    await tester.tap(byKey('watched-forget'));
+    await settle(tester);
+    expect(client.launcherChoicesCleared, 1);
+  });
+
+  testWidgets('a game a watched launcher starts raises a question, and the answer goes to the daemon', (tester) async {
+    final client = fake();
+    await pumpApp(tester, client, view: AppView.launchers, size: const Size(1400, 1100));
+    await settle(tester);
+    client.raise(const LauncherGameEvent(r'D:\Games\Sworn\SWORN.exe', 'SWORN', r'C:\LaunchBox\LaunchBox.exe'));
+    await settle(tester);
+    expect(find.text('Play SWORN with Couchlink?'), findsOneWidget);
+    await tester.tap(byKey('launcher-remember'));
+    await tester.tap(byKey('launcher-yes'));
+    await settle(tester);
+    expect(client.launcherAnswers, [(exe: r'D:\Games\Sworn\SWORN.exe', run: true, remember: true)]);
+    expect(find.text('Play SWORN with Couchlink?'), findsNothing);
+
+    client.raise(const LauncherGameEvent(r'D:\Games\Other\Other.exe', 'Other', ''));
+    await settle(tester);
+    await tester.tap(byKey('launcher-no'));
+    await settle(tester);
+    expect(client.launcherAnswers.last, (exe: r'D:\Games\Other\Other.exe', run: false, remember: false));
+
+    client.raise(const LauncherGameEvent(r'D:\Games\Third\Third.exe', 'Third', ''));
+    await settle(tester);
+    await tester.tap(byKey('launcher-remember'));
+    await tester.tapAt(const Offset(5, 5));
+    await settle(tester);
+    expect(client.launcherAnswers.last, (exe: r'D:\Games\Third\Third.exe', run: false, remember: false), reason: 'closing the question keeps nothing');
+  });
 }

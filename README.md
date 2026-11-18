@@ -52,8 +52,8 @@ way the game already supports: LAN, a co-op mod's server, or Steam. Any game tha
   run full screen still play in split screen.
 - Virtual display (Windows): a screen that exists only while you play on it, to stream to a TV with Steam Link and the
   like.
-- Shortcuts bring every game window to the front or hide them all, and a frame rate limit holds all copies to the same
-  speed.
+- Shortcuts bring every game window to the front or hide them all (Win+D hides them too, and the next Win+D brings them
+  back), and a frame rate limit holds all copies to the same speed.
 
 **Games and Steam**
 - One Steam account is enough: every copy runs under yours, and Steam-only co-op games get a stand-in profile per copy
@@ -74,6 +74,8 @@ way the game already supports: LAN, a co-op mod's server, or Steam. Any game tha
 - `couchlink.exe --play <game>` starts a game with the players and screens set up in Couchlink.
 - Steps and copy buttons for Steam (including Big Picture), Playnite, LaunchBox and desktop shortcuts.
 - A game your launcher starts that Couchlink does not know yet is added on the fly. A switch turns this off.
+- Watch a launcher: pick the program of any launcher, store or emulator menu, and when it starts a game Couchlink
+  asks whether to play that game with your players instead. The answer can be kept per game.
 
 **Under the hood**
 - The input hook loads as a stand-in system DLL the game loads itself (like ReShade), so nothing is injected from

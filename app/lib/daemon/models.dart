@@ -410,6 +410,14 @@ class JoinedEvent extends ClientEvent {
   final String device;
 }
 
+/// A launcher Couchlink watches started [name]: ask whether to play it with Couchlink.
+class LauncherGameEvent extends ClientEvent {
+  const LauncherGameEvent(this.exe, this.name, this.launcher);
+  final String exe;
+  final String name;
+  final String launcher;
+}
+
 class LogEvent extends ClientEvent {
   const LogEvent(this.level, this.text);
   final String level;

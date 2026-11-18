@@ -155,7 +155,9 @@ async fn set_table(info: &DaemonInfo) -> Option<Table> {
     }
     cl.state_where(Duration::from_secs(5), |s| !s["seats"][0].is_null() && !s["seats"][1].is_null()).await?;
     let gs = cl.request(json!({"cmd": "get_state"})).await;
-    let display = gs["state"]["displays"].as_array().and_then(|a| a.first().cloned()).unwrap_or_else(|| {
+    // COUCHLINK_TEST_DISPLAY (a display id such as disp:DISPLAY1) keeps the test windows off the screen someone works on.
+    let wanted = std::env::var("COUCHLINK_TEST_DISPLAY").ok();
+    let display = gs["state"]["displays"].as_array().and_then(|a| a.iter().find(|d| wanted.as_deref().is_some_and(|w| d["id"] == w)).or(a.first()).cloned()).unwrap_or_else(|| {
         json!({"id": "disp:test", "x": 0, "y": 0, "w": 1920, "h": 1080})
     });
     let screens = json!([{"display": display["id"], "on": true, "seats": [0, 1], "regions": [[0.0, 0.0, 0.5, 1.0], [0.5, 0.0, 0.5, 1.0]], "shape": "lr"}]);
