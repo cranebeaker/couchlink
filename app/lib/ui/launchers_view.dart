@@ -359,7 +359,7 @@ Future<void> askLauncherGame(BuildContext context, LauncherGameEvent e) async {
               Text(t('Play {name} with Couchlink?', {'name': e.name}), style: txt(context, size: 16, weight: FontWeight.w700, color: c.ink)),
               const SizedBox(height: 8),
               Text(
-                t('A launcher you watch started {name}. Couchlink can close that copy and start the game for your players and screens instead.', {'name': e.name}),
+                t('A launcher you watch started {name}. Couchlink can set that copy aside and start the game for your players and screens instead; the launcher keeps counting the playtime.', {'name': e.name}),
                 style: txt(context, size: 13, color: c.ink2, height: 1.4),
               ),
               const SizedBox(height: 12),

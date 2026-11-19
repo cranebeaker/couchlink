@@ -164,6 +164,23 @@ LRESULT CALLBACK TestProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     return DefWindowProcW(h, m, w, l);
 }
 
+// A dialog the main window owns, on top of it (what an emulator's update question or menu is): it logs what it gets
+// with a DLG prefix, so a test can tell which window the fake input reached.
+HWND g_dialog = nullptr;
+LRESULT CALLBACK DialogProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    auto pos = [&](const char* name) { Log(std::string("DLG ") + name + " " + Num((short)LOWORD(l)) + "," + Num((short)HIWORD(l))); };
+    switch (m) {
+        case WM_MOUSEMOVE: pos("MM"); break;
+        case WM_LBUTTONDOWN: pos("LD"); break;
+        case WM_LBUTTONUP: pos("LU"); break;
+        case WM_MOUSEWHEEL: Log("DLG WH " + Num((short)HIWORD(w))); break;
+        case WM_KEYDOWN: Log("DLG KD vk=" + Num((long long)w)); break;
+        case WM_CHAR: Log("DLG CH " + Num((long long)w)); break;
+        default: break;
+    }
+    return DefWindowProcW(h, m, w, l);
+}
+
 void Pump(DWORD ms) {
     DWORD end = GetTickCount() + ms;
     MSG msg;
@@ -405,6 +422,24 @@ void RunCommands(const std::wstring& file) {
             res = std::string("unclip=") + (ClipCursor(nullptr) ? "1" : "0");
         } else if (name == L"show" && n >= 2) {
             res = "show=" + std::to_string(ShowCursor(a ? TRUE : FALSE));
+        } else if (name == L"dialog") {
+            // `dialog 1` blocks the main window too, as a modal dialog does.
+            WNDCLASSW dc = {};
+            dc.lpfnWndProc = DialogProc;
+            dc.hInstance = GetModuleHandleW(nullptr);
+            dc.lpszClassName = L"CouchlinkTestDialog";
+            RegisterClassW(&dc);
+            POINT p = {16, 16};
+            ClientToScreen(g_wnd, &p);
+            g_dialog = CreateWindowExW(WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW, dc.lpszClassName, L"dialog", WS_POPUP | WS_VISIBLE, p.x, p.y, 32, 32, g_wnd, nullptr,
+                                       dc.hInstance, nullptr);
+            if (a) EnableWindow(g_wnd, FALSE);
+            res = std::string("dialog=") + (g_dialog ? "1" : "0");
+        } else if (name == L"closedialog") {
+            EnableWindow(g_wnd, TRUE);
+            if (g_dialog) DestroyWindow(g_dialog);
+            g_dialog = nullptr;
+            res = "closedialog";
         } else if (name == L"setcursor0") {
             SetCursor(nullptr);
             res = "setcursor0";

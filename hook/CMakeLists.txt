@@ -38,6 +38,7 @@ add_library(hook_core OBJECT
   src/focus_hook.cpp
   src/names_hook.cpp
   src/findwindow_hook.cpp
+  src/crash_note.cpp
   src/files_hook.cpp
   src/msg_hook.cpp
   src/kbm_hook.cpp

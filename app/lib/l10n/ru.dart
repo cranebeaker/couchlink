@@ -684,7 +684,7 @@ const Map<String, String> ruStrings = {
   'Ask again about every game': 'Спрашивать снова про каждую игру',
   'Couchlink will ask again.': 'Couchlink спросит снова.',
   'Play {name} with Couchlink?': 'Играть в {name} через Couchlink?',
-  'A launcher you watch started {name}. Couchlink can close that copy and start the game for your players and screens instead.': 'Лаунчер, за которым вы следите, запустил {name}. Couchlink может закрыть эту копию и запустить игру для ваших игроков и экранов.',
+  'A launcher you watch started {name}. Couchlink can set that copy aside and start the game for your players and screens instead; the launcher keeps counting the playtime.': 'Лаунчер, за которым вы следите, запустил {name}. Couchlink может отложить эту копию в сторону и запустить игру для ваших игроков и экранов; лаунчер продолжит считать время игры.',
   'Remember my answer for this game': 'Запомнить ответ для этой игры',
   'Leave it': 'Оставить',
   'Play with Couchlink': 'Играть через Couchlink',

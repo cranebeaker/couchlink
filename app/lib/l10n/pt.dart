@@ -673,7 +673,7 @@ const Map<String, String> ptStrings = {
   'Ask again about every game': 'Perguntar de novo sobre cada jogo',
   'Couchlink will ask again.': 'O Couchlink vai perguntar de novo.',
   'Play {name} with Couchlink?': 'Jogar {name} com o Couchlink?',
-  'A launcher you watch started {name}. Couchlink can close that copy and start the game for your players and screens instead.': 'Um launcher que você vigia iniciou {name}. O Couchlink pode fechar essa cópia e iniciar o jogo para os seus jogadores e telas.',
+  'A launcher you watch started {name}. Couchlink can set that copy aside and start the game for your players and screens instead; the launcher keeps counting the playtime.': 'Um launcher que você vigia iniciou {name}. O Couchlink pode deixar essa cópia de lado e iniciar o jogo para os seus jogadores e telas; o launcher continua contando o tempo de jogo.',
   'Remember my answer for this game': 'Lembrar minha resposta para este jogo',
   'Leave it': 'Deixar',
   'Play with Couchlink': 'Jogar com o Couchlink',

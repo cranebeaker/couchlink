@@ -276,15 +276,9 @@ async fn main() {
     let r = cl.request(json!({"cmd": "launcher_game_answer", "exe": exe.clone(), "run": true, "remember": true})).await;
     println!("  answer: {r}");
     c.check("a yes is accepted", r["ok"] == true);
-    let mut gone = false;
-    for _ in 0..40 {
-        if pid != 0 && !pid_alive(pid) {
-            gone = true;
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(250)).await;
-    }
-    c.check("a yes closes the copy the launcher started", gone);
+    // The launcher's copy is put away, not ended: its launcher goes on counting playtime while Couchlink plays.
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    c.check("a yes keeps the launcher's copy alive for its playtime", pid != 0 && pid_alive(pid));
     let mut running = false;
     let end = Instant::now() + Duration::from_secs(40);
     while Instant::now() < end && !running {
@@ -296,6 +290,18 @@ async fn main() {
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
     c.check("and Couchlink plays the game", running);
+    c.check("the launcher's copy still runs while the session does", pid != 0 && pid_alive(pid));
+    // Couchlink's copy starts with what the launcher passed (here the status file), so it reports under its own process id.
+    let mut own_pid = 0u64;
+    for _ in 0..40 {
+        let s = std::fs::read_to_string(games.join("status.json")).unwrap_or_default();
+        own_pid = serde_json::from_str::<serde_json::Value>(&s).ok().and_then(|v| v["pid"].as_u64()).unwrap_or(0);
+        if own_pid != 0 && own_pid != pid as u64 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    c.check("the copy Couchlink started got the launcher's arguments", own_pid != 0 && own_pid != pid as u64);
     let _ = cl.request(json!({"cmd": "stop_session"})).await;
     let end = Instant::now() + Duration::from_secs(40);
     while Instant::now() < end {
@@ -308,6 +314,15 @@ async fn main() {
             }
         }
     }
+    let mut ended = false;
+    for _ in 0..40 {
+        if pid != 0 && !pid_alive(pid) {
+            ended = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    c.check("the launcher's copy ends with the session", ended);
     kill_game();
     tokio::time::sleep(Duration::from_secs(2)).await;
 

@@ -143,7 +143,7 @@ pub enum HubMsg {
     /// The keys that hand every keyboard and mouse to the game under the pointer (and back) were pressed.
     ControlShortcut,
     /// A launcher Couchlink watches started a game that now shows its window (`launcher_watch.rs`).
-    LauncherGame { pid: u32, exe: String, launcher: String },
+    LauncherGame { pid: u32, exe: String, launcher: String, args: String },
     /// `check_update` finished.
     UpdateChecked(Result<Option<crate::update::Available>, String>),
     /// `install_update` finished staging (the updater runs) or failed.
@@ -205,6 +205,10 @@ pub struct Hub {
     session_handle: Option<session::Handle>,
     /// The running game's own controls (recipe `controls`), played by seats that keep the default profile.
     recipe_controls: Option<Profile>,
+    /// The arguments a launcher passed to the game it started (recipe, arguments, the launcher's process), for the session about to start.
+    launch_args: Option<(String, String, u32)>,
+    /// The launcher's own copy of the game, parked while a session plays it; ended with the session.
+    parked_game: Option<u32>,
     /// Saved screen layouts and each game's pinned layout (`layouts.json`).
     layouts: couchlink_core::layouts::Layouts,
 }
@@ -237,6 +241,8 @@ impl Hub {
             session_info: SessionInfo::idle(),
             session_handle: None,
             recipe_controls: None,
+            launch_args: None,
+            parked_game: None,
             layouts: crate::layouts::load(),
             model: {
                 let mut m = Model::new(dev);
@@ -423,7 +429,7 @@ impl Hub {
                         session::request_windows(front);
                     }
                 }
-                HubMsg::LauncherGame { pid, exe, launcher } => self.launcher_game(pid, exe, launcher),
+                HubMsg::LauncherGame { pid, exe, launcher, args } => self.launcher_game(pid, exe, launcher, args),
                 HubMsg::ControlShortcut => {
                     if self.session_info.active() {
                         match session::rawkbm::toggle_takeover() {
@@ -983,6 +989,7 @@ impl Hub {
                 }
                 let pid = crate::launcher_watch::take(&exe);
                 if !run {
+                    // The player left it: the game the launcher started stays as it is.
                     return Ok(none);
                 }
                 self.play_launcher_game(&exe, pid)
@@ -1123,19 +1130,19 @@ impl Hub {
     }
 
     /// A launcher Couchlink watches started a game: play it, leave it or ask, by what the player kept for it.
-    fn launcher_game(&mut self, pid: u32, exe: String, launcher: String) {
+    fn launcher_game(&mut self, pid: u32, exe: String, launcher: String, args: String) {
         if self.session_info.active() {
             return;
         }
         match launcher_choice(&exe).as_deref() {
             Some("never") => {}
             Some("always") => {
-                if let Err(e) = self.play_launcher_game(&exe, Some(pid)) {
+                if let Err(e) = self.play_launcher_game(&exe, Some((pid, args))) {
                     self.log(LogLevel::Warn, format!("{exe} could not be played with Couchlink: {e}"));
                 }
             }
             _ => {
-                crate::launcher_watch::hold(&exe, pid);
+                crate::launcher_watch::hold(&exe, pid, &args);
                 let name = std::path::Path::new(&exe).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| exe.clone());
                 self.log(LogLevel::Info, format!("{launcher} started {name}; asking whether to play it with Couchlink"));
                 self.broadcast(&Event::LauncherGame { exe, name, launcher });
@@ -1144,21 +1151,38 @@ impl Hub {
     }
 
     /// Closes the copy a launcher started and plays the game through Couchlink.
-    fn play_launcher_game(&mut self, exe: &str, pid: Option<u32>) -> Result<serde_json::Value, String> {
+    fn play_launcher_game(&mut self, exe: &str, started: Option<(u32, String)>) -> Result<serde_json::Value, String> {
         let (id, added) = self.session.find_or_add_game(None, Some(exe))?;
-        // The copy the launcher started is only closed when Couchlink can play the game (players on a screen, say).
+        // The copy the launcher started is only put away when Couchlink can play the game (players on a screen, say).
         self.session.plan(&self.model.state(), &id, self.model.dev(), &Default::default(), false)?;
-        if let Some(pid) = pid {
-            crate::launcher_watch::close_game(pid);
-            // The copy held its files and its window a moment longer than the process list says.
-            std::thread::sleep(std::time::Duration::from_millis(800));
+        let mut parked = None;
+        if let Some((pid, args)) = started {
+            // The launcher's copy stops and hides but stays alive, so the launcher goes on counting playtime; it ends
+            // with the session. What the launcher passed (the game's file, for an emulator) starts every copy.
+            crate::launcher_watch::park_game(pid);
+            parked = Some(pid);
+            self.launch_args = Some((id.clone(), args, pid));
+            // The copy held its files a moment longer than the process list says.
+            std::thread::sleep(std::time::Duration::from_millis(400));
         }
         if added {
             self.log(LogLevel::Info, format!("a launcher started {id}, added to the Library just now"));
             self.broadcast(&Event::GamesChanged);
         }
         self.log(LogLevel::Info, format!("playing {id} with Couchlink, as the player asked"));
-        self.start_session(&id, &Default::default(), false)
+        match self.start_session(&id, &Default::default(), false) {
+            Ok(v) => {
+                self.parked_game = parked;
+                Ok(v)
+            }
+            Err(e) => {
+                self.launch_args = None;
+                if let Some(pid) = parked {
+                    crate::launcher_watch::unpark_game(pid);
+                }
+                Err(e)
+            }
+        }
     }
 
     fn start_session(&mut self, recipe: &str, options: &std::collections::BTreeMap<String, String>, plain: bool) -> Result<serde_json::Value, String> {
@@ -1174,7 +1198,16 @@ impl Hub {
             }
             self.log(LogLevel::Info, format!("{recipe} starts with the layout {name:?}"));
         }
-        let plan = self.session.plan(&self.model.state(), recipe, self.model.dev(), options, plain)?;
+        let mut plan = self.session.plan(&self.model.state(), recipe, self.model.dev(), options, plain)?;
+        // A launcher's game starts with what the launcher passed it, and its copies ignore the parked one's windows.
+        if let Some((id, args, pid)) = self.launch_args.take() {
+            if id == recipe {
+                if !args.is_empty() {
+                    plan.recipe.launch.args = args;
+                }
+                plan.recipe.launch.env.insert("COUCHLINK_IGNORE_PIDS".to_string(), pid.to_string());
+            }
+        }
         self.remember_setup();
         let tx = self.self_tx.clone();
         let report: session::Report = std::sync::Arc::new(move |info| {
@@ -1215,6 +1248,14 @@ impl Hub {
         }
         if !info.active() {
             self.session_handle = None;
+            // The game a launcher started ends with the session that played it: the launcher sees it exit.
+            if let Some(pid) = self.parked_game.take() {
+                if info.state == SessionState::Failed {
+                    crate::launcher_watch::unpark_game(pid);
+                } else {
+                    crate::launcher_watch::close_game(pid);
+                }
+            }
             if self.recipe_controls.take().is_some() {
                 self.push_profiles();
             }

@@ -241,6 +241,8 @@ pub fn plan_seats(state: &State, recipe: &Recipe, allow_missing_display: bool) -
     plans.sort_by_key(|p| p.seat);
     let [min, max] = recipe.players;
     let n = plans.len();
+    // One player on a screen always plays: two controllers in one seat make a merged controller for a single-player game.
+    let min = if n == 1 { 1 } else { min };
     if n == 0 {
         return Err("no player is placed on a screen; put players on a screen first".to_string());
     }
@@ -337,6 +339,19 @@ mod tests {
     }
 
     #[test]
+    fn one_player_on_a_screen_plays_a_game_that_wants_two() {
+        // Two controllers in one seat make a merged controller for a single-player game.
+        let st = state(vec![screen(&[0], &[[0.0, 0.0, 1.0, 1.0]])]);
+        let plan = plan_seats(&st, &recipe([2, 4]), false).unwrap();
+        assert_eq!(plan.len(), 1);
+        // Two players on a screen still need the minimum, and more than the maximum still fail.
+        let st = state(vec![screen(&[0, 1], &[[0.0, 0.0, 0.5, 1.0], [0.5, 0.0, 0.5, 1.0]])]);
+        assert!(plan_seats(&st, &recipe([3, 4]), false).is_err());
+        assert!(plan_seats(&st, &recipe([1, 1]), false).is_err());
+        assert!(plan_seats(&state(vec![]), &recipe([2, 4]), false).is_err(), "nobody placed still fails");
+    }
+
+    #[test]
     fn a_copy_plays_the_first_pad_of_each_of_its_players() {
         let devices = ["pad:1", "kbm:system", "pad:2", "pad:7", "pad:8"].map(String::from).to_vec();
         let plan = SeatPlan {
@@ -365,8 +380,11 @@ mod tests {
     #[test]
     fn plans_are_refused_with_a_reason() {
         let one = state(vec![screen(&[0], &[[0.0, 0.0, 1.0, 1.0]])]);
-        assert!(plan_seats(&one, &recipe([2, 4]), false).unwrap_err().contains("needs 2 to 4 players"));
-        assert!(plan_seats(&one, &recipe([2, 2]), false).unwrap_err().contains("needs 2 players"));
+        // One player always plays (two controllers in one seat make a merged controller); two or more still need the minimum.
+        assert!(plan_seats(&one, &recipe([2, 4]), false).is_ok());
+        let two = state(vec![screen(&[0, 1], &[[0.0, 0.0, 0.5, 1.0], [0.5, 0.0, 0.5, 1.0]])]);
+        assert!(plan_seats(&two, &recipe([3, 4]), false).unwrap_err().contains("needs 3 to 4 players"));
+        assert!(plan_seats(&two, &recipe([3, 3]), false).unwrap_err().contains("needs 3 players"));
         assert!(plan_seats(&state(vec![]), &recipe([1, 4]), false).unwrap_err().contains("no player"));
         let mut off = screen(&[0], &[[0.0, 0.0, 1.0, 1.0]]);
         off.display = "disp:9".into();

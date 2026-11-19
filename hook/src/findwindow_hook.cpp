@@ -28,13 +28,48 @@ std::wstring ExeOf(DWORD pid) {
     return out;
 }
 
-// True for a window of another process that runs the same program as this one (another copy of the game).
+std::wstring BaseName(const std::wstring& path) {
+    size_t i = path.find_last_of(L"\/");
+    return i == std::wstring::npos ? path : path.substr(i + 1);
+}
+
+// Process ids the session set aside (a launcher's own copy of the game, parked while the copies play): COUCHLINK_IGNORE_PIDS.
+bool IsIgnoredPid(DWORD pid) {
+    static const std::wstring list = [] {
+        wchar_t buf[256];
+        DWORD n = GetEnvironmentVariableW(L"COUCHLINK_IGNORE_PIDS", buf, 256);
+        return n && n < 256 ? std::wstring(buf, n) : std::wstring();
+    }();
+    for (size_t at = 0; at < list.size();) {
+        size_t end = list.find_first_of(L",;", at);
+        if (end == std::wstring::npos) end = list.size();
+        if (_wtoi(list.substr(at, end - at).c_str()) == static_cast<int>(pid)) return true;
+        at = end + 1;
+    }
+    return false;
+}
+
+// True when the process runs under Couchlink too (its hook marks the process with an event).
+bool IsCouchlinkCopy(DWORD pid) {
+    wchar_t name[96];
+    wsprintfW(name, L"Local\couchlink-hook-active-%lu", pid);
+    HANDLE h = OpenEventW(SYNCHRONIZE, FALSE, name);
+    if (!h) return false;
+    CloseHandle(h);
+    return true;
+}
+
+// True for a window of another copy of this game: a process Couchlink set aside, or one that runs a program of the same
+// name (from its own folder, or the same one) under Couchlink.
 bool IsOtherCopy(HWND w) {
     static const std::wstring own = ExeOf(GetCurrentProcessId());
     DWORD pid = 0;
     GetWindowThreadProcessId(w, &pid);
     if (!pid || pid == GetCurrentProcessId() || own.empty()) return false;
-    return _wcsicmp(ExeOf(pid).c_str(), own.c_str()) == 0;
+    if (IsIgnoredPid(pid)) return true;
+    std::wstring other = ExeOf(pid);
+    if (_wcsicmp(other.c_str(), own.c_str()) == 0) return true;
+    return _wcsicmp(BaseName(other).c_str(), BaseName(own).c_str()) == 0 && IsCouchlinkCopy(pid);
 }
 
 template <class Find, class Str>

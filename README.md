@@ -75,7 +75,8 @@ way the game already supports: LAN, a co-op mod's server, or Steam. Any game tha
 - Steps and copy buttons for Steam (including Big Picture), Playnite, LaunchBox and desktop shortcuts.
 - A game your launcher starts that Couchlink does not know yet is added on the fly. A switch turns this off.
 - Watch a launcher: pick the program of any launcher, store or emulator menu, and when it starts a game Couchlink
-  asks whether to play that game with your players instead. The answer can be kept per game.
+  asks whether to play that game with your players instead, with the same arguments (an emulator's game file). The
+  launcher's own copy is set aside, not closed, so it keeps counting playtime. The answer can be kept per game.
 
 **Under the hood**
 - The input hook loads as a stand-in system DLL the game loads itself (like ReShade), so nothing is injected from

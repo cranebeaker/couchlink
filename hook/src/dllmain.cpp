@@ -266,6 +266,7 @@ std::string ApplyConfig(const Json& c) {
     if (s != MH_OK && s != MH_ERROR_ALREADY_INITIALIZED) return Fail(std::string("MinHook init: ") + MH_StatusToString(s));
     InstallXInput();
     InstallFocus();
+    InstallCrashNotes();
     InstallNames();
     InstallFiles();
     InstallKbm();

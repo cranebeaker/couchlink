@@ -3,6 +3,33 @@
 What changed in each Couchlink release. Downloads and older notes are on the
 [releases page](https://github.com/cranebeaker/couchlink/releases).
 
+## 0.1.25
+
+### Added
+
+- **One player on a screen is enough.** A game that wants two or more players now starts with a single player placed,
+  so two controllers in one seat make a merged controller for a single-player game. Asked for by ShadySaiyan.
+
+### Fixed
+
+- **A game started from a watched launcher opened an empty emulator.** Couchlink restarted the program without what the
+  launcher had passed it, so PCSX2 and Dolphin opened with no game. Couchlink now starts every copy with the same
+  arguments the launcher used (the game's file).
+- **The launcher stopped counting playtime.** The launcher's own copy is no longer closed: it is stopped and hidden
+  while Couchlink plays, and ends with the session, so the launcher counts the whole session as playtime.
+- **Emulator dialogs and menus could not be used.** A dialog or menu on top of the emulator's window (PCSX2 and
+  Dolphin's update question, menus, settings) now gets a player's mouse under the pointer and keys, instead of the
+  blocked main window. Escape and Enter reach the dialog too.
+- **A second copy of a game from its own folder.** The window check added in 0.1.24 only recognised copies that run
+  from the same folder; copies from Couchlink's own folders are now recognised too, and the launcher's parked copy is
+  left out of the check.
+
+### Changed
+
+- When a copy of a game crashes, the report and the game's log now say where (the program or library and the place in
+  it), so a game that closes by itself a moment after it starts leaves something to work from. Reported for Devil May
+  Cry 4 Special Edition's second copy, which still needs that report.
+
 ## 0.1.24
 
 ### Added

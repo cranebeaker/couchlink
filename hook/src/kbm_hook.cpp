@@ -15,6 +15,7 @@
 // ring instead of ProtoInput's pipe.
 #include <algorithm>
 #include <cstring>
+#include <cwchar>
 #include <deque>
 
 #include "kbm_internal.h"
@@ -202,11 +203,70 @@ void PublishCursor(HWND anchor) {
     (void)anchor;
 }
 
+// A window of this process that sits on top of the main window: a dialog or a popup menu the main window owns (the
+// emulators' Qt dialogs and menus). With `at`, the topmost one under that screen point; without it, the topmost
+// enabled one (the one a keyboard belongs to while the main window waits for it).
+struct OwnedCtx {
+    HWND anchor;
+    DWORD pid;
+    const POINT* at;
+    HWND found;
+};
+
+bool OwnedBy(HWND w, HWND anchor) {
+    for (int i = 0; i < 4; ++i) {
+        w = GetWindow(w, GW_OWNER);
+        if (!w) return false;
+        if (w == anchor) return true;
+    }
+    return false;
+}
+
+BOOL CALLBACK EnumOwned(HWND w, LPARAM l) {
+    OwnedCtx& c = *reinterpret_cast<OwnedCtx*>(l);
+    if (w == c.anchor || !IsWindowVisible(w)) return TRUE;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(w, &pid);
+    if (pid != c.pid) return TRUE;
+    if (GetWindowLongW(w, GWL_EXSTYLE) & WS_EX_TRANSPARENT) return TRUE;
+    if (!OwnedBy(w, c.anchor)) {
+        wchar_t cls[32] = {};
+        GetClassNameW(w, cls, 32);
+        if (wcsncmp(cls, L"Qt", 2) != 0 || !(GetWindowLongW(w, GWL_STYLE) & WS_POPUP)) return TRUE;
+    }
+    RECT r;
+    if (!GetWindowRect(w, &r) || r.right <= r.left || r.bottom <= r.top) return TRUE;
+    if (c.at ? !PtInRect(&r, *c.at) : !IsWindowEnabled(w)) return TRUE;
+    c.found = w;
+    return FALSE;  // EnumWindows goes from the top of the stack down
+}
+
+HWND OwnedOnTop(HWND anchor, const POINT* at) {
+    if (!anchor) return nullptr;
+    OwnedCtx c = {anchor, GetCurrentProcessId(), at, nullptr};
+    EnumWindows(EnumOwned, reinterpret_cast<LPARAM>(&c));
+    return c.found;
+}
+
+// The window the keyboard belongs to: the main window, or a dialog on top of it while the main window is blocked.
+HWND KeyWindow(HWND anchor) {
+    if (!anchor || IsWindowEnabled(anchor)) return anchor;
+    HWND top = OwnedOnTop(anchor, nullptr);
+    return top ? top : anchor;
+}
+
 // Window under the fake cursor (a child window when there is one) with the point in its client coordinates.
 HWND MouseTarget(HWND anchor, POINT& client) {
     client = {g_s.cx, g_s.cy};
     HWND target = anchor;
     if (!anchor) return nullptr;
+    POINT screen = client;
+    ClientToScreen(anchor, &screen);
+    if (HWND top = OwnedOnTop(anchor, &screen)) {
+        target = top;
+        client = screen;
+        ScreenToClient(top, &client);
+    }
     for (int depth = 0; depth < 4; ++depth) {
         HWND child = ChildWindowFromPointEx(target, client, CWP_SKIPINVISIBLE | CWP_SKIPDISABLED | CWP_SKIPTRANSPARENT);
         if (!child || child == target) break;
@@ -364,6 +424,7 @@ void OnKey(const KbmEvent& e, Batch& b, HWND anchor) {
         PostRaw(b, ri, g_s.reg_kbd, anchor);
     }
     if (!anchor || (g_s.reg_kbd.on && g_s.reg_kbd.nolegacy)) return;
+    HWND kw = KeyWindow(anchor);
 
     bool alt = g_s.down[VK_MENU] != 0;
     bool sys = alt || vk == VK_F10;
@@ -371,26 +432,26 @@ void OnKey(const KbmEvent& e, Batch& b, HWND anchor) {
     uint32_t l = 1u | (static_cast<uint32_t>(scan & 0xFF) << 16) | (e0 ? 1u << 24 : 0) | ((alt && sys) ? 1u << 29 : 0) |
                  ((was_down || up) ? 1u << 30 : 0) | (up ? 1u << 31 : 0);
     WPARAM w = GenericVk(vk);
-    b.posts.push_back({anchor, msg, w, static_cast<LPARAM>(l | static_cast<uint32_t>(kSigKey))});
+    b.posts.push_back({kw, msg, w, static_cast<LPARAM>(l | static_cast<uint32_t>(kSigKey))});
     Bump(C_KBM_KEY_MSGS);
     if (up) return;
-    FakeKey fk = {anchor, msg, w, static_cast<LPARAM>(l), GetTickCount64()};
+    FakeKey fk = {kw, msg, w, static_cast<LPARAM>(l), GetTickCount64()};
     g_s.fake_keys.push_back(fk);
     while (g_s.fake_keys.size() > 32) g_s.fake_keys.pop_front();
 
     // WM_CHAR from the layout of the window's thread and the fake key state.
     BYTE keys[256];
     FillKeyBytes(keys);
-    HKL layout = GetKeyboardLayout(GetWindowThreadProcessId(anchor, nullptr));
+    HKL layout = GetKeyboardLayout(GetWindowThreadProcessId(kw, nullptr));
     wchar_t buf[8] = {};
     int n = ToUnicodeEx(GenericVk(vk), scan & 0xFF, keys, buf, 8, 0x4, layout);
     uint32_t chl = (l & ~(1u << 31)) | (was_down ? 1u << 30 : 0);
     if (n < 0) {
-        b.posts.push_back({anchor, static_cast<UINT>(alt ? WM_SYSDEADCHAR : WM_DEADCHAR), static_cast<WPARAM>(buf[0]), static_cast<LPARAM>(chl | static_cast<uint32_t>(kSigKey))});
+        b.posts.push_back({kw, static_cast<UINT>(alt ? WM_SYSDEADCHAR : WM_DEADCHAR), static_cast<WPARAM>(buf[0]), static_cast<LPARAM>(chl | static_cast<uint32_t>(kSigKey))});
         Bump(C_KBM_CHAR_MSGS);
     } else {
         for (int i = 0; i < n; ++i) {
-            b.posts.push_back({anchor, static_cast<UINT>(alt ? WM_SYSCHAR : WM_CHAR), static_cast<WPARAM>(buf[i]), static_cast<LPARAM>(chl | static_cast<uint32_t>(kSigKey))});
+            b.posts.push_back({kw, static_cast<UINT>(alt ? WM_SYSCHAR : WM_CHAR), static_cast<WPARAM>(buf[i]), static_cast<LPARAM>(chl | static_cast<uint32_t>(kSigKey))});
             Bump(C_KBM_CHAR_MSGS);
         }
     }
@@ -466,9 +527,10 @@ void OnMouse(const KbmEvent& e, Batch& b, HWND anchor) {
         short delta = static_cast<short>(e.b);
         if (!h) g_s.di_dz += delta;
         if (!h && g_s.di_mouse_on) QueueDi(g_s.di_mouse, 8, static_cast<uint32_t>(static_cast<int32_t>(delta)));
-        HWND wnd = anchor;
+        POINT s = ScreenPos(anchor);
+        HWND wnd = anchor ? OwnedOnTop(anchor, &s) : nullptr;  // a dialog or menu under the pointer takes the wheel
+        if (!wnd) wnd = anchor;
         if (legacy && wnd) {
-            POINT s = ScreenPos(anchor);
             WPARAM w = MAKEWPARAM(MouseKeys() | kSigMouse, static_cast<WORD>(delta));
             b.posts.push_back({wnd, static_cast<UINT>(h ? WM_MOUSEHWHEEL : WM_MOUSEWHEEL), w, MAKELPARAM(static_cast<short>(s.x), static_cast<short>(s.y))});
             Bump(C_KBM_MOUSE_MSGS);

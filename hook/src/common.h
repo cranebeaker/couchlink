@@ -141,6 +141,7 @@ void InstallXInput();
 void InstallFocus();
 void InstallNames();
 void InstallFindWindow();
+void InstallCrashNotes();
 void InstallFiles();
 void InstallMessages();  // GetMessage / PeekMessage / TranslateMessage filters shared by focus and kbm
 void InstallKbm();

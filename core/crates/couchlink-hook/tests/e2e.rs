@@ -956,6 +956,51 @@ fn kbm_feed_drives_two_copies_x86() {
     kbm_two_copies("x86");
 }
 
+/// A dialog the main window owns (an emulator's update question or a menu) takes the fake mouse under the pointer and the
+/// fake keys while the main window waits for it; the main window gets both again when the dialog is gone.
+fn kbm_dialog_on_top(arch: &str) {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let s = Scratch::new(&format!("kbm-dialog-{arch}"));
+    let mut f = KbmFeed::create(&kbm_section(&format!("{arch}-dialog"))).unwrap();
+    let mut a = kbm_start(arch, &s, "a", f.name(), |_| {}, &[]);
+    let r = a.say("dialog 1");
+    assert!(r["commands"].as_array().unwrap().iter().any(|c| c == "dialog=1"), "{}", r["commands"]);
+    // The pointer is in the middle of the window, which the dialog covers: it gets the move, the click and the keys.
+    f.push_mouse(0, 1, 0, 0, 0);
+    let r = a.wait_log("DLG MM 17,16");
+    assert!(!log_has(&r, "MM 33,32"), "the blocked main window got the move: {:?}", log_of(&r));
+    f.push_mouse(0, 0, 0, mouse_flags::LEFT_DOWN, 0);
+    a.wait_log("DLG LD 17,16");
+    f.push_mouse(0, 0, 0, mouse_flags::LEFT_UP, 0);
+    f.push_key(0, vkc::A, sc::A, 0);
+    let r = a.wait_log("DLG KD vk=65");
+    assert!(!log_has(&r, "KD vk=65") && !log_has(&r, "LD 33,32"), "the main window got what the dialog should: {:?}", log_of(&r));
+    f.push_key(0, vkc::A, sc::A, key_flags::BREAK);
+    // The dialog is gone: the main window has the mouse and keys again.
+    a.say("closedialog");
+    f.push_mouse(0, 1, 0, 0, 0);
+    a.wait_log("MM 34,32");
+    f.push_key(0, vkc::B, sc::B, 0);
+    a.wait_log("KD vk=66");
+    assert_eq!(a.copy.finish(), 0);
+}
+
+#[test]
+fn kbm_dialog_on_top_gets_the_input_x64() {
+    if skip_inject() {
+        return;
+    }
+    kbm_dialog_on_top("x64");
+}
+
+#[test]
+fn kbm_dialog_on_top_gets_the_input_x86() {
+    if skip_inject() {
+        return;
+    }
+    kbm_dialog_on_top("x86");
+}
+
 /// Without the hook the same posted messages arrive: the test would notice if the filter did nothing.
 #[test]
 fn kbm_control_copy_sees_posted_input() {

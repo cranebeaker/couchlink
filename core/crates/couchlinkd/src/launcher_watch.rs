@@ -25,8 +25,8 @@ pub struct Proc {
 /// The launchers to watch (full paths of their exe files), as the hub keeps them.
 static WATCHED: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-/// Games found and waiting for the player's answer: exe path to process id.
-static PENDING: Mutex<Option<HashMap<String, u32>>> = Mutex::new(None);
+/// Games found and waiting for the player's answer: exe path to the process id and the arguments it started with.
+static PENDING: Mutex<Option<HashMap<String, (u32, String)>>> = Mutex::new(None);
 
 pub fn set_watched(paths: Vec<String>) {
     *WATCHED.lock().unwrap_or_else(|e| e.into_inner()) = paths;
@@ -37,13 +37,24 @@ pub fn watched() -> Vec<String> {
 }
 
 /// Remembers the process of a game the player is being asked about.
-pub fn hold(exe: &str, pid: u32) {
-    PENDING.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(key(exe), pid);
+pub fn hold(exe: &str, pid: u32, args: &str) {
+    PENDING.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(key(exe), (pid, args.to_string()));
 }
 
-/// The process held for `exe`, taken out of the waiting list.
-pub fn take(exe: &str) -> Option<u32> {
+/// The process (and its arguments) held for `exe`, taken out of the waiting list.
+pub fn take(exe: &str) -> Option<(u32, String)> {
     PENDING.lock().unwrap_or_else(|e| e.into_inner()).as_mut().and_then(|m| m.remove(&key(exe)))
+}
+
+/// The arguments of a command line: everything after the program (quoted or not).
+pub fn args_of(cmdline: &str) -> String {
+    let s = cmdline.trim_start();
+    let rest = if let Some(q) = s.strip_prefix('"') {
+        q.find('"').map_or("", |i| &q[i + 1..])
+    } else {
+        s.find(char::is_whitespace).map_or("", |i| &s[i..])
+    };
+    rest.trim().to_string()
 }
 
 /// A path as it is compared: lower case, one kind of slash.
@@ -141,6 +152,146 @@ mod win {
         out
     }
 
+    type NtQuery = unsafe extern "system" fn(isize, u32, *mut u8, u32, *mut u32) -> i32;
+
+    fn ntdll_query() -> Option<NtQuery> {
+        use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
+        let name: Vec<u16> = "ntdll.dll\0".encode_utf16().collect();
+        // SAFETY: ntdll is always loaded; the symbol has the signature NtQuery names.
+        unsafe {
+            let m = GetModuleHandleW(name.as_ptr());
+            if m.is_null() {
+                return None;
+            }
+            GetProcAddress(m, b"NtQueryInformationProcess\0".as_ptr()).map(|f| std::mem::transmute::<_, NtQuery>(f))
+        }
+    }
+
+    fn read_mem(h: windows_sys::Win32::Foundation::HANDLE, at: usize, buf: &mut [u8]) -> bool {
+        use windows_sys::Win32::System::Diagnostics::Debug::ReadProcessMemory;
+        let mut got = 0usize;
+        // SAFETY: reads into a buffer of the length passed.
+        unsafe { ReadProcessMemory(h, at as *const _, buf.as_mut_ptr() as *mut _, buf.len(), &mut got) != 0 && got == buf.len() }
+    }
+
+    /// The command line a program was started with (its own PEB), 64-bit and 32-bit programs alike.
+    pub fn command_line(pid: u32) -> Option<String> {
+        use windows_sys::Win32::System::Threading::{PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
+        let query = ntdll_query()?;
+        // SAFETY: a read handle closed at the end; every read is bounds-checked by length.
+        unsafe {
+            let h = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid);
+            if h.is_null() {
+                return None;
+            }
+            let out = (|| {
+                // The 32-bit PEB first (a program running under WOW64 keeps its command line there).
+                let mut peb32: usize = 0;
+                let mut len = 0u32;
+                query(h as isize, 26, &mut peb32 as *mut usize as *mut u8, std::mem::size_of::<usize>() as u32, &mut len);
+                let (cmd_len, cmd_ptr) = if peb32 != 0 {
+                    let mut params = [0u8; 4];
+                    if !read_mem(h, peb32 + 0x10, &mut params) {
+                        return None;
+                    }
+                    let params = u32::from_le_bytes(params) as usize;
+                    let mut us = [0u8; 8];
+                    if !read_mem(h, params + 0x40, &mut us) {
+                        return None;
+                    }
+                    (u16::from_le_bytes([us[0], us[1]]) as usize, u32::from_le_bytes([us[4], us[5], us[6], us[7]]) as usize)
+                } else {
+                    // PROCESS_BASIC_INFORMATION: PebBaseAddress is the second pointer.
+                    let mut pbi = [0usize; 6];
+                    if query(h as isize, 0, pbi.as_mut_ptr() as *mut u8, std::mem::size_of_val(&pbi) as u32, &mut len) != 0 {
+                        return None;
+                    }
+                    let mut params = [0u8; 8];
+                    if !read_mem(h, pbi[1] + 0x20, &mut params) {
+                        return None;
+                    }
+                    let params = usize::from_le_bytes(params);
+                    let mut us = [0u8; 16];
+                    if !read_mem(h, params + 0x70, &mut us) {
+                        return None;
+                    }
+                    (u16::from_le_bytes([us[0], us[1]]) as usize, usize::from_le_bytes([us[8], us[9], us[10], us[11], us[12], us[13], us[14], us[15]]))
+                };
+                if cmd_len == 0 || cmd_len > 64 * 1024 || cmd_ptr == 0 {
+                    return None;
+                }
+                let mut raw = vec![0u8; cmd_len];
+                if !read_mem(h, cmd_ptr, &mut raw) {
+                    return None;
+                }
+                let wide: Vec<u16> = raw.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+                Some(String::from_utf16_lossy(&wide))
+            })();
+            CloseHandle(h);
+            out
+        }
+    }
+
+    /// Windows of a program that are on screen.
+    fn visible_windows(pid: u32) -> Vec<HWND> {
+        struct Ctx {
+            pid: u32,
+            found: Vec<HWND>,
+        }
+        unsafe extern "system" fn each(hwnd: HWND, lparam: LPARAM) -> i32 {
+            // SAFETY: lparam is the Ctx passed below.
+            let ctx = unsafe { &mut *(lparam as *mut Ctx) };
+            let mut owner = 0u32;
+            // SAFETY: plain window queries.
+            unsafe { GetWindowThreadProcessId(hwnd, &mut owner) };
+            if owner == ctx.pid && unsafe { IsWindowVisible(hwnd) } != 0 {
+                ctx.found.push(hwnd);
+            }
+            1
+        }
+        let mut ctx = Ctx { pid, found: Vec::new() };
+        // SAFETY: the callback only reads ctx for the length of the call.
+        unsafe { EnumWindows(Some(each), &mut ctx as *mut Ctx as LPARAM) };
+        ctx.found
+    }
+
+    fn nt_process_call(pid: u32, name: &[u8]) {
+        use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
+        use windows_sys::Win32::System::Threading::PROCESS_SUSPEND_RESUME;
+        let dll: Vec<u16> = "ntdll.dll\0".encode_utf16().collect();
+        // SAFETY: NtSuspendProcess/NtResumeProcess take a process handle and return a status.
+        unsafe {
+            let m = GetModuleHandleW(dll.as_ptr());
+            if m.is_null() {
+                return;
+            }
+            let Some(f) = GetProcAddress(m, name.as_ptr()) else { return };
+            let f: unsafe extern "system" fn(isize) -> i32 = std::mem::transmute(f);
+            let h = OpenProcess(PROCESS_SUSPEND_RESUME, 0, pid);
+            if !h.is_null() {
+                f(h as isize);
+                CloseHandle(h);
+            }
+        }
+    }
+
+    /// Puts a game away without ending it: its windows go off screen and the program stops where it is. Its launcher
+    /// still sees it running, so the launcher keeps counting the playtime.
+    pub fn park(pid: u32) {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindowAsync, SW_HIDE};
+        for w in visible_windows(pid) {
+            // SAFETY: an asynchronous hide; the game is not stopped yet, so it can take the message.
+            unsafe { ShowWindowAsync(w, SW_HIDE) };
+        }
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        nt_process_call(pid, b"NtSuspendProcess\0");
+    }
+
+    /// Runs a parked game again (its windows come back by themselves when they are shown).
+    pub fn unpark(pid: u32) {
+        nt_process_call(pid, b"NtResumeProcess\0");
+    }
+
     fn exe_path(pid: u32) -> String {
         // SAFETY: a query handle, closed at once; the buffer is as long as the length passed.
         unsafe {
@@ -203,6 +354,33 @@ mod win {
     }
 }
 
+/// The arguments a program was started with (what a launcher passed to an emulator: the game's file).
+pub fn start_args(pid: u32) -> String {
+    #[cfg(windows)]
+    return win::command_line(pid).map(|c| args_of(&c)).unwrap_or_default();
+    #[cfg(not(windows))]
+    {
+        let _ = pid;
+        String::new()
+    }
+}
+
+/// Puts the copy a launcher started away: stopped and hidden, not ended, so the launcher goes on counting playtime.
+pub fn park_game(pid: u32) {
+    #[cfg(windows)]
+    win::park(pid);
+    #[cfg(not(windows))]
+    let _ = pid;
+}
+
+/// Brings a parked game back (the session that was to play it did not start).
+pub fn unpark_game(pid: u32) {
+    #[cfg(windows)]
+    win::unpark(pid);
+    #[cfg(not(windows))]
+    let _ = pid;
+}
+
 /// Ends the copy a launcher started (and what it started).
 pub fn close_game(pid: u32) {
     #[cfg(windows)]
@@ -245,7 +423,8 @@ pub fn spawn(tx: UnboundedSender<HubMsg>) {
                             done.push(*pid);
                         } else if windows.contains(pid) {
                             let launcher = launcher_of(p, &procs, &list);
-                            let _ = tx.send(HubMsg::LauncherGame { pid: *pid, exe: p.path.clone(), launcher });
+                            let args = start_args(*pid);
+                            let _ = tx.send(HubMsg::LauncherGame { pid: *pid, exe: p.path.clone(), launcher, args });
                             done.push(*pid);
                         }
                     }
@@ -287,6 +466,26 @@ mod tests {
     }
 
     const LAUNCHER: &str = r"C:\LaunchBox\LaunchBox.exe";
+
+    #[test]
+    fn the_arguments_are_what_follows_the_program() {
+        assert_eq!(args_of(r#""C:\Emu\pcsx2.exe" "E:\ps2\Game (USA).iso" -fullscreen"#), r#""E:\ps2\Game (USA).iso" -fullscreen"#);
+        assert_eq!(args_of(r"C:\Emu\pcsx2.exe --batch game.iso"), "--batch game.iso");
+        assert_eq!(args_of(r#""C:\Emu\pcsx2.exe""#), "");
+        assert_eq!(args_of(""), "");
+    }
+
+    /// The command line of a running program is read back, as a launcher passed it (a 32-bit and a 64-bit program alike).
+    #[cfg(windows)]
+    #[test]
+    fn the_arguments_of_a_running_program_are_read() {
+        for exe in [r"C:\Windows\System32\PING.EXE", r"C:\Windows\SysWOW64\PING.EXE"] {
+            let mut child = std::process::Command::new(exe).args(["-n", "30", "127.0.0.1"]).stdout(std::process::Stdio::null()).spawn().unwrap();
+            let args = start_args(child.id());
+            let _ = child.kill();
+            assert_eq!(args, "-n 30 127.0.0.1", "{exe}");
+        }
+    }
 
     #[test]
     fn a_game_under_a_launcher_is_found_once() {
@@ -359,8 +558,8 @@ mod tests {
 
     #[test]
     fn found_games_wait_for_their_answer() {
-        hold(r"D:\Games\A\A.exe", 77);
-        assert_eq!(take("d:/games/a/a.exe"), Some(77), "found again whatever the spelling");
+        hold(r"D:\Games\A\A.exe", 77, "x.iso");
+        assert_eq!(take("d:/games/a/a.exe"), Some((77, "x.iso".to_string())), "found again whatever the spelling");
         assert_eq!(take(r"D:\Games\A\A.exe"), None, "taken once");
     }
 }
