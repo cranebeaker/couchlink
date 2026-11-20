@@ -844,6 +844,13 @@ fn kbm_two_copies(arch: &str) {
     assert!(ra["state"]["async_a"].as_i64().unwrap() < 0, "GetAsyncKeyState sees A down");
     assert!(ra["state"]["keyboard_state_a"].as_i64().unwrap() & 0x80 != 0, "GetKeyboardState sees A down");
 
+    // The pointer-left notices Windows makes for the real pointer never reach the copy (the control below shows they would).
+    fa.push_mouse(0, 1, 0, 0, 0);
+    let rl = a.wait_log("MM 33,32");
+    assert!(!log_has(&rl, "MLEAVE"), "a pointer-left notice reached the copy: {:?}", log_of(&rl));
+    fa.push_mouse(0, -1, 0, 0, 0);
+    a.wait_log("MM 32,32");
+
     // Real input (posted without the signature) never reached either copy; the control below shows it would.
     for r in [&ra] {
         for banned in ["KD vk=90", "KU vk=90", "CH 122", "MM 5,6", "LD 7,8", "WH 120"] {
@@ -985,6 +992,30 @@ fn kbm_dialog_on_top(arch: &str) {
     assert_eq!(a.copy.finish(), 0);
 }
 
+/// A crash leaves a note with where it happened (the program and the place in it), in the status and the game's log.
+#[test]
+fn a_crash_is_noted_with_its_place() {
+    if skip_inject() {
+        return;
+    }
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let s = Scratch::new("kbm-crash");
+    let f = KbmFeed::create(&kbm_section("crash")).unwrap();
+    let mut a = kbm_start("x64", &s, "a", f.name(), |_| {}, &[]);
+    a.say("crash");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut notes = Vec::new();
+    while Instant::now() < deadline {
+        notes = a.copy.status().notes.clone();
+        if notes.iter().any(|n| n.contains("access violation writing 0x10")) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert!(notes.iter().any(|n| n.contains("access violation writing 0x10") && n.contains("test_target.exe+0x")), "{notes:?}");
+    assert_eq!(a.copy.finish(), 0);
+}
+
 #[test]
 fn kbm_dialog_on_top_gets_the_input_x64() {
     if skip_inject() {
@@ -1011,7 +1042,7 @@ fn kbm_control_copy_sees_posted_input() {
     let s = Scratch::new("kbm-control");
     let c = start("x64", &s, "c", &["--kbm".into(), "--xinput".into(), "none".into(), "--inject-real".into()], None);
     let r = c.wait_until("injected messages", |v| log_has(v, "INJECTED") && log_has(v, "WH 120"));
-    for want in ["KD vk=90", "CH 122", "MM 5,6", "LD 7,8"] {
+    for want in ["KD vk=90", "CH 122", "MM 5,6", "LD 7,8", "MLEAVE"] {
         assert!(log_has(&r, want), "control copy missed `{want}`: {:?}", log_of(&r));
     }
     assert_eq!(c.finish(), 0);

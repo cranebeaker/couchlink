@@ -107,6 +107,52 @@ impl PadState {
     }
 }
 
+impl PadState {
+    /// Several controllers as one: buttons together, the larger trigger, and for each stick whichever is pushed further.
+    pub fn merge(states: &[PadState]) -> PadState {
+        let mut out = PadState::default();
+        let pick = |a: (i16, i16), b: (i16, i16)| {
+            let mag = |s: (i16, i16)| (s.0 as i64).pow(2) + (s.1 as i64).pow(2);
+            if mag(b) > mag(a) { b } else { a }
+        };
+        let (mut l, mut r) = ((0i16, 0i16), (0i16, 0i16));
+        for s in states {
+            out.buttons |= s.buttons;
+            out.lt = out.lt.max(s.lt);
+            out.rt = out.rt.max(s.rt);
+            l = pick(l, (s.lx, s.ly));
+            r = pick(r, (s.rx, s.ry));
+        }
+        (out.lx, out.ly) = l;
+        (out.rx, out.ry) = r;
+        out
+    }
+}
+
+/// Several controllers' samples as one sample (see [`PadState::merge`]); one sample stays as it is.
+pub fn merge_samples(samples: &[&InputSample]) -> InputSample {
+    if let [only] = samples {
+        return (*only).clone();
+    }
+    let mut out = InputSample::neutral();
+    let pick = |a: (f32, f32), b: (f32, f32)| if b.0 * b.0 + b.1 * b.1 > a.0 * a.0 + a.1 * a.1 { b } else { a };
+    let (mut l, mut r) = ((0.0f32, 0.0f32), (0.0f32, 0.0f32));
+    for s in samples {
+        for b in &s.buttons {
+            if !out.buttons.contains(b) {
+                out.buttons.push(*b);
+            }
+        }
+        out.lt = out.lt.max(s.lt);
+        out.rt = out.rt.max(s.rt);
+        l = pick(l, (s.lx, s.ly));
+        r = pick(r, (s.rx, s.ry));
+    }
+    (out.lx, out.ly) = l;
+    (out.rx, out.ry) = r;
+    out
+}
+
 /// True while any game copy is fed, so the SDL thread knows to keep publishing pad state.
 pub fn active() -> bool {
     !registry().entries.is_empty()
@@ -119,7 +165,10 @@ pub fn feed_name(session: impl Display, seat: u32) -> String {
 
 struct Entry {
     id: u64,
-    device: String,
+    /// The seat's controllers: more than one plays as a single merged controller.
+    devices: Vec<String>,
+    /// The last sample of each of the seat's controllers.
+    samples: HashMap<String, InputSample>,
     feed: Feed,
     /// The seat whose profile the feed plays (none: the pad as it is).
     seat: Option<usize>,
@@ -242,6 +291,17 @@ pub fn feed_device(devices: &[String]) -> Option<&str> {
     devices.iter().map(String::as_str).find(|d| d.starts_with("pad:"))
 }
 
+/// Every `pad:<id>` in a seat's device list: all of them play the seat's game as one merged controller.
+pub fn feed_devices(devices: &[String]) -> Vec<String> {
+    devices.iter().filter(|d| d.starts_with("pad:")).cloned().collect()
+}
+
+/// The merged state of the seat's controllers that have published one.
+fn latest_of(latest: &HashMap<String, PadState>, devices: &[String]) -> Option<PadState> {
+    let states: Vec<PadState> = devices.iter().filter_map(|d| latest.get(d).copied()).collect();
+    if states.is_empty() { None } else { Some(PadState::merge(&states)) }
+}
+
 /// Creates the section `name` for a seat and wires it to the seat's pad. Errors when the seat has no pad or the
 /// section cannot be created; the launcher then starts the copy without a feed.
 pub fn attach(name: &str, devices: &[String]) -> Result<FeedGuard, String> {
@@ -258,23 +318,23 @@ pub fn attach_shared(name: &str, devices: &[String], share_with: Option<&str>) -
 pub fn attach_for_seat(name: &str, devices: &[String], seat: Option<usize>, kbm: Option<&str>, share_with: Option<&str>) -> Result<FeedGuard, String> {
     // A player's copy gets a feed without a controller too, shown as unplugged, so a controller given to the player
     // while the copy runs reaches it (`reassign`).
-    let device = match (feed_device(devices), seat) {
-        (Some(d), _) => d,
-        (None, Some(_)) => "",
-        (None, None) => return Err("the seat has no controller".to_string()),
-    };
+    let pads = feed_devices(devices);
+    if pads.is_empty() && seat.is_none() {
+        return Err("the seat has no controller".to_string());
+    }
     let mut feed = Feed::create_shared(name, share_with).map_err(|e| format!("cannot create the pad feed: {e}"))?;
     let mut reg = registry();
-    match reg.latest.get(device) {
+    match latest_of(&reg.latest, &pads) {
         Some(state) => feed.write_state(&state.feed_state()),
-        None if device.is_empty() => feed.set_connected(false),
+        None if pads.is_empty() => feed.set_connected(false),
         None => {}
     }
     reg.next_id += 1;
     let id = reg.next_id;
     reg.entries.push(Entry {
         id,
-        device: device.to_string(),
+        devices: pads,
+        samples: HashMap::new(),
         feed,
         seat,
         state: ProcState::new(),
@@ -293,11 +353,13 @@ pub fn publish(device_id: &str, state: PadState) {
     if reg.latest.get(device_id) != Some(&state) {
         reg.latest.insert(device_id.to_string(), state);
     }
-    for e in reg.entries.iter_mut().filter(|e| e.device == device_id) {
+    let Registry { entries, latest, .. } = &mut *reg;
+    for e in entries.iter_mut().filter(|e| e.devices.iter().any(|d| d == device_id)) {
         if !e.feed.is_connected() {
             e.feed.set_connected(true);
         }
-        e.feed.write_state(&state.feed_state());
+        let merged = latest_of(latest, &e.devices).unwrap_or(state);
+        e.feed.write_state(&merged.feed_state());
     }
 }
 
@@ -311,7 +373,13 @@ pub fn publish_sample(device_id: &str, sample: &InputSample) {
     }
     let Registry { entries, profiles, .. } = &mut *reg;
     let mut kbm: Vec<(String, Vec<super::rawkbm::Input>)> = Vec::new();
-    for e in entries.iter_mut().filter(|e| e.device == device_id) {
+    for e in entries.iter_mut().filter(|e| e.devices.iter().any(|d| d == device_id)) {
+        // A seat with several controllers plays them as one: the latest sample of each, merged.
+        e.samples.insert(device_id.to_string(), sample.clone());
+        let mut ids: Vec<&String> = e.samples.keys().collect();
+        ids.sort();
+        let merged = merge_samples(&ids.iter().filter_map(|k| e.samples.get(*k)).collect::<Vec<_>>());
+        let sample = &merged;
         let profile = e.seat.and_then(|s| profiles.get(s));
         let state = match profile {
             Some(p) => {
@@ -349,15 +417,16 @@ pub fn reassign(seats: &[Vec<String>]) {
     let Registry { entries, latest, .. } = &mut *reg;
     for e in entries.iter_mut() {
         let Some(seat) = e.seat else { continue };
-        let now = seats.get(seat).and_then(|d| feed_device(d)).unwrap_or("");
-        if e.device == now {
+        let now = seats.get(seat).map(|d| feed_devices(d)).unwrap_or_default();
+        if e.devices == now {
             continue;
         }
-        e.device = now.to_string();
+        e.devices = now;
+        e.samples.clear();
         e.state = ProcState::new();
         e.keys.clear();
         e.mouse.clear();
-        match latest.get(now) {
+        match latest_of(latest, &e.devices) {
             Some(state) => {
                 e.feed.set_connected(true);
                 e.feed.write_state(&state.feed_state());
@@ -371,8 +440,14 @@ pub fn reassign(seats: &[Vec<String>]) {
 pub fn disconnect(device_id: &str) {
     let mut reg = registry();
     reg.latest.remove(device_id);
-    for e in reg.entries.iter_mut().filter(|e| e.device == device_id) {
-        e.feed.set_connected(false);
+    let Registry { entries, latest, .. } = &mut *reg;
+    for e in entries.iter_mut().filter(|e| e.devices.iter().any(|d| d == device_id)) {
+        e.samples.remove(device_id);
+        // The seat's other controllers go on playing; the feed shows unplugged when none is left.
+        match latest_of(latest, &e.devices) {
+            Some(state) => e.feed.write_state(&state.feed_state()),
+            None => e.feed.set_connected(false),
+        }
     }
 }
 
@@ -381,7 +456,7 @@ pub fn disconnect(device_id: &str) {
 pub fn take_rumble(device_id: &str) -> Option<(u16, u16)> {
     let mut reg = registry();
     let mut out = None;
-    for e in reg.entries.iter_mut().filter(|e| e.device == device_id) {
+    for e in reg.entries.iter_mut().filter(|e| e.devices.iter().any(|d| d == device_id)) {
         if let Some(r) = e.feed.take_rumble() {
             out = Some(r);
         }
@@ -569,10 +644,10 @@ mod tests {
         let _g = attach_for_seat(&name, &["kbm:system".to_string()], Some(1), None, None).unwrap();
         let pressed = PadState::from_sdl(&[Button::South], 0, 0, 0, 0, 0, 0);
         publish("pad:reassign-77", pressed);
-        let device = |reg: &Registry| reg.entries.iter().find(|e| e.seat == Some(1)).map(|e| e.device.clone());
-        assert_eq!(device(&registry()).as_deref(), Some(""));
+        let device = |reg: &Registry| reg.entries.iter().find(|e| e.seat == Some(1)).map(|e| e.devices.clone());
+        assert_eq!(device(&registry()), Some(vec![]));
         reassign(&[vec![], vec!["pad:reassign-77".to_string()]]);
-        assert_eq!(device(&registry()).as_deref(), Some("pad:reassign-77"), "the controller moved to player 2 feeds their copy");
+        assert_eq!(device(&registry()), Some(vec!["pad:reassign-77".to_string()]), "the controller moved to player 2 feeds their copy");
         {
             let reg = registry();
             let e = reg.entries.iter().find(|e| e.seat == Some(1)).unwrap();
@@ -581,6 +656,49 @@ mod tests {
         reassign(&[vec!["pad:reassign-77".to_string()], vec![]]);
         let reg = registry();
         let e = reg.entries.iter().find(|e| e.seat == Some(1)).unwrap();
-        assert!(e.device.is_empty() && !e.feed.is_connected(), "taken away again: unplugged for player 2");
+        assert!(e.devices.is_empty() && !e.feed.is_connected(), "taken away again: unplugged for player 2");
+    }
+
+    #[test]
+    fn two_controllers_in_one_seat_play_as_one() {
+        let a = PadState::from_sdl(&[Button::South], 30000, 0, 0, 0, 0, 0);
+        let b = PadState::from_sdl(&[Button::East, Button::DpadUp], 1000, 0, 0, -20000, 0, 32767);
+        let m = PadState::merge(&[a, b]);
+        assert_eq!(m.buttons, xb::A | xb::B | xb::DPAD_UP, "buttons of both");
+        assert_eq!(m.lx, 30000, "the stick pushed further wins");
+        assert_eq!(m.ry, 20000, "and the other stick comes from the other pad");
+        assert_eq!((m.lt, m.rt), (0, 255), "the larger trigger");
+        assert_eq!(PadState::merge(&[a]), a);
+        let sa = InputSample { lx: 0.2, buttons: vec![Button::South], ..InputSample::neutral() };
+        let sb = InputSample { lx: -0.9, lt: 1.0, buttons: vec![Button::South, Button::West], ..InputSample::neutral() };
+        let s = merge_samples(&[&sa, &sb]);
+        assert_eq!((s.lx, s.lt), (-0.9, 1.0));
+        assert_eq!(s.buttons, vec![Button::South, Button::West], "no button twice");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn both_controllers_of_a_seat_reach_its_copy_and_one_going_away_leaves_the_other() {
+        let _lock = profiles_lock();
+        set_profiles(&[]);
+        let name = format!("Local\\couchlink-pad-test-merge-{}", std::process::id());
+        let devices = ["pad:merge-a".to_string(), "kbm:system".to_string(), "pad:merge-b".to_string()];
+        let _g = attach_for_seat(&name, &devices, Some(0), None, None).unwrap();
+        let first = InputSample { buttons: vec![Button::South], ..InputSample::neutral() };
+        let second = InputSample { buttons: vec![Button::East], rt: 1.0, ..InputSample::neutral() };
+        publish_sample("pad:merge-a", &first);
+        publish_sample("pad:merge-b", &second);
+        {
+            let reg = registry();
+            let e = reg.entries.iter().find(|e| e.devices.len() == 2 && e.devices[0] == "pad:merge-a").unwrap();
+            let s = e.feed.read_state().0;
+            assert_eq!(s.buttons, xb::A | xb::B, "the game sees both controllers' buttons");
+            assert_eq!(s.rt, 255);
+        }
+        disconnect("pad:merge-a");
+        let reg = registry();
+        let e = reg.entries.iter().find(|e| e.devices.len() == 2 && e.devices[0] == "pad:merge-a").unwrap();
+        assert!(e.feed.is_connected(), "one controller going away leaves the other");
+        assert_eq!(e.feed.read_state().0.buttons, xb::B);
     }
 }

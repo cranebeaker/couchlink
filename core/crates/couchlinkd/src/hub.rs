@@ -1172,6 +1172,10 @@ impl Hub {
         self.log(LogLevel::Info, format!("playing {id} with Couchlink, as the player asked"));
         match self.start_session(&id, &Default::default(), false) {
             Ok(v) => {
+                // The parked copy never runs again: it lets go of its files and names now, before the copies need them.
+                if let Some(pid) = parked {
+                    crate::launcher_watch::release_game(pid);
+                }
                 self.parked_game = parked;
                 Ok(v)
             }
@@ -1250,11 +1254,8 @@ impl Hub {
             self.session_handle = None;
             // The game a launcher started ends with the session that played it: the launcher sees it exit.
             if let Some(pid) = self.parked_game.take() {
-                if info.state == SessionState::Failed {
-                    crate::launcher_watch::unpark_game(pid);
-                } else {
-                    crate::launcher_watch::close_game(pid);
-                }
+                // Nothing of the launcher's copy is left to bring back (it let go of everything): it ends with the session.
+                crate::launcher_watch::close_game(pid);
             }
             if self.recipe_controls.take().is_some() {
                 self.push_profiles();

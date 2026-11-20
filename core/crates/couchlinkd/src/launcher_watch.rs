@@ -287,6 +287,72 @@ mod win {
         nt_process_call(pid, b"NtSuspendProcess\0");
     }
 
+    /// Closes every handle a parked game holds: its files, its named locks and its ports. The game never runs again (it
+    /// ends with the session), and the copies Couchlink starts then find nothing of the launcher's copy in their way (an
+    /// emulator's save file open in it, a name a single-instance check looks for).
+    pub fn release_handles(pid: u32) {
+        use windows_sys::Win32::Foundation::{DuplicateHandle, DUPLICATE_CLOSE_SOURCE};
+        use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
+        use windows_sys::Win32::System::Threading::{GetCurrentProcess, PROCESS_DUP_HANDLE};
+        type NtQuerySystem = unsafe extern "system" fn(u32, *mut u8, u32, *mut u32) -> i32;
+        let dll: Vec<u16> = "ntdll.dll\0".encode_utf16().collect();
+        // SAFETY: NtQuerySystemInformation(SystemExtendedHandleInformation) fills a buffer of the length passed; the
+        // entries are read inside that length; each handle is duplicated into this process with the source closed.
+        unsafe {
+            let m = GetModuleHandleW(dll.as_ptr());
+            if m.is_null() {
+                return;
+            }
+            let Some(f) = GetProcAddress(m, b"NtQuerySystemInformation\0".as_ptr()) else { return };
+            let query: NtQuerySystem = std::mem::transmute(f);
+            let mut buf: Vec<u8> = vec![0; 1 << 20];
+            loop {
+                let mut need = 0u32;
+                let st = query(64, buf.as_mut_ptr(), buf.len() as u32, &mut need);
+                if st == 0 {
+                    break;
+                }
+                // STATUS_INFO_LENGTH_MISMATCH: more handles than the buffer holds; ask again with room to spare.
+                if st as u32 == 0xC000_0004 && buf.len() < (256 << 20) {
+                    let grow = (need as usize + (1 << 20)).max(buf.len() * 2);
+                    buf = vec![0; grow];
+                    continue;
+                }
+                return;
+            }
+            let count = usize::from_le_bytes(buf[0..8].try_into().unwrap());
+            let proc = OpenProcess(PROCESS_DUP_HANDLE, 0, pid);
+            if proc.is_null() {
+                return;
+            }
+            // SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX: object, process id, handle value (8 bytes each), then 16 bytes more.
+            const ENTRY: usize = 40;
+            let mut closed = 0usize;
+            for i in 0..count {
+                let at = 16 + i * ENTRY;
+                if at + ENTRY > buf.len() {
+                    break;
+                }
+                let owner = usize::from_le_bytes(buf[at + 8..at + 16].try_into().unwrap());
+                if owner != pid as usize {
+                    continue;
+                }
+                let value = usize::from_le_bytes(buf[at + 16..at + 24].try_into().unwrap());
+                let mut mine = std::ptr::null_mut();
+                if DuplicateHandle(proc, value as _, GetCurrentProcess(), &mut mine, 0, 0, DUPLICATE_CLOSE_SOURCE) != 0 && !mine.is_null() {
+                    CloseHandle(mine);
+                    closed += 1;
+                } else if std::env::var_os("COUCHLINK_DEBUG_RELEASE").is_some() {
+                    eprintln!("release: handle {value:#x} not closed, error {}", windows_sys::Win32::Foundation::GetLastError());
+                }
+            }
+            if std::env::var_os("COUCHLINK_DEBUG_RELEASE").is_some() {
+                eprintln!("release: {closed} of {count} handles of the system closed for {pid}");
+            }
+            CloseHandle(proc);
+        }
+    }
+
     /// Runs a parked game again (its windows come back by themselves when they are shown).
     pub fn unpark(pid: u32) {
         nt_process_call(pid, b"NtResumeProcess\0");
@@ -369,6 +435,14 @@ pub fn start_args(pid: u32) -> String {
 pub fn park_game(pid: u32) {
     #[cfg(windows)]
     win::park(pid);
+    #[cfg(not(windows))]
+    let _ = pid;
+}
+
+/// Lets go of everything a parked game holds open (files, names, ports). Only for a game that is not to run again.
+pub fn release_game(pid: u32) {
+    #[cfg(windows)]
+    win::release_handles(pid);
     #[cfg(not(windows))]
     let _ = pid;
 }
@@ -473,6 +547,31 @@ mod tests {
         assert_eq!(args_of(r"C:\Emu\pcsx2.exe --batch game.iso"), "--batch game.iso");
         assert_eq!(args_of(r#""C:\Emu\pcsx2.exe""#), "");
         assert_eq!(args_of(""), "");
+    }
+
+    /// A parked program lets go of its files: one a program holds open exclusively can be opened and removed again.
+    #[cfg(windows)]
+    #[test]
+    fn a_parked_program_lets_go_of_its_files() {
+        let file = std::env::temp_dir().join(format!("couchlinkd-park-{}.lock", std::process::id()));
+        let script = format!("$f=[IO.File]::Open('{}','OpenOrCreate','ReadWrite','None'); Start-Sleep 60", file.display());
+        let mut child = std::process::Command::new("powershell").args(["-NoProfile", "-Command", &script]).stdout(std::process::Stdio::null()).spawn().unwrap();
+        // The file exists once the program made it; "held" is that it exists and cannot be opened.
+        let held = |f: &std::path::Path| f.exists() && std::fs::OpenOptions::new().read(true).write(true).open(f).is_err();
+        let free = |f: &std::path::Path| f.exists() && !held(f);
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        while !held(&file) && std::time::Instant::now() < end {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        assert!(held(&file), "the program holds the file open");
+        park_game(child.id());
+        assert!(held(&file), "parked, it still holds it");
+        release_game(child.id());
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        assert!(free(&file), "released, the file is free");
+        close_game(child.id());
+        let _ = child.wait();
+        let _ = std::fs::remove_file(&file);
     }
 
     /// The command line of a running program is read back, as a launcher passed it (a 32-bit and a 64-bit program alike).

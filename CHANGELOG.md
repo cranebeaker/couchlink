@@ -3,6 +3,34 @@
 What changed in each Couchlink release. Downloads and older notes are on the
 [releases page](https://github.com/cranebeaker/couchlink/releases).
 
+## 0.1.26
+
+### Fixed
+
+- **Two controllers in one seat play as one.** Only the first controller of a player reached the game; the second was
+  ignored. A player with several controllers now plays them as a single merged controller: buttons of all of them,
+  the larger trigger, and for each stick whichever is pushed further. Controller remaps (the touchpad as L2, for
+  one) work from either. Reported by ShadySaiyan.
+- **The laptop's mouse ran the other PC's cursor off to a corner.** Mouse movement was worked out from the pointer's
+  position, which keeps counting while the laptop's own pointer is held still, so the distance only grew. It is now
+  read from the mouse itself (Raw Input), which counts each movement, and the pointer is held in a one pixel area so
+  the moves do nothing on the laptop. Reported by ShadySaiyan.
+- **Dolphin's "play_rec.dat could not be opened" warning.** The launcher's own copy of the game stayed open next to
+  Couchlink's copies with its files. It now lets go of its files, names and ports as it is put away, so Couchlink's
+  copies find nothing of it in their way.
+- **PCSX2 asked for a BIOS that was there.** A copy made on the game's own drive started from a `\?\E:\` path, which
+  PCSX2 cannot read its own folder from. Copies now start from a plain `E:\` path.
+- **Menus and buttons of Qt programs.** Windows tells a program when the real pointer leaves its window, which it
+  never is over a copy; Qt asks for it after every move and took each move for the pointer leaving. Those notices are
+  no longer passed on.
+
+### Changed
+
+- The report now says where the first button presses of a copy went (which window, and whether the main window was
+  blocked by a dialog), and where a crash happened with the places it was called from (this fixes the offsets that
+  showed as `0xlx`). Reported for Devil May Cry 4 Special Edition's second copy and for the emulators' mouse, which
+  still need those reports.
+
 ## 0.1.25
 
 ### Added

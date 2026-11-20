@@ -146,7 +146,15 @@ void LogInputMessage(UINT m, WPARAM w, LPARAM l) {
 }
 
 LRESULT CALLBACK TestProc(HWND h, UINT m, WPARAM w, LPARAM l) {
-    if (g_log_input) LogInputMessage(m, w, l);
+    if (g_log_input) {
+        LogInputMessage(m, w, l);
+        // Like Qt: ask to be told when the pointer leaves, after every move.
+        if (m == WM_MOUSEMOVE) {
+            TRACKMOUSEEVENT t = {sizeof(t), TME_LEAVE, h, 0};
+            TrackMouseEvent(&t);
+        }
+        if (m == WM_MOUSELEAVE) Log("MLEAVE");
+    }
     switch (m) {
         case WM_ACTIVATE:
             ++g_seen.activate_total;
@@ -394,6 +402,14 @@ std::vector<std::wstring> ReadLines(const std::wstring& path) {
 }
 
 size_t g_cmds_done = 0;
+// An access violation the program survives (no objects in this function, so it may use SEH).
+void CaughtCrash() {
+    __try {
+        *reinterpret_cast<volatile int*>(0x10) = 1;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+}
+
 std::string g_cmd_results;
 
 // Calls that would touch the real cursor without the hook run only on request from the harness, which asks after it
@@ -435,6 +451,10 @@ void RunCommands(const std::wstring& file) {
                                        dc.hInstance, nullptr);
             if (a) EnableWindow(g_wnd, FALSE);
             res = std::string("dialog=") + (g_dialog ? "1" : "0");
+        } else if (name == L"crash") {
+            // A caught access violation: the hook notes where it happened.
+            CaughtCrash();
+            res = "crash";
         } else if (name == L"closedialog") {
             EnableWindow(g_wnd, TRUE);
             if (g_dialog) DestroyWindow(g_dialog);

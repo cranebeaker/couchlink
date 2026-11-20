@@ -472,6 +472,24 @@ const ButtonMap kButtons[5] = {
     {kX2Down, kX2Up, 16, WM_XBUTTONDOWN, WM_XBUTTONUP, XBUTTON2, 4},
 };
 
+// The first few button presses are written to the notes: which window got the click, so a click that does nothing can
+// be traced (a dialog, a menu or the main window; whether the main window was blocked).
+void NoteClick(HWND anchor, HWND target, POINT client) {
+    static int noted = 0;
+    if (noted >= 6) return;
+    ++noted;
+    auto cls = [](HWND h) {
+        wchar_t c[64] = {};
+        GetClassNameW(h, c, 64);
+        char out[64] = {};
+        WideCharToMultiByte(CP_UTF8, 0, c, -1, out, 64, nullptr, nullptr);
+        return std::string(out);
+    };
+    HWND top = GetAncestor(target, GA_ROOT);
+    Note("click at " + std::to_string(client.x) + "," + std::to_string(client.y) + " went to " + cls(target) + (top && top != target ? " in " + cls(top) : "") +
+         (top == anchor ? " (the main window)" : " (not the main window)") + (IsWindowEnabled(anchor) ? "" : ", main window blocked"));
+}
+
 void OnMouse(const KbmEvent& e, Batch& b, HWND anchor) {
     EnsureCursor(anchor);
     int dx = e.x, dy = e.y;
@@ -516,6 +534,7 @@ void OnMouse(const KbmEvent& e, Batch& b, HWND anchor) {
             }
             if (g_s.di_mouse_on) QueueDi(g_s.di_mouse, 12u + m.di_button, is_up ? 0 : 0x80);
             if (legacy && target) {
+                if (!is_up) NoteClick(anchor, target, client);
                 WPARAM w = MouseKeys() | kSigMouse | (m.xbutton << 16);
                 b.posts.push_back({target, is_up ? m.msg_up : m.msg_down, w, MAKELPARAM(static_cast<short>(client.x), static_cast<short>(client.y))});
                 Bump(C_KBM_MOUSE_MSGS);
@@ -625,6 +644,13 @@ bool KbmFilterMessage(MSG* m) {
             return true;
         }
         if (overlay) return true;
+        Bump(C_KBM_REAL_DROPPED);
+        return false;
+    }
+    if (u == 0x2A1 || u == 0x2A2 || u == 0x2A3) {
+        // WM_MOUSEHOVER, WM_NCMOUSELEAVE, WM_MOUSELEAVE: Windows sends them for the real pointer, which is never over this
+        // copy's window. A program that asks for them (Qt does, after every move) would think the player's pointer left
+        // after each move, and its menus and buttons would not react to the click that follows.
         Bump(C_KBM_REAL_DROPPED);
         return false;
     }

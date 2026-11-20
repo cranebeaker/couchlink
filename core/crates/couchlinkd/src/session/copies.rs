@@ -260,8 +260,22 @@ fn drive_root(p: &Path) -> Option<PathBuf> {
     let full = p.canonicalize().ok()?;
     let mut parts = full.components();
     match (parts.next()?, parts.next()?) {
-        (pre @ Component::Prefix(_), root @ Component::RootDir) => Some([pre, root].iter().collect()),
+        (pre @ Component::Prefix(_), root @ Component::RootDir) => Some(plain_path(&[pre, root].iter().collect::<PathBuf>())),
         _ => None,
+    }
+}
+
+/// A path without the `\\?\` prefix `canonicalize` puts on Windows paths. A copy that starts from such a path sees its own
+/// folder as `\\?\E:\...`, which many programs cannot read (an emulator looks for the files next to it, found none, and
+/// asked for a BIOS that sits right there).
+pub fn plain_path(p: &Path) -> PathBuf {
+    let s = p.to_string_lossy();
+    if let Some(unc) = s.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{unc}"));
+    }
+    match s.strip_prefix(r"\\?\") {
+        Some(rest) if rest.len() >= 2 && rest.as_bytes()[1] == b':' => PathBuf::from(rest),
+        _ => p.to_path_buf(),
     }
 }
 
@@ -295,6 +309,14 @@ mod tests {
     use std::sync::atomic::AtomicU32;
 
     static N: AtomicU32 = AtomicU32::new(0);
+
+    #[test]
+    fn a_verbatim_path_is_made_plain() {
+        assert_eq!(plain_path(Path::new(r"\\?\E:\.couchlink-copies")), PathBuf::from(r"E:\.couchlink-copies"));
+        assert_eq!(plain_path(Path::new(r"\\?\UNC\pc\share\x")), PathBuf::from(r"\\pc\share\x"));
+        assert_eq!(plain_path(Path::new(r"E:\games")), PathBuf::from(r"E:\games"));
+        assert_eq!(plain_path(Path::new(r"\\?\Volume{1234}\x")), PathBuf::from(r"\\?\Volume{1234}\x"), "other kinds are left");
+    }
 
     fn temp(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("couchlinkd-copies-{}-{}-{tag}", std::process::id(), N.fetch_add(1, Ordering::Relaxed)));
@@ -385,7 +407,7 @@ mod tests {
         {
             let r = drive_root(&game).unwrap();
             assert!(r.to_string_lossy().ends_with(":\\"), "{}", r.display());
-            assert!(game.canonicalize().unwrap().starts_with(&r));
+            assert!(plain_path(&game.canonicalize().unwrap()).starts_with(&r));
         }
         let _ = std::fs::remove_dir_all(&root);
     }

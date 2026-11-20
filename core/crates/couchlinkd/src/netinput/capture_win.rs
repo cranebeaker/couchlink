@@ -2,10 +2,13 @@
 //! on this PC sees it, keep it for the sender, and swallow it, so typing on the laptop plays on the other PC
 //! instead of typing here.
 //!
-//! Low-level hooks, not Raw Input: a hook that swallows a key also stops its Raw Input (checked on Windows 11), so
-//! the hook is the one place that sees everything and can keep it from this PC. Mouse movement is the pointer's
-//! movement (with Windows' pointer speed and acceleration) as the hook sees it, measured against a pointer that
-//! stays still in the middle of the screen.
+//! Low-level hooks take the keys and the mouse buttons and wheel: a hook that swallows a key also stops its Raw Input
+//! (checked on Windows 11), so the hook is the one place that sees them and can keep them from this PC. Mouse
+//! movement is read from Raw Input instead, which counts the device's own movement and never depends on where the
+//! pointer is or on display scaling; the hook lets the moves through, and the pointer is held inside a one pixel
+//! area in the middle of the screen so the moves do nothing here. (Measuring the pointer's own positions against the
+//! middle went wrong: a swallowed move still moved the position the next report was built from, so the other PC's
+//! cursor ran off to a corner.)
 //!
 //! Ctrl+Alt+Backspace pauses sending and gives this PC its keyboard and mouse back; the same keys resume. Ctrl+Alt+Del
 //! always reaches Windows (no hook can take it). Input made by programs (`SendInput`) is left alone.
@@ -15,13 +18,15 @@ use couchlink_remote::{key_flags, Event, MOUSE_HWHEEL, MOUSE_WHEEL};
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Mutex;
-use windows_sys::Win32::Foundation::{LPARAM, LRESULT, POINT, WPARAM};
+use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::HiDpi::{SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
+use windows_sys::Win32::UI::Input::{GetRawInputData, RegisterRawInputDevices, HRAWINPUT, RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER, RIDEV_INPUTSINK, RID_INPUT, RIM_TYPEMOUSE};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, DispatchMessageW, GetMessageW, GetPhysicalCursorPos, GetSystemMetrics, PostThreadMessageW, SetCursorPos, SetWindowsHookExW,
-    UnhookWindowsHookEx, KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, SM_CXSCREEN, SM_CYSCREEN, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_QUIT,
+    CallNextHookEx, ClipCursor, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW, GetSystemMetrics, KillTimer, PostThreadMessageW,
+    RegisterClassW, SetCursorPos, SetTimer, SetWindowsHookExW, UnhookWindowsHookEx, HWND_MESSAGE, KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, SM_CXSCREEN, SM_CYSCREEN,
+    WH_KEYBOARD_LL, WH_MOUSE_LL, WM_INPUT, WM_QUIT, WM_TIMER, WNDCLASSW,
 };
 
 pub const AVAILABLE: bool = true;
@@ -32,6 +37,11 @@ const LLKHF_EXTENDED: u32 = 0x01;
 const LLKHF_INJECTED: u32 = 0x10;
 const LLKHF_UP: u32 = 0x80;
 const LLMHF_INJECTED: u32 = 0x01;
+/// Tests: with `COUCHLINK_REMOTE_CAPTURE_TEST` set, only input sent with this extra info is taken (and counts as real
+/// input), everything else passes through, so a test never takes the keyboard and mouse of whoever runs it.
+const TEST_EXTRA: usize = 0xC0DE;
+/// `RAWMOUSE.usFlags` bit: the movement is a position (0..65535 across the screen), not a distance.
+const MOUSE_MOVE_ABSOLUTE: u16 = 0x01;
 
 const VK_BACK: u16 = 0x08;
 const VK_SHIFT: u16 = 0x10;
@@ -47,6 +57,24 @@ struct State {
     /// Keys that went down on this PC while paused: their releases go to this PC too, or Windows would think them
     /// still held after resuming (Ctrl and Alt of the resume keys).
     local_down: Vec<u16>,
+    /// The last position of a device that reports positions, to turn them into distances.
+    last_abs: Option<(i32, i32)>,
+}
+
+fn test_mode() -> bool {
+    std::env::var_os("COUCHLINK_REMOTE_CAPTURE_TEST").is_some()
+}
+
+/// A raw mouse report's movement as a distance: relative devices as they are, devices that report positions by the
+/// change from their last one (the first report only learns where the device is).
+pub fn raw_move(flags: u16, x: i32, y: i32, last_abs: &mut Option<(i32, i32)>) -> Option<(i32, i32)> {
+    if flags & MOUSE_MOVE_ABSOLUTE == 0 {
+        return if x == 0 && y == 0 { None } else { Some((x, y)) };
+    }
+    let before = last_abs.replace((x, y))?;
+    // 0..65535 across a screen, as pixels of a 1920 wide one.
+    let d = ((x - before.0) * 1920 / 65535, (y - before.1) * 1920 / 65535);
+    if d == (0, 0) { None } else { Some(d) }
 }
 
 static STATE: Mutex<Option<State>> = Mutex::new(None);
@@ -151,16 +179,92 @@ fn center() {
     }
 }
 
+/// Holds the pointer inside one pixel in the middle of the screen, or lets it go. Not while a test runs.
+fn hold_pointer(on: bool) {
+    if test_mode() {
+        return;
+    }
+    // SAFETY: plain metric queries; the rectangle lives for the call.
+    unsafe {
+        if on {
+            let (w, h) = (GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
+            let r = RECT { left: w / 2, top: h / 2, right: w / 2 + 1, bottom: h / 2 + 1 };
+            ClipCursor(&r);
+        } else {
+            ClipCursor(std::ptr::null());
+        }
+    }
+}
+
+const TIMER_HOLD: usize = 1;
+
+/// The window that gets the raw mouse reports: movement (never swallowed) is read here.
+unsafe extern "system" fn raw_window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    match msg {
+        WM_INPUT => {
+            // SAFETY: the sizes are the structs' own; the buffer is the RAWINPUT the size query asked for.
+            unsafe {
+                let mut raw: RAWINPUT = std::mem::zeroed();
+                let mut size = std::mem::size_of::<RAWINPUT>() as u32;
+                let got = GetRawInputData(lparam as HRAWINPUT, RID_INPUT, &mut raw as *mut RAWINPUT as *mut _, &mut size, std::mem::size_of::<RAWINPUTHEADER>() as u32);
+                if got != u32::MAX && raw.header.dwType == RIM_TYPEMOUSE && ACTIVE.load(Ordering::Relaxed) && !PAUSED.load(Ordering::Relaxed) {
+                    let m = raw.data.mouse;
+                    let ours = !test_mode() || m.ulExtraInformation as usize == TEST_EXTRA;
+                    if ours {
+                        if let Some(s) = state().as_mut() {
+                            if let Some((dx, dy)) = raw_move(m.usFlags, m.lLastX, m.lLastY, &mut s.last_abs) {
+                                if let Some(ev) = mouse_event(0x0200, 0, dx, dy) {
+                                    s.held.track(&ev);
+                                    s.events.push(ev);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            0
+        }
+        WM_TIMER if wparam == TIMER_HOLD => {
+            // Another program may have taken the pointer's area back.
+            if ACTIVE.load(Ordering::Relaxed) {
+                hold_pointer(!PAUSED.load(Ordering::Relaxed));
+            }
+            0
+        }
+        // SAFETY: the default handling of a message this window does not care about.
+        _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
+    }
+}
+
 fn hook_thread() {
-    // SAFETY: standard low-level hook setup; the procs only touch the statics above and return quickly.
+    // SAFETY: standard low-level hook and message window setup; the procs only touch the statics above.
     unsafe {
         THREAD.store(GetCurrentThreadId(), Ordering::SeqCst);
-        // The hooks run on this thread. A hook's point is in physical pixels; without per-monitor awareness the
-        // pointer reads come back scaled (125% or 150% on most laptops), every move looked like a large jump and the
-        // other PC's cursor sat in a corner. Physical everywhere: the hook, the pointer read and the centring.
         SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         center();
         let module = GetModuleHandleW(null_mut());
+        // The message window for the raw mouse reports.
+        let class: Vec<u16> = "CouchlinkRemoteCapture\0".encode_utf16().collect();
+        let wc = WNDCLASSW {
+            style: 0,
+            lpfnWndProc: Some(raw_window_proc),
+            cbClsExtra: 0,
+            cbWndExtra: 0,
+            hInstance: module,
+            hIcon: null_mut(),
+            hCursor: null_mut(),
+            hbrBackground: null_mut(),
+            lpszMenuName: std::ptr::null(),
+            lpszClassName: class.as_ptr(),
+        };
+        RegisterClassW(&wc);
+        let window = CreateWindowExW(0, class.as_ptr(), class.as_ptr(), 0, 0, 0, 0, 0, HWND_MESSAGE, null_mut(), module, std::ptr::null());
+        if !window.is_null() {
+            let rid = RAWINPUTDEVICE { usUsagePage: 1, usUsage: 2, dwFlags: RIDEV_INPUTSINK, hwndTarget: window };
+            RegisterRawInputDevices(&rid, 1, std::mem::size_of::<RAWINPUTDEVICE>() as u32);
+            SetTimer(window, TIMER_HOLD, 500, None);
+        }
+        hold_pointer(true);
         let kb = SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), module, 0);
         let ms = SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), module, 0);
         let mut msg: MSG = std::mem::zeroed();
@@ -173,12 +277,23 @@ fn hook_thread() {
         if !ms.is_null() {
             UnhookWindowsHookEx(ms);
         }
+        hold_pointer(false);
+        if !window.is_null() {
+            KillTimer(window, TIMER_HOLD);
+            let rid = RAWINPUTDEVICE { usUsagePage: 1, usUsage: 2, dwFlags: 0x0000_0001, hwndTarget: null_mut() };
+            RegisterRawInputDevices(&rid, 1, std::mem::size_of::<RAWINPUTDEVICE>() as u32);
+            DestroyWindow(window);
+        }
     }
 }
 
 /// The keyboard: returns true to swallow.
 fn on_key(k: &KBDLLHOOKSTRUCT) -> bool {
-    if k.flags & LLKHF_INJECTED != 0 {
+    if test_mode() {
+        if k.dwExtraInfo != TEST_EXTRA {
+            return false;
+        }
+    } else if k.flags & LLKHF_INJECTED != 0 {
         return false;
     }
     let mut guard = state();
@@ -199,6 +314,7 @@ fn on_key(k: &KBDLLHOOKSTRUCT) -> bool {
             // Whatever was held is let go on the other PC (the frame says no keyboard while paused).
             s.held = Held::default();
             s.events.clear();
+            hold_pointer(!now);
             if !now {
                 center();
             }
@@ -222,17 +338,15 @@ fn on_key(k: &KBDLLHOOKSTRUCT) -> bool {
     true
 }
 
-/// The mouse: returns true to swallow.
+/// The mouse buttons and wheel: returns true to swallow. Moves are read from Raw Input and let through.
 fn on_mouse(msg: u32, m: &MSLLHOOKSTRUCT) -> bool {
-    if m.flags & LLMHF_INJECTED != 0 || PAUSED.load(Ordering::SeqCst) {
+    let ours = if test_mode() { m.dwExtraInfo == TEST_EXTRA } else { m.flags & LLMHF_INJECTED == 0 };
+    if !ours || msg == 0x0200 || PAUSED.load(Ordering::SeqCst) {
         return false;
     }
     let mut guard = state();
     let Some(s) = guard.as_mut() else { return false };
-    let mut cur = POINT { x: 0, y: 0 };
-    // SAFETY: out parameter on the stack. Physical, like `m.pt` (see `hook_thread`).
-    unsafe { GetPhysicalCursorPos(&mut cur) };
-    if let Some(ev) = mouse_event(msg, m.mouseData, m.pt.x - cur.x, m.pt.y - cur.y) {
+    if let Some(ev) = mouse_event(msg, m.mouseData, 0, 0) {
         s.held.track(&ev);
         s.events.push(ev);
     }
@@ -278,5 +392,49 @@ mod tests {
         assert_eq!(mouse_event(0x020C, 1 << 16, 0, 0), Some(Event::Mouse { dx: 0, dy: 0, flags: 0x80, wheel: 0 }));
         assert_eq!(mouse_event(0x020A, (-120i16 as u16 as u32) << 16, 0, 0), Some(Event::Mouse { dx: 0, dy: 0, flags: MOUSE_WHEEL, wheel: -120 }));
         assert_eq!(mouse_event(0x0999, 0, 0, 0), None);
+    }
+
+    #[test]
+    fn raw_moves_are_distances() {
+        let mut last = None;
+        assert_eq!(raw_move(0, 3, -4, &mut last), Some((3, -4)));
+        assert_eq!(raw_move(0, 0, 0, &mut last), None);
+        // A device that reports positions: the first report only learns, the next ones are the change.
+        let mut abs = None;
+        assert_eq!(raw_move(MOUSE_MOVE_ABSOLUTE, 30000, 30000, &mut abs), None);
+        let d = raw_move(MOUSE_MOVE_ABSOLUTE, 30000 + 3277, 30000, &mut abs).unwrap();
+        assert!(d.0 > 90 && d.0 < 110 && d.1 == 0, "{d:?}");
+    }
+
+    /// Moves sent in one direction come out as moves of the same size, one after the other, never as a distance that
+    /// grows (the other PC's cursor ran off to a corner). Only input sent by the test is taken.
+    #[test]
+    fn steady_movement_stays_steady() {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_MOVE, MOUSEINPUT};
+        // SAFETY: setting a variable for this test process.
+        unsafe { std::env::set_var("COUCHLINK_REMOTE_CAPTURE_TEST", "1") };
+        set_active(true);
+        std::thread::sleep(std::time::Duration::from_millis(700));
+        let send = |dx: i32, dy: i32| {
+            let input = INPUT { r#type: INPUT_MOUSE, Anonymous: INPUT_0 { mi: MOUSEINPUT { dx, dy, mouseData: 0, dwFlags: MOUSEEVENTF_MOVE, time: 0, dwExtraInfo: TEST_EXTRA } } };
+            // SAFETY: one input struct of the size passed.
+            unsafe { SendInput(1, &input, std::mem::size_of::<INPUT>() as i32) };
+            std::thread::sleep(std::time::Duration::from_millis(40));
+        };
+        for _ in 0..30 {
+            send(20, 10);
+        }
+        let (events, _) = take();
+        set_active(false);
+        let moves: Vec<(i32, i32)> = events
+            .iter()
+            .filter_map(|e| match e {
+                Event::Mouse { dx, dy, flags: 0, .. } => Some((*dx, *dy)),
+                _ => None,
+            })
+            .collect();
+        println!("moves: {moves:?}");
+        assert!(moves.len() >= 25, "the moves were taken: {moves:?}");
+        assert!(moves.iter().all(|m| *m == (20, 10)), "each one as sent, not a growing distance: {moves:?}");
     }
 }
