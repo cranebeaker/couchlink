@@ -37,10 +37,20 @@ pub fn set_pad_path(id: u32, path: Option<String>) {
     };
 }
 
-/// The device paths of the pads seated here, for `own_pads`: the copy sees these controllers and no others.
+/// The device interface path of one pad (`pad:<sdl id>`), when it is known.
+pub fn pad_path_of(device: &str) -> Option<String> {
+    let id = device.strip_prefix("pad:")?.parse::<u32>().ok()?;
+    PAD_PATHS.lock().unwrap_or_else(|e| e.into_inner()).get(&id).cloned()
+}
+
+/// The device paths of the pads seated here, for `own_pads`: the copy sees these controllers and no others. A player
+/// with several controllers plays them as one merged pad, which only XInput carries: a game that reads the controllers
+/// itself (DirectInput, HID, Raw Input) would see them as separate pads, the first one as player 1 and the rest
+/// unused, so none of them is shown to it and it falls back to XInput.
 fn own_pad_paths(devices: &[String]) -> Vec<String> {
     let map = PAD_PATHS.lock().unwrap_or_else(|e| e.into_inner());
-    devices.iter().filter_map(|d| d.strip_prefix("pad:")?.parse::<u32>().ok()).filter_map(|id| map.get(&id).cloned()).collect()
+    let paths: Vec<String> = devices.iter().filter_map(|d| d.strip_prefix("pad:")?.parse::<u32>().ok()).filter_map(|id| map.get(&id).cloned()).collect();
+    if devices.iter().filter(|d| d.starts_with("pad:")).count() > 1 { Vec::new() } else { paths }
 }
 
 /// The XInput slot for the first seated device that has one (`pad:<sdl id>`).

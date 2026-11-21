@@ -114,6 +114,17 @@ pub enum Command {
     SetWatchedLaunchers {
         paths: Vec<String>,
     },
+    /// What is given to Windows itself: `seats` send their controllers as one merged virtual controller (any game,
+    /// emulator or program sees it), `devices` are other PCs' keyboards and mice played as this PC's own, and
+    /// `hide_originals` hides the sending seats' own controllers from every other program (HidHide).
+    /// `get_windows_send` answers `{"seats": [...], "devices": [...], "hide_originals": bool, "controller_driver": bool,
+    /// "hide_driver": bool}`.
+    SetWindowsSend {
+        seats: Vec<u8>,
+        devices: Vec<String>,
+        hide_originals: bool,
+    },
+    GetWindowsSend,
     GetWatchedLaunchers,
     /// The answer to a `launcher_game` event: play it with Couchlink (the copy the launcher started is closed) or leave
     /// it. `remember` keeps the answer for that game.

@@ -219,6 +219,9 @@ abstract class CouchClient extends ChangeNotifier {
 
   /// `get_watched_launchers` / `set_watched_launchers`: the launchers (full paths of their programs) Couchlink watches
   /// for games they start. A game one starts comes as a [LauncherGameEvent].
+  /// What is given to Windows itself (`get_windows_send`), and the same set (`set_windows_send`; the answer is what is now).
+  Future<WindowsSend?> windowsSend();
+  Future<WindowsSend?> setWindowsSend(WindowsSend config);
   Future<List<String>?> watchedLaunchers();
   Future<String?> setWatchedLaunchers(List<String> paths);
 

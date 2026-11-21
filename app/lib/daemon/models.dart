@@ -1065,3 +1065,45 @@ class RemoteSendStatus {
 
   bool get busy => state == 'pairing' || state == 'connecting' || state == 'sending';
 }
+
+/// What is given to Windows itself: seats whose controllers go as one virtual controller, other PCs' keyboards and mice
+/// played as this PC's own, and whether the originals are hidden.
+class WindowsSend {
+  const WindowsSend({
+    this.seats = const [],
+    this.devices = const [],
+    this.hideOriginals = false,
+    this.sending = const [],
+    this.controllerDriver = false,
+    this.hideDriver = false,
+  });
+
+  final List<int> seats;
+  final List<String> devices;
+  final bool hideOriginals;
+
+  /// The seats that really send now (the virtual controller is plugged in).
+  final List<int> sending;
+
+  /// The ViGEmBus driver is installed (a virtual controller can be made), and the HidHide driver (originals can be hidden).
+  final bool controllerDriver;
+  final bool hideDriver;
+
+  WindowsSend copyWith({List<int>? seats, List<String>? devices, bool? hideOriginals}) => WindowsSend(
+        seats: seats ?? this.seats,
+        devices: devices ?? this.devices,
+        hideOriginals: hideOriginals ?? this.hideOriginals,
+        sending: sending,
+        controllerDriver: controllerDriver,
+        hideDriver: hideDriver,
+      );
+
+  static WindowsSend fromJson(Map<String, dynamic> j) => WindowsSend(
+        seats: [for (final s in (j['seats'] as List? ?? const [])) if (s is num) s.toInt()],
+        devices: [for (final d in (j['devices'] as List? ?? const [])) if (d is String) d],
+        hideOriginals: j['hide_originals'] == true,
+        sending: [for (final s in (j['sending'] as List? ?? const [])) if (s is num) s.toInt()],
+        controllerDriver: j['controller_driver'] == true,
+        hideDriver: j['hide_driver'] == true,
+      );
+}

@@ -155,7 +155,44 @@ pub fn merge_samples(samples: &[&InputSample]) -> InputSample {
 
 /// True while any game copy is fed, so the SDL thread knows to keep publishing pad state.
 pub fn active() -> bool {
-    !registry().entries.is_empty()
+    let reg = registry();
+    !reg.entries.is_empty() || !reg.sends.is_empty()
+}
+
+/// Sets which seats send their controllers to Windows as one merged virtual controller: `wanted` is each such seat with
+/// its controllers (`pad:<id>`). A seat that is no longer wanted unplugs its virtual controller. Returns the seats that
+/// could not be plugged in, with why.
+pub fn set_windows_sends(wanted: &[(usize, Vec<String>)]) -> Vec<(usize, String)> {
+    let mut reg = registry();
+    reg.sends.retain(|s| wanted.iter().any(|(seat, _)| *seat == s.seat));
+    let mut failed = Vec::new();
+    for (seat, devices) in wanted {
+        let devices = feed_devices(devices);
+        if let Some(existing) = reg.sends.iter_mut().find(|s| s.seat == *seat) {
+            if existing.devices != devices {
+                existing.devices = devices;
+                existing.samples.clear();
+            }
+            continue;
+        }
+        match crate::vigem::Target::plug() {
+            Ok(pad) => {
+                // Starts from what the controllers do now.
+                let now = latest_of(&reg.latest, &devices);
+                if let Some(state) = now {
+                    pad.submit(&state);
+                }
+                reg.sends.push(WinSend { seat: *seat, devices, samples: HashMap::new(), state: ProcState::new(), pad });
+            }
+            Err(e) => failed.push((*seat, e)),
+        }
+    }
+    failed
+}
+
+/// The seats sending to Windows now.
+pub fn windows_sends() -> Vec<usize> {
+    registry().sends.iter().map(|s| s.seat).collect()
 }
 
 /// Name of the shared-memory section for one seat of one session. Local to the Windows session, as the games are.
@@ -235,10 +272,21 @@ pub fn seat_sends_kbm(seat: usize) -> bool {
     registry().profiles.get(seat).is_some_and(Profile::sends_kbm)
 }
 
+/// A player's controllers sent to Windows as one merged virtual controller (not tied to a running game).
+struct WinSend {
+    seat: usize,
+    devices: Vec<String>,
+    samples: HashMap<String, InputSample>,
+    state: ProcState,
+    pad: crate::vigem::Target,
+}
+
 #[derive(Default)]
 struct Registry {
     next_id: u64,
     entries: Vec<Entry>,
+    /// Seats whose controllers go to Windows as one virtual controller.
+    sends: Vec<WinSend>,
     /// Last published state per device, so a feed attached later starts with the current state.
     latest: HashMap<String, PadState>,
     /// The profile on each seat, as the hub has them.
@@ -361,6 +409,11 @@ pub fn publish(device_id: &str, state: PadState) {
         let merged = latest_of(latest, &e.devices).unwrap_or(state);
         e.feed.write_state(&merged.feed_state());
     }
+    for w in reg.sends.iter().filter(|w| w.devices.iter().any(|d| d == device_id)) {
+        if let Some(merged) = latest_of(&reg.latest, &w.devices) {
+            w.pad.submit(&merged);
+        }
+    }
 }
 
 /// Publishes one sample of a device to every seat feed that uses it, through each seat's profile. Call it every sample.
@@ -371,7 +424,7 @@ pub fn publish_sample(device_id: &str, sample: &InputSample) {
     if reg.latest.get(device_id) != Some(&raw) {
         reg.latest.insert(device_id.to_string(), raw);
     }
-    let Registry { entries, profiles, .. } = &mut *reg;
+    let Registry { entries, profiles, sends, .. } = &mut *reg;
     let mut kbm: Vec<(String, Vec<super::rawkbm::Input>)> = Vec::new();
     for e in entries.iter_mut().filter(|e| e.devices.iter().any(|d| d == device_id)) {
         // A seat with several controllers plays them as one: the latest sample of each, merged.
@@ -402,6 +455,14 @@ pub fn publish_sample(device_id: &str, sample: &InputSample) {
             e.feed.set_connected(true);
         }
         e.feed.write_state(&state.feed_state());
+    }
+    for w in sends.iter_mut().filter(|w| w.devices.iter().any(|d| d == device_id)) {
+        w.samples.insert(device_id.to_string(), sample.clone());
+        let mut ids: Vec<&String> = w.samples.keys().collect();
+        ids.sort();
+        let merged = merge_samples(&ids.iter().filter_map(|k| w.samples.get(*k)).collect::<Vec<_>>());
+        let state = played(profiles.get(w.seat), &mut w.state, now, &merged);
+        w.pad.submit(&state);
     }
     drop(reg);
     for (name, inputs) in kbm {
@@ -440,7 +501,11 @@ pub fn reassign(seats: &[Vec<String>]) {
 pub fn disconnect(device_id: &str) {
     let mut reg = registry();
     reg.latest.remove(device_id);
-    let Registry { entries, latest, .. } = &mut *reg;
+    let Registry { entries, latest, sends, .. } = &mut *reg;
+    for w in sends.iter_mut().filter(|w| w.devices.iter().any(|d| d == device_id)) {
+        w.samples.remove(device_id);
+        w.pad.submit(&latest_of(latest, &w.devices).unwrap_or_default());
+    }
     for e in entries.iter_mut().filter(|e| e.devices.iter().any(|d| d == device_id)) {
         e.samples.remove(device_id);
         // The seat's other controllers go on playing; the feed shows unplugged when none is left.
@@ -458,6 +523,11 @@ pub fn take_rumble(device_id: &str) -> Option<(u16, u16)> {
     let mut out = None;
     for e in reg.entries.iter_mut().filter(|e| e.devices.iter().any(|d| d == device_id)) {
         if let Some(r) = e.feed.take_rumble() {
+            out = Some(r);
+        }
+    }
+    for w in reg.sends.iter().filter(|w| w.devices.iter().any(|d| d == device_id)) {
+        if let Some(r) = w.pad.take_rumble() {
             out = Some(r);
         }
     }

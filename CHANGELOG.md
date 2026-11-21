@@ -3,6 +3,23 @@
 What changed in each Couchlink release. Downloads and older notes are on the
 [releases page](https://github.com/cranebeaker/couchlink/releases).
 
+## 0.1.27
+
+### Added
+
+- **Give to Windows.** On the Players page, a seat's controllers can be sent to Windows as one merged virtual
+  controller, so any game, emulator or program sees a single pad that plays what all of them do, with no help from
+  Couchlink while it runs. Another PC's paired keyboard and mouse can be given to Windows the same way, played as
+  this PC's own. A switch hides the original controllers from games (so only the merged one shows). The controller
+  needs the ViGEmBus driver and hiding needs HidHide (both free downloads by Nefarius); the page says when one is
+  missing. Asked for by ShadySaiyan, who would rather use Couchlink for this than to run emulators.
+
+### Fixed
+
+- **Two controllers in one seat in games that read the controllers themselves.** A game that opens the controllers
+  directly (DirectInput, HID, Raw Input) saw them as two pads, the first as player 1, and the second did nothing. A
+  seat with several controllers now shows the game only the merged XInput controller, so every controller plays.
+
 ## 0.1.26
 
 ### Fixed

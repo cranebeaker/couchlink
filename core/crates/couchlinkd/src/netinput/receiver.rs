@@ -31,6 +31,17 @@ struct Running {
 
 static RX: Mutex<Option<Running>> = Mutex::new(None);
 
+/// The other PCs' keyboards and mice (`kbd:net-...`) that are given to Windows.
+static TO_WINDOWS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+pub fn set_to_windows(devices: Vec<String>) {
+    *TO_WINDOWS.lock().unwrap_or_else(|e| e.into_inner()) = devices;
+}
+
+fn to_windows() -> Vec<String> {
+    TO_WINDOWS.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
 fn rx() -> std::sync::MutexGuard<'static, Option<Running>> {
     RX.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -186,8 +197,14 @@ impl Deliver {
                 rawkbm::add_remote(&rawkbm::remote_id(&hex(&peer)), &format!("{name} keyboard + mouse"));
             }
             ReceiverOut::Input { peer, events } => {
-                let inputs: Vec<rawkbm::Input> = events.iter().map(super::to_input).collect();
-                rawkbm::push_remote(&rawkbm::remote_id(&hex(&peer)), &inputs);
+                let id = rawkbm::remote_id(&hex(&peer));
+                if to_windows().iter().any(|d| *d == id) {
+                    // Given to Windows: played as this PC's own keyboard and mouse.
+                    crate::winput::inject(&events);
+                } else {
+                    let inputs: Vec<rawkbm::Input> = events.iter().map(super::to_input).collect();
+                    rawkbm::push_remote(&id, &inputs);
+                }
             }
             ReceiverOut::Pads { peer, pads } => self.pads(peer, pads),
             ReceiverOut::Quiet { peer } => {

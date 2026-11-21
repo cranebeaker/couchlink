@@ -412,6 +412,24 @@ class FakeClient extends CouchClient {
   final List<({String exe, bool run, bool remember})> launcherAnswers = [];
   int launcherChoicesCleared = 0;
 
+  WindowsSend windows = const WindowsSend(controllerDriver: true, hideDriver: true);
+
+  @override
+  Future<WindowsSend?> windowsSend() async => windows;
+
+  @override
+  Future<WindowsSend?> setWindowsSend(WindowsSend config) async {
+    windows = WindowsSend(
+      seats: config.seats,
+      devices: config.devices,
+      hideOriginals: config.hideOriginals,
+      sending: config.seats,
+      controllerDriver: windows.controllerDriver,
+      hideDriver: windows.hideDriver,
+    );
+    return windows;
+  }
+
   @override
   Future<List<String>?> watchedLaunchers() async => List.of(watched);
 

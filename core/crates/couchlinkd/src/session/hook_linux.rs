@@ -11,6 +11,12 @@ use std::sync::{Arc, LazyLock, Mutex};
 /// for a virtual one). Filled by the SDL thread.
 static PAD_PATHS: LazyLock<Mutex<HashMap<u32, String>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// The device interface path of one pad (`pad:<sdl id>`), when it is known.
+pub fn pad_path_of(device: &str) -> Option<String> {
+    let id = device.strip_prefix("pad:")?.parse::<u32>().ok()?;
+    PAD_PATHS.lock().unwrap_or_else(|e| e.into_inner()).get(&id).cloned()
+}
+
 pub fn set_pad_path(id: u32, path: Option<String>) {
     let mut map = PAD_PATHS.lock().unwrap_or_else(|e| e.into_inner());
     match path.filter(|p| !p.is_empty()) {

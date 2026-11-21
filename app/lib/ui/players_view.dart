@@ -133,6 +133,8 @@ class _PlayersViewState extends State<PlayersView> with SingleTickerProviderStat
                 style: txt(context, size: 12, color: context.c.ink3),
               ),
             ),
+            SectionLabel(t('Give to Windows'), sub: t('for any game, emulator or program')),
+            WindowsSendPanel(state: st),
           ],
         ),
       ),
@@ -755,5 +757,107 @@ class _LiveInput extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+
+/// Gives devices to Windows itself, so any game, emulator or program takes them: a player's controllers as one merged
+/// virtual controller, and another PC's keyboard and mouse as this PC's own.
+class WindowsSendPanel extends StatefulWidget {
+  const WindowsSendPanel({super.key, required this.state});
+
+  final DaemonState state;
+
+  @override
+  State<WindowsSendPanel> createState() => _WindowsSendPanelState();
+}
+
+class _WindowsSendPanelState extends State<WindowsSendPanel> {
+  WindowsSend? _config;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final c = await Scope.of(context).client.windowsSend();
+      if (mounted) setState(() => _config = c ?? const WindowsSend());
+    });
+  }
+
+  Future<void> _set(WindowsSend next) async {
+    setState(() => _config = next);
+    final scope = Scope.of(context);
+    final done = await scope.client.setWindowsSend(next);
+    if (!mounted) return;
+    if (done == null) {
+      scope.toaster.show(t('That did not work'), error: true);
+    } else {
+      setState(() => _config = done);
+    }
+  }
+
+  /// The controllers of a seat, as the devices the daemon lists.
+  int _pads(Seat seat) => seat.devices.where((d) => d.startsWith('pad:')).length;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final cfg = _config ?? const WindowsSend();
+    final st = widget.state;
+    final seats = [for (final i in st.takenSeats) if (_pads(st.seats[i]!) > 0) i];
+    final remotes = [for (final d in st.devices) if (d.isRemote && d.isKbm) d];
+    Widget row(Key key, String label, String? note, bool on, bool enabled, void Function(bool) change) => Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: InkWell(
+            key: key,
+            onTap: enabled ? () => change(!on) : null,
+            child: Row(children: [
+              Checkbox(value: on, onChanged: enabled ? (v) => change(v ?? false) : null),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(label, style: txt(context, size: 13, weight: FontWeight.w600, color: enabled ? c.ink : c.ink3)),
+                  if (note != null) Text(note, style: txt(context, size: 11.5, color: c.ink3, height: 1.3)),
+                ]),
+              ),
+            ]),
+          ),
+        );
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, key: const ValueKey('windows-send'), children: [
+      Text(
+        t('A player\u2019s controllers become one controller for Windows, and another PC\u2019s keyboard and mouse work as this PC\u2019s own. Games and emulators then need nothing from Couchlink.'),
+        style: txt(context, size: 12, color: c.ink3, height: 1.4),
+      ),
+      const SizedBox(height: 10),
+      for (final i in seats)
+        row(
+          ValueKey('winsend-seat-$i'),
+          t('Send {name}\u2019s controllers to Windows as one', {'name': st.seats[i]!.name}),
+          cfg.sending.contains(i)
+              ? t('Windows has a new controller that plays what all of them do')
+              : (cfg.controllerDriver ? null : t('Needs the ViGEmBus driver, a free download by Nefarius')),
+          cfg.seats.contains(i),
+          cfg.controllerDriver,
+          (v) => _set(cfg.copyWith(seats: [for (final s in cfg.seats) if (s != i) s, if (v) i])),
+        ),
+      for (final d in remotes)
+        row(
+          ValueKey('winsend-device-${d.id}'),
+          t('Send {name} to Windows', {'name': d.name}),
+          t('Its keys and mouse work in any game or program on this PC'),
+          cfg.devices.contains(d.id),
+          true,
+          (v) => _set(cfg.copyWith(devices: [for (final s in cfg.devices) if (s != d.id) s, if (v) d.id])),
+        ),
+      row(
+        const ValueKey('winsend-hide'),
+        t('Hide the original controllers from games'),
+        cfg.hideDriver ? t('Games then see only the merged controller') : t('Needs the HidHide driver, a free download by Nefarius'),
+        cfg.hideOriginals,
+        cfg.hideDriver,
+        (v) => _set(cfg.copyWith(hideOriginals: v)),
+      ),
+      if (seats.isEmpty && remotes.isEmpty)
+        Text(t('Put a controller in a seat, or pair another PC, and it can be given to Windows here.'), style: txt(context, size: 12, color: c.ink3)),
+    ]);
   }
 }

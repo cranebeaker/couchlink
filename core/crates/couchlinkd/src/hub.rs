@@ -60,6 +60,30 @@ fn watched_launchers() -> Vec<String> {
     load_settings()["watched_launchers"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect()).unwrap_or_default()
 }
 
+/// What is given to Windows itself: the seats whose controllers go as one virtual controller, other PCs' keyboards and
+/// mice played as this PC's own, and whether the originals are hidden.
+#[derive(Default, Clone)]
+struct WindowsSend {
+    seats: Vec<u8>,
+    devices: Vec<String>,
+    hide_originals: bool,
+}
+
+impl WindowsSend {
+    fn load() -> WindowsSend {
+        let v = &load_settings()["windows_send"];
+        WindowsSend {
+            seats: v["seats"].as_array().map(|a| a.iter().filter_map(|x| x.as_u64().map(|n| n as u8)).collect()).unwrap_or_default(),
+            devices: v["devices"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default(),
+            hide_originals: v["hide_originals"].as_bool().unwrap_or(false),
+        }
+    }
+
+    fn to_json(&self) -> serde_json::Value {
+        json!({ "seats": self.seats, "devices": self.devices, "hide_originals": self.hide_originals })
+    }
+}
+
 /// The answer kept for a game found through a launcher: "always" or "never".
 fn launcher_choice(exe: &str) -> Option<String> {
     load_settings()["launcher_choices"][crate::launcher_watch::key(exe)].as_str().map(String::from)
@@ -205,6 +229,10 @@ pub struct Hub {
     session_handle: Option<session::Handle>,
     /// The running game's own controls (recipe `controls`), played by seats that keep the default profile.
     recipe_controls: Option<Profile>,
+    /// What is given to Windows itself (see `Command::SetWindowsSend`).
+    windows_send: WindowsSend,
+    /// True while this run has controllers hidden (HidHide), so they are shown again when it is turned off.
+    hidden_originals: bool,
     /// The arguments a launcher passed to the game it started (recipe, arguments, the launcher's process), for the session about to start.
     launch_args: Option<(String, String, u32)>,
     /// The launcher's own copy of the game, parked while a session plays it; ended with the session.
@@ -243,6 +271,8 @@ impl Hub {
             recipe_controls: None,
             launch_args: None,
             parked_game: None,
+            windows_send: WindowsSend::load(),
+            hidden_originals: false,
             layouts: crate::layouts::load(),
             model: {
                 let mut m = Model::new(dev);
@@ -290,6 +320,52 @@ impl Hub {
         crate::netinput::receiver::start_if_paired(self.self_tx.clone());
         crate::launcher_watch::set_watched(watched_launchers());
         crate::launcher_watch::spawn(self.self_tx.clone());
+        self.sync_windows_send();
+    }
+
+    /// Makes what is given to Windows match the settings and the seats: each sending seat's controllers as one virtual
+    /// controller, other PCs' keyboards and mice as this PC's own, the originals hidden when asked. Called whenever the
+    /// seats or the settings change.
+    fn sync_windows_send(&mut self) {
+        let seats = self.model.seats.seats();
+        let wanted: Vec<(usize, Vec<String>)> = self
+            .windows_send
+            .seats
+            .iter()
+            .filter_map(|s| {
+                let seat = *s as usize;
+                let devices = seats.get(seat)?.as_ref()?.devices.clone();
+                devices.iter().any(|d| d.starts_with("pad:")).then_some((seat, devices))
+            })
+            .collect();
+        for (seat, why) in crate::session::padfeed::set_windows_sends(&wanted) {
+            self.log(LogLevel::Warn, format!("Player {}'s controllers could not be sent to Windows: {why}", seat + 1));
+        }
+        crate::netinput::receiver::set_to_windows(self.windows_send.devices.clone());
+        // The originals of the seats that really send are hidden; none are when the option is off.
+        let sending = crate::session::padfeed::windows_sends();
+        let originals: Vec<String> = if self.windows_send.hide_originals {
+            wanted.iter().filter(|(seat, _)| sending.contains(seat)).flat_map(|(_, devices)| devices.iter().filter_map(|d| session::hook::pad_path_of(d))).collect()
+        } else {
+            Vec::new()
+        };
+        if self.windows_send.hide_originals || self.hidden_originals {
+            let mut apps = Vec::new();
+            if let Ok(me) = std::env::current_exe() {
+                if let Some(dir) = me.parent() {
+                    apps.push(dir.join("couchlink.exe"));
+                }
+                apps.push(me);
+            }
+            match crate::hidhide::apply(&originals, &apps) {
+                Ok(()) => self.hidden_originals = !originals.is_empty(),
+                Err(e) => {
+                    if self.windows_send.hide_originals {
+                        self.log(LogLevel::Warn, format!("The original controllers could not be hidden: {e}"));
+                    }
+                }
+            }
+        }
     }
 
     /// Hand the close-the-games shortcut to the keyboard hotkey and the pad watcher.
@@ -562,6 +638,7 @@ impl Hub {
             save_screens(self.model.screens());
         }
         self.apply_pad_seats();
+        self.sync_windows_send();
         if self.session_info.active() {
             // Controllers, keyboards and mice moved while copies run go to their new player's copy straight away.
             let seats: Vec<Vec<String>> = self.model.seats.seats().iter().map(|s| s.as_ref().map(|s| s.devices.clone()).unwrap_or_default()).collect();
@@ -979,6 +1056,13 @@ impl Hub {
                 Ok(none)
             }
             Command::GetWatchedLaunchers => Ok(json!({ "paths": watched_launchers() })),
+            Command::SetWindowsSend { seats, devices, hide_originals } => {
+                self.windows_send = WindowsSend { seats, devices, hide_originals };
+                save_setting("windows_send", self.windows_send.to_json());
+                self.sync_windows_send();
+                Ok(self.windows_send_json())
+            }
+            Command::GetWindowsSend => Ok(self.windows_send_json()),
             Command::ClearLauncherChoices => {
                 save_setting("launcher_choices", json!({}));
                 Ok(none)
@@ -1151,6 +1235,14 @@ impl Hub {
     }
 
     /// Closes the copy a launcher started and plays the game through Couchlink.
+    fn windows_send_json(&self) -> serde_json::Value {
+        let mut v = self.windows_send.to_json();
+        v["sending"] = json!(crate::session::padfeed::windows_sends());
+        v["controller_driver"] = json!(crate::vigem::available());
+        v["hide_driver"] = json!(crate::hidhide::available());
+        v
+    }
+
     fn play_launcher_game(&mut self, exe: &str, started: Option<(u32, String)>) -> Result<serde_json::Value, String> {
         let (id, added) = self.session.find_or_add_game(None, Some(exe))?;
         // The copy the launcher started is only put away when Couchlink can play the game (players on a screen, say).

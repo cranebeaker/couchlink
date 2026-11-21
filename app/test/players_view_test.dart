@@ -29,6 +29,27 @@ void main() {
     expect(hiddenSeats(DaemonState(seats: full)), 0, reason: 'all eight show, no hint');
   });
 
+  testWidgets('a seat with controllers can be given to Windows as one merged controller, and the originals hidden', (tester) async {
+    final fake = newFake();
+    await pumpApp(tester, fake, size: const Size(1400, 1800));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(byKey('windows-send'), findsOneWidget);
+    final seatToggle = find.byWidgetPredicate((w) => w.key is ValueKey && (w.key as ValueKey).value.toString().startsWith('winsend-seat-'));
+    expect(seatToggle, findsWidgets, reason: 'a seated controller can be sent');
+    await tester.ensureVisible(seatToggle.first);
+    await tester.tap(seatToggle.first);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(fake.windows.seats, isNotEmpty, reason: 'the seat is sent');
+    expect(fake.windows.sending, fake.windows.seats);
+    await tester.ensureVisible(byKey('winsend-hide'));
+    await tester.tap(byKey('winsend-hide'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(fake.windows.hideOriginals, isTrue);
+    await tester.tap(seatToggle.first);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(fake.windows.seats, isEmpty, reason: 'and it can be taken back');
+  });
+
   testWidgets('the hint under the seats says more players can join', (tester) async {
     await pumpApp(tester, newFake(), size: const Size(1400, 1100));
     expect(byKey('more-seats'), findsOneWidget);

@@ -74,6 +74,8 @@ way the game already supports: LAN, a co-op mod's server, or Steam. Any game tha
 - `couchlink.exe --play <game>` starts a game with the players and screens set up in Couchlink.
 - Steps and copy buttons for Steam (including Big Picture), Playnite, LaunchBox and desktop shortcuts.
 - A game your launcher starts that Couchlink does not know yet is added on the fly. A switch turns this off.
+- Give to Windows: a player's controllers become one merged virtual controller any game or emulator sees (needs the
+  ViGEmBus driver), another PC's keyboard and mouse can play as this PC's own, and the originals can be hidden (HidHide).
 - Watch a launcher: pick the program of any launcher, store or emulator menu, and when it starts a game Couchlink
   asks whether to play that game with your players instead, with the same arguments (an emulator's game file). The
   launcher's own copy is set aside, not closed, so it keeps counting playtime. The answer can be kept per game.

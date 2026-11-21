@@ -23,6 +23,22 @@ use serde_json::Value;
 mod padfeed;
 use padfeed::PadState;
 
+/// The daemon's virtual controller (a real driver), which the pad feed module sends to Windows through, is not part of
+/// these tests: a stand-in that never plugs in.
+#[allow(dead_code)]
+mod vigem {
+    pub struct Target;
+    impl Target {
+        pub fn plug() -> Result<Target, String> {
+            Err("not in these tests".to_string())
+        }
+        pub fn submit(&self, _: &crate::padfeed::PadState) {}
+        pub fn take_rumble(&self) -> Option<(u16, u16)> {
+            None
+        }
+    }
+}
+
 /// `COUCHLINK_SKIP_INJECT_TESTS=1` skips every test that starts a game suspended and injects the hook DLL from
 /// outside (CreateRemoteThread). Antivirus products react to exactly that; the stand-in DLL tests (`proxy_*`)
 /// load the hook the way a game loads any DLL and always run.
