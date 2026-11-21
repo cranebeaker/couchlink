@@ -1063,6 +1063,19 @@ impl Hub {
                 Ok(self.windows_send_json())
             }
             Command::GetWindowsSend => Ok(self.windows_send_json()),
+            Command::InstallDriver { which } => {
+                let Some(repo) = crate::driver_install::repo(&which) else { return Err(format!("{which} is not a driver Couchlink installs")) };
+                let tx = self.self_tx.clone();
+                self.log(LogLevel::Info, format!("Downloading the {repo} driver; Windows will ask for permission to install it"));
+                std::thread::spawn(move || {
+                    let note = match crate::driver_install::install(&which) {
+                        Ok(()) => (LogLevel::Info, format!("The {repo} driver is installed")),
+                        Err(e) => (LogLevel::Warn, format!("The {repo} driver was not installed: {e}")),
+                    };
+                    let _ = tx.send(HubMsg::Note(note.0, note.1));
+                });
+                Ok(json!({ "started": true }))
+            }
             Command::ClearLauncherChoices => {
                 save_setting("launcher_choices", json!({}));
                 Ok(none)

@@ -700,4 +700,8 @@ const Map<String, String> ruStrings = {
   'Games then see only the merged controller': 'Игры тогда видят только объединённый контроллер',
   'Needs the HidHide driver, a free download by Nefarius': 'Нужен драйвер HidHide, бесплатная загрузка от Nefarius',
   'Put a controller in a seat, or pair another PC, and it can be given to Windows here.': 'Посадите контроллер на место или подключите другой ПК, и его можно будет отдать Windows здесь.',
+  'Downloading the driver. Say yes when Windows asks.': 'Скачиваю драйвер. Нажмите «Да», когда Windows спросит.',
+  'Sending controllers needs the ViGEmBus driver (free, by Nefarius).': 'Для отправки контроллеров нужен драйвер ViGEmBus (бесплатный, от Nefarius).',
+  'Hiding the originals needs the HidHide driver (free, by Nefarius).': 'Чтобы скрыть исходные контроллеры, нужен драйвер HidHide (бесплатный, от Nefarius).',
+  'Install it': 'Установить',
 };

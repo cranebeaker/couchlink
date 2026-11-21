@@ -689,4 +689,8 @@ const Map<String, String> ptStrings = {
   'Games then see only the merged controller': 'Os jogos então veem só o controle combinado',
   'Needs the HidHide driver, a free download by Nefarius': 'Precisa do driver HidHide, download gratuito da Nefarius',
   'Put a controller in a seat, or pair another PC, and it can be given to Windows here.': 'Coloque um controle em um lugar, ou pareie outro PC, e ele poderá ser dado ao Windows aqui.',
+  'Downloading the driver. Say yes when Windows asks.': 'Baixando o driver. Diga sim quando o Windows perguntar.',
+  'Sending controllers needs the ViGEmBus driver (free, by Nefarius).': 'Enviar controles precisa do driver ViGEmBus (grátis, da Nefarius).',
+  'Hiding the originals needs the HidHide driver (free, by Nefarius).': 'Esconder os originais precisa do driver HidHide (grátis, da Nefarius).',
+  'Install it': 'Instalar',
 };

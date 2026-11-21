@@ -10,6 +10,7 @@ mod hub;
 mod launcher_watch;
 mod vigem;
 mod hidhide;
+mod driver_install;
 mod winput;
 mod launchers;
 mod layouts;

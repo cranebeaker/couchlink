@@ -3,6 +3,15 @@
 What changed in each Couchlink release. Downloads and older notes are on the
 [releases page](https://github.com/cranebeaker/couchlink/releases).
 
+## 0.1.28
+
+### Added
+
+- **Install the drivers from Couchlink.** Give to Windows needs two free drivers by Nefarius (ViGEmBus for the merged
+  controller, HidHide to hide the originals). When one is missing, the Players page now has an Install it button: it
+  downloads the newest installer from the maker's own GitHub page, checks that it is signed by the maker and runs it,
+  and Windows asks for permission before anything is installed. Couchlink carries none of the driver code itself.
+
 ## 0.1.27
 
 ### Added

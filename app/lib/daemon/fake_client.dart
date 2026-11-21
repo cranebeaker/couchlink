@@ -414,6 +414,22 @@ class FakeClient extends CouchClient {
 
   WindowsSend windows = const WindowsSend(controllerDriver: true, hideDriver: true);
 
+  final List<String> driversInstalled = [];
+
+  @override
+  Future<String?> installDriver(String which) async {
+    driversInstalled.add(which);
+    windows = WindowsSend(
+      seats: windows.seats,
+      devices: windows.devices,
+      hideOriginals: windows.hideOriginals,
+      sending: windows.sending,
+      controllerDriver: windows.controllerDriver || which == 'controller',
+      hideDriver: windows.hideDriver || which == 'hide',
+    );
+    return null;
+  }
+
   @override
   Future<WindowsSend?> windowsSend() async => windows;
 

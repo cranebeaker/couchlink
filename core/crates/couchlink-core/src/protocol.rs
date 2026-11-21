@@ -125,6 +125,12 @@ pub enum Command {
         hide_originals: bool,
     },
     GetWindowsSend,
+    /// Downloads the maker's signed installer of a driver Give to Windows needs and runs it (Windows asks the player
+    /// for permission): `controller` is ViGEmBus, `hide` is HidHide. Replies at once; the outcome is a `log` event, and
+    /// `get_windows_send` shows the driver once it is there.
+    InstallDriver {
+        which: String,
+    },
     GetWatchedLaunchers,
     /// The answer to a `launcher_game` event: play it with Couchlink (the copy the launcher started is closed) or leave
     /// it. `remember` keeps the answer for that game.

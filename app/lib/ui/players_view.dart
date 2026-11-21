@@ -796,6 +796,27 @@ class _WindowsSendPanelState extends State<WindowsSendPanel> {
     }
   }
 
+  /// Asks the daemon to install a driver, then looks every few seconds for it (the installer takes a while and Windows
+  /// asks the player first).
+  Future<void> _install(String which) async {
+    final scope = Scope.of(context);
+    final err = await scope.client.installDriver(which);
+    if (err != null) {
+      scope.toaster.show(err, error: true);
+      return;
+    }
+    scope.toaster.show(t('Downloading the driver. Say yes when Windows asks.'));
+    for (var i = 0; i < 60 && mounted; i++) {
+      await Future<void>.delayed(const Duration(seconds: 3));
+      final now = await scope.client.windowsSend();
+      if (!mounted) return;
+      if (now != null && (which == 'controller' ? now.controllerDriver : now.hideDriver)) {
+        setState(() => _config = now.copyWith(seats: _config?.seats, devices: _config?.devices, hideOriginals: _config?.hideOriginals));
+        return;
+      }
+    }
+  }
+
   /// The controllers of a seat, as the devices the daemon lists.
   int _pads(Seat seat) => seat.devices.where((d) => d.startsWith('pad:')).length;
 
@@ -828,6 +849,15 @@ class _WindowsSendPanelState extends State<WindowsSendPanel> {
         style: txt(context, size: 12, color: c.ink3, height: 1.4),
       ),
       const SizedBox(height: 10),
+      if (!cfg.controllerDriver)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(children: [
+            Expanded(child: Text(t('Sending controllers needs the ViGEmBus driver (free, by Nefarius).'), style: txt(context, size: 12, color: c.ink2))),
+            const SizedBox(width: 8),
+            CButton(key: const ValueKey('winsend-install-controller'), label: t('Install it'), small: true, onTap: () => _install('controller')),
+          ]),
+        ),
       for (final i in seats)
         row(
           ValueKey('winsend-seat-$i'),
@@ -847,6 +877,15 @@ class _WindowsSendPanelState extends State<WindowsSendPanel> {
           cfg.devices.contains(d.id),
           true,
           (v) => _set(cfg.copyWith(devices: [for (final s in cfg.devices) if (s != d.id) s, if (v) d.id])),
+        ),
+      if (!cfg.hideDriver)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(children: [
+            Expanded(child: Text(t('Hiding the originals needs the HidHide driver (free, by Nefarius).'), style: txt(context, size: 12, color: c.ink2))),
+            const SizedBox(width: 8),
+            CButton(key: const ValueKey('winsend-install-hide'), label: t('Install it'), small: true, onTap: () => _install('hide')),
+          ]),
         ),
       row(
         const ValueKey('winsend-hide'),

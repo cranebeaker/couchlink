@@ -50,6 +50,20 @@ void main() {
     expect(fake.windows.seats, isEmpty, reason: 'and it can be taken back');
   });
 
+  testWidgets('a missing driver can be installed from the Give to Windows panel', (tester) async {
+    final fake = newFake();
+    fake.windows = const WindowsSend();
+    await pumpApp(tester, fake, size: const Size(1400, 1800));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.ensureVisible(byKey('winsend-install-controller'));
+    await tester.tap(byKey('winsend-install-controller'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(fake.driversInstalled, ['controller']);
+    await tester.pump(const Duration(seconds: 4));
+    expect(byKey('winsend-install-controller'), findsNothing, reason: 'the button goes once the driver is there');
+    expect(byKey('winsend-install-hide'), findsOneWidget);
+  });
+
   testWidgets('the hint under the seats says more players can join', (tester) async {
     await pumpApp(tester, newFake(), size: const Size(1400, 1100));
     expect(byKey('more-seats'), findsOneWidget);

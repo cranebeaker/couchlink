@@ -9,7 +9,7 @@ import 'locate.dart';
 import 'models.dart';
 import 'profile.dart';
 
-const String appVersion = '0.1.27';
+const String appVersion = '0.1.28';
 
 /// Start of the `log` warning couchlinkd sends when a catalog download fails.
 const String catalogFailurePrefix = 'Game catalog could not be refreshed';
@@ -110,6 +110,9 @@ class DaemonClient extends CouchClient {
     final r = await _request('get_windows_send', const {});
     return r['ok'] == true ? WindowsSend.fromJson(r) : null;
   }
+
+  @override
+  Future<String?> installDriver(String which) => _cmd('install_driver', {'which': which});
 
   @override
   Future<WindowsSend?> setWindowsSend(WindowsSend config) async {

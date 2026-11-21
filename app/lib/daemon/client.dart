@@ -222,6 +222,9 @@ abstract class CouchClient extends ChangeNotifier {
   /// What is given to Windows itself (`get_windows_send`), and the same set (`set_windows_send`; the answer is what is now).
   Future<WindowsSend?> windowsSend();
   Future<WindowsSend?> setWindowsSend(WindowsSend config);
+
+  /// Downloads and runs the maker's signed installer of a driver (`controller` or `hide`); Windows asks for permission.
+  Future<String?> installDriver(String which);
   Future<List<String>?> watchedLaunchers();
   Future<String?> setWatchedLaunchers(List<String> paths);
 
