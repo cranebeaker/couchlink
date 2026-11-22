@@ -182,7 +182,7 @@ pub fn set_windows_sends(wanted: &[(usize, Vec<String>)]) -> Vec<(usize, String)
                 if let Some(state) = now {
                     pad.submit(&state);
                 }
-                reg.sends.push(WinSend { seat: *seat, devices, samples: HashMap::new(), state: ProcState::new(), pad });
+                reg.sends.push(WinSend { seat: *seat, devices, samples: HashMap::new(), state: ProcState::new(), pad, rumble: (0, 0), rumble_for: Vec::new() });
             }
             Err(e) => failed.push((*seat, e)),
         }
@@ -279,6 +279,9 @@ struct WinSend {
     samples: HashMap<String, InputSample>,
     state: ProcState,
     pad: crate::vigem::Target,
+    /// The last rumble the game set on the virtual controller, and the controllers that did not get it yet.
+    rumble: (u16, u16),
+    rumble_for: Vec<String>,
 }
 
 #[derive(Default)]
@@ -526,9 +529,15 @@ pub fn take_rumble(device_id: &str) -> Option<(u16, u16)> {
             out = Some(r);
         }
     }
-    for w in reg.sends.iter().filter(|w| w.devices.iter().any(|d| d == device_id)) {
+    for w in reg.sends.iter_mut().filter(|w| w.devices.iter().any(|d| d == device_id)) {
+        // The virtual controller's rumble goes to every controller of the seat, each asking for it in turn.
         if let Some(r) = w.pad.take_rumble() {
-            out = Some(r);
+            w.rumble = r;
+            w.rumble_for = w.devices.clone();
+        }
+        if let Some(i) = w.rumble_for.iter().position(|d| d == device_id) {
+            w.rumble_for.remove(i);
+            out = Some(w.rumble);
         }
     }
     out

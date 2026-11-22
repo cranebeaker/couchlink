@@ -24,7 +24,8 @@ pub fn available() -> bool {
 /// The device instance path HidHide asks for, from the device interface path a controller is opened by:
 /// `\?\HID#VID_054C&PID_09CC#7&1&0&0000#{4d1e55b2-...}` becomes `HID\VID_054C&PID_09CC\7&1&0&0000`.
 pub fn instance_path(interface: &str) -> Option<String> {
-    let s = interface.strip_prefix(r"\?\").or_else(|| interface.strip_prefix(r"\.\")).unwrap_or(interface);
+    // SDL gives `\?\HID#...` (two backslashes); older notes had one.
+    let s = interface.trim_start_matches(['\\', '?', '.']);
     let s = s.rfind("#{").map_or(s, |i| &s[..i]);
     let parts: Vec<&str> = s.split('#').collect();
     if parts.len() == 3 && parts.iter().all(|p| !p.is_empty()) { Some(parts.join("\\")) } else { None }
@@ -43,26 +44,59 @@ fn run(cli: &PathBuf, args: &[&str]) -> Result<String, String> {
     if out.status.success() { Ok(String::from_utf8_lossy(&out.stdout).to_string()) } else { Err(format!("HidHide {}: {}", args.join(" "), String::from_utf8_lossy(&out.stdout).trim())) }
 }
 
+/// Runs the commands one after the other; when HidHide refuses them (its driver takes orders from administrators), runs
+/// them all again in one elevated PowerShell, so Windows asks the player once.
+fn run_all(cli: &PathBuf, cmds: &[Vec<String>]) -> Result<(), String> {
+    let plain: Result<(), String> = cmds.iter().try_for_each(|c| run(cli, &c.iter().map(String::as_str).collect::<Vec<_>>()).map(|_| ()));
+    if plain.is_ok() || !cfg!(windows) {
+        return plain;
+    }
+    let q = |s: &str| format!("'{}'", s.replace('\'', "''"));
+    let inner: Vec<String> = cmds.iter().map(|c| format!("& {} {}", q(&cli.display().to_string()), c.iter().map(|a| q(a)).collect::<Vec<_>>().join(" "))).collect();
+    let script = format!("$ErrorActionPreference='Stop'; {}", inner.join("; "));
+    let outer = format!("$p = Start-Process -FilePath powershell -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList '-NoProfile','-Command',{}; exit $p.ExitCode", q(&script));
+    let mut c = std::process::Command::new("powershell");
+    c.args(["-NoProfile", "-NonInteractive", "-Command", &outer]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(0x0800_0000);
+    }
+    match c.output() {
+        Ok(o) if o.status.success() => Ok(()),
+        Ok(_) => Err(format!("{} (and it was not allowed as administrator)", plain.unwrap_err())),
+        Err(e) => Err(format!("cannot start PowerShell: {e}")),
+    }
+}
+
 /// Hides exactly `interfaces` (controller interface paths) from every program except `apps`, and shows again what an
 /// earlier call hid and this one does not. An empty list shows everything again.
 pub fn apply(interfaces: &[String], apps: &[PathBuf]) -> Result<(), String> {
     let Some(cli) = cli() else { return Err("HidHide is not installed".to_string()) };
     let wanted: Vec<String> = interfaces.iter().filter_map(|i| instance_path(i)).collect();
+    if !interfaces.is_empty() && wanted.is_empty() {
+        return Err(format!("no usable device path for {}", interfaces.join(", ")));
+    }
     let mut hidden = HIDDEN.lock().unwrap_or_else(|e| e.into_inner());
+    if wanted == *hidden {
+        return Ok(());
+    }
+    let mut cmds: Vec<Vec<String>> = Vec::new();
     if !wanted.is_empty() {
         // Couchlink itself keeps seeing them: the programs on this list are the ones HidHide does not hide from.
         for app in apps {
-            run(&cli, &["--app-reg", &app.display().to_string()])?;
+            cmds.push(vec!["--app-reg".into(), app.display().to_string()]);
         }
     }
-    for old in hidden.iter().filter(|h| !wanted.contains(h)).cloned().collect::<Vec<_>>() {
-        let _ = run(&cli, &["--dev-unhide", &old]);
+    for old in hidden.iter().filter(|h| !wanted.contains(h)) {
+        cmds.push(vec!["--dev-unhide".into(), old.clone()]);
     }
     for new in wanted.iter().filter(|w| !hidden.contains(w)) {
-        run(&cli, &["--dev-hide", new])?;
+        cmds.push(vec!["--dev-hide".into(), new.clone()]);
     }
+    cmds.push(vec![if wanted.is_empty() { "--cloak-off" } else { "--cloak-on" }.into()]);
+    run_all(&cli, &cmds)?;
     *hidden = wanted;
-    let _ = run(&cli, &[if hidden.is_empty() { "--cloak-off" } else { "--cloak-on" }]);
     Ok(())
 }
 
@@ -74,6 +108,7 @@ mod tests {
     fn an_interface_path_becomes_the_instance_path() {
         assert_eq!(instance_path(r"\?\HID#VID_054C&PID_09CC#7&2a1b3c&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}").as_deref(), Some(r"HID\VID_054C&PID_09CC\7&2a1b3c&0&0000"));
         assert_eq!(instance_path(r"\?\hid#vid_054c&pid_0ce6&mi_03#8&1&0&0000#{x}").as_deref(), Some(r"hid\vid_054c&pid_0ce6&mi_03\8&1&0&0000"));
+        assert_eq!(instance_path(r"\\?\HID#VID_054C&PID_09CC#7&2a1b3c&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}").as_deref(), Some(r"HID\VID_054C&PID_09CC\7&2a1b3c&0&0000"));
         assert_eq!(instance_path("garbage"), None);
         assert_eq!(instance_path(r"\?\HID#VID_1#"), None);
     }

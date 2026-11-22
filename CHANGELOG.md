@@ -3,6 +3,19 @@
 What changed in each Couchlink release. Downloads and older notes are on the
 [releases page](https://github.com/cranebeaker/couchlink/releases).
 
+## 0.1.29
+
+### Fixed
+
+- **Rumble reaches every controller of a merged pad.** With Give to Windows, a game's vibration on the merged
+  controller only reached one of the real controllers; it now goes to all of them.
+- **Hiding the original controllers.** The controller's device path was read wrongly, so HidHide was never told to
+  hide it. It is now, and if HidHide refuses because Couchlink is not an administrator, Windows asks once and the
+  same commands run with permission.
+- **Steam Deck: starting a copy with the Goldberg Steam emulator** failed with "Value too large for defined data
+  type" when setting `steam_api64.dll` aside. Where the file system refuses to rename a file, Couchlink now copies
+  it and removes the original instead (issue 18).
+
 ## 0.1.28
 
 ### Added

@@ -468,6 +468,18 @@ fn backup_path(path: &Path) -> PathBuf {
     PathBuf::from(s)
 }
 
+/// Renames a file; where the file system refuses (an overlay mount of a copy answers "value too large" or "cross-device"
+/// for a file of its lower layer, as on the Steam Deck) it copies the file and removes the original instead.
+fn move_file(from: &Path, to: &Path) -> std::io::Result<()> {
+    match std::fs::rename(from, to) {
+        Err(e) if matches!(e.raw_os_error(), Some(75) | Some(18)) => {
+            std::fs::copy(from, to)?;
+            std::fs::remove_file(from)
+        }
+        other => other,
+    }
+}
+
 /// Move any existing file aside (recording it) and make room for a new file at `path`.
 fn make_room(path: &Path, undos: &mut Vec<Undo>) -> Result<()> {
     let backup = backup_path(path);
@@ -476,10 +488,10 @@ fn make_room(path: &Path, undos: &mut Vec<Undo>) -> Result<()> {
         if path.exists() {
             std::fs::remove_file(path).map_err(|e| SteamError::io(format!("removing {}", path.display()), e))?;
         }
-        std::fs::rename(&backup, path).map_err(|e| SteamError::io(format!("restoring {}", path.display()), e))?;
+        move_file(&backup, path).map_err(|e| SteamError::io(format!("restoring {}", path.display()), e))?;
     }
     if std::fs::symlink_metadata(path).is_ok() {
-        std::fs::rename(path, &backup)
+        move_file(path, &backup)
             .map_err(|e| SteamError::io(format!("moving {} aside", path.display()), e))?;
         undos.push(Undo::FileSwap { path: path.to_path_buf(), backup });
     } else {
@@ -516,7 +528,7 @@ pub fn undo(u: &Undo) -> Result<()> {
                 std::fs::remove_file(path)
                     .map_err(|e| SteamError::io(format!("removing {}", path.display()), e))?;
             }
-            std::fs::rename(backup, path)
+            move_file(backup, path)
                 .map_err(|e| SteamError::io(format!("restoring {}", path.display()), e))
         }
         Undo::FileCreate { path } => match std::fs::remove_file(path) {
