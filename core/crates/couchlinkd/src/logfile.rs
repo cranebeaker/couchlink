@@ -190,6 +190,16 @@ fn system_info() -> String {
         s += &format!("{tool}: {}\n", run("sh", &["-c", &format!("command -v {tool} || echo '(not found)'")]));
     }
     s += &format!("gamescope --version: {}\n", run("sh", &["-c", "gamescope --version 2>&1 | head -n 3"]));
+    s += &format!("kwin_wayland --version: {}\n", run("sh", &["-c", "kwin_wayland --version 2>&1 | head -n 1"]));
+    for var in ["XDG_SESSION_DESKTOP", "DESKTOP_SESSION", "GAMESCOPE_WAYLAND_DISPLAY", "SteamDeck", "SteamOS"] {
+        s += &format!("{var}: {}\n", std::env::var(var).unwrap_or_else(|_| "(not set)".into()));
+    }
+    #[cfg(target_os = "linux")]
+    {
+        s += &format!("Game Mode (nested KWin): {}\n", if crate::session::gamemode_linux::wanted() { "yes" } else { "no, desktop mode" });
+        s += &format!("device: {}\n", std::fs::read_to_string("/sys/devices/virtual/dmi/id/product_name").unwrap_or_default().trim());
+        s += &format!("running gamescope, KWin and Xwayland: {}\n", run("sh", &["-c", "ps -eo pid,args | grep -Ei 'gamescope|kwin|xwayland' | grep -v grep | cut -c1-200"]));
+    }
     s
 }
 

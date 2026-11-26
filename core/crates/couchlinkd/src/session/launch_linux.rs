@@ -68,6 +68,15 @@ impl Launcher for LinuxLauncher {
             }
             None => helper_line(spec, &tools)?,
         };
+        if let (Some(seat), Some(_)) = (spec.seat, &spec.linux) {
+            // For the full report (issue 18): how the copy starts. Only the display and Steam variables' values.
+            let shown = ["DISPLAY", "WAYLAND_DISPLAY", "SDL_VIDEODRIVER", "ENABLE_GAMESCOPE_WSI", "SteamAppId", "SteamGameId", "GAMEID", "PROTONPATH", "WINEDLLOVERRIDES"];
+            let env: Vec<String> = line.env.iter().map(|(k, v)| if shown.contains(&k.as_str()) { format!("{k}={v}") } else { k.clone() }).collect();
+            crate::logfile::write(
+                "info",
+                &format!("diag: player {} starts {} {} (umu {}, gamescope {}; environment {})", seat + 1, line.program.display(), line.args.join(" "), line.umu, line.display_file.is_some(), env.join(" ")),
+            );
+        }
         let mut cmd = Command::new(&line.program);
         cmd.args(&line.args).envs(&line.env).current_dir(&spec.cwd).stdin(Stdio::null());
         match log.as_ref().and_then(|f| Some((f.try_clone().ok()?, f.try_clone().ok()?))) {
@@ -238,7 +247,10 @@ pub fn copy_line(spec: &LaunchSpec, seat: &LinuxSeat, tools: &Tools, pad_paths: 
             // gamescope's Vulkan layer is for games under a gamescope session, and makes nested ones unstable.
             env.insert("ENABLE_GAMESCOPE_WSI".into(), "0".into());
         }
-        (None, true) => eprintln!("couchlinkd: gamescope is not installed; seat {:?}'s own window is placed instead", spec.seat),
+        (None, true) => {
+            eprintln!("couchlinkd: gamescope is not installed; seat {:?}'s own window is placed instead", spec.seat);
+            crate::logfile::write("warn", &format!("diag: gamescope was not found; seat {:?}'s own window is placed instead", spec.seat));
+        }
         _ => {}
     }
 

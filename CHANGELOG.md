@@ -3,6 +3,20 @@
 What changed in each Couchlink release. Downloads and older notes are on the
 [releases page](https://github.com/cranebeaker/couchlink/releases).
 
+## 0.1.30
+
+### Added
+
+- **Linux and Steam Deck: more in "Save full report"** (issue 18). This release only adds logging; games run as in
+  0.1.29. The report now says:
+  - whether the session ran in Game Mode or desktop mode, why, which device it is, and the gamescope, KWin and
+    Xwayland found and running,
+  - for each player's copy, which Steam library it has loaded (the Goldberg emulator's or real Steam's), the Steam
+    files and Goldberg settings in its folder as the copy sees them, and the network ports it has open,
+  - each copy's windows next to the region they belong on, every time a window has to be put back on its region,
+    and how often the active window changes,
+  - the full command each copy starts with.
+
 ## 0.1.29
 
 ### Fixed

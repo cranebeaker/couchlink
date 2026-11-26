@@ -50,6 +50,11 @@ pub fn processes() -> Vec<ProcInfo> {
         .collect()
 }
 
+/// `root` and every process below it, as running now.
+pub fn copy_tree(root: u32) -> Vec<u32> {
+    tree(&processes(), root)
+}
+
 /// `root` and every process below it.
 fn tree(procs: &[ProcInfo], root: u32) -> Vec<u32> {
     let mut out = vec![root];
@@ -236,6 +241,84 @@ pub struct Placed {
     x: Option<X>,
     tried: bool,
     seats: HashMap<usize, Window>,
+    /// For the log only: how often each seat's window had to be put back (issue 18).
+    moves: HashMap<usize, Moves>,
+    /// For the log only: the desktop's active window, and how often it changed.
+    active: Option<(Window, u32, std::time::Instant)>,
+}
+
+/// How often a seat's window was found off its region and put back, since the last summary in the log.
+struct Moves {
+    count: u32,
+    said: u32,
+    since: std::time::Instant,
+    last_seen: Option<Rect>,
+}
+
+/// How many times a seat's window being put back is written out line by line, before only summaries follow.
+const MOVES_SAID: u32 = 8;
+/// How often the log sums up the puts back and focus changes.
+const MOVES_SUMMARY: std::time::Duration = std::time::Duration::from_secs(30);
+
+fn show_rect(r: Option<Rect>) -> String {
+    match r {
+        Some(r) => format!("{}x{} at {},{}", r.w, r.h, r.x, r.y),
+        None => "gone".into(),
+    }
+}
+
+impl Placed {
+    /// Logging only: a seat's window was found away from its region (or was another window) and is put back.
+    fn note_put_back(&mut self, seat: usize, w: Window, before: Option<Window>, seen: Option<Rect>, rect: Rect) {
+        let m = self.moves.entry(seat).or_insert_with(|| Moves { count: 0, said: 0, since: std::time::Instant::now(), last_seen: None });
+        m.count += 1;
+        m.last_seen = seen;
+        if m.said < MOVES_SAID {
+            m.said += 1;
+            let why = match before {
+                Some(b) if b != w => format!("player {}'s window changed from 0x{b:x} to 0x{w:x}", seat + 1),
+                None => format!("player {}'s window 0x{w:x} was found again", seat + 1),
+                _ => format!("player {}'s window 0x{w:x} was {} instead of its region {}", seat + 1, show_rect(seen), show_rect(Some(rect))),
+            };
+            crate::logfile::write("info", &format!("diag: {why}; it is put back ({} of {MOVES_SAID} said)", m.said));
+        }
+    }
+
+    /// Logging only: every [`MOVES_SUMMARY`], how often each window was put back and how often the focus moved.
+    fn summarise(&mut self, seat: usize, rect: Rect) {
+        let now = std::time::Instant::now();
+        let m = self.moves.entry(seat).or_insert_with(|| Moves { count: 0, said: 0, since: now, last_seen: None });
+        if now.duration_since(m.since) >= MOVES_SUMMARY {
+            if m.count > 0 {
+                crate::logfile::write(
+                    "info",
+                    &format!("diag: player {}'s window was put back {} times in the last {} s (last seen {}, region {})", seat + 1, m.count, now.duration_since(m.since).as_secs(), show_rect(m.last_seen), show_rect(Some(rect))),
+                );
+            }
+            m.count = 0;
+            m.since = now;
+        }
+        let Some(x) = self.x.as_ref() else { return };
+        let active = x.conn.get_property(false, x.root, x.active_atom, AtomEnum::WINDOW, 0, 1).ok().and_then(|c| c.reply().ok()).and_then(|r| r.value32().and_then(|mut v| v.next()));
+        let Some(active) = active else { return };
+        match &mut self.active {
+            None => self.active = Some((active, 0, now)),
+            Some((last, changes, since)) => {
+                if *last != active {
+                    *last = active;
+                    *changes += 1;
+                }
+                if now.duration_since(*since) >= MOVES_SUMMARY {
+                    if *changes > 0 {
+                        let owner = x.pid_of(active).map_or("no pid".to_string(), |p| format!("pid {p}"));
+                        crate::logfile::write("info", &format!("diag: the active window changed {changes} times in the last {} s (now 0x{active:x}, {owner}, \"{}\")", now.duration_since(*since).as_secs(), x.title(active)));
+                    }
+                    *changes = 0;
+                    *since = now;
+                }
+            }
+        }
+    }
 }
 
 impl Placed {
@@ -245,6 +328,7 @@ impl Placed {
             self.x = X::connect();
             if self.x.is_none() {
                 eprintln!("couchlinkd: no X display, so the desktop places the copies' windows");
+                crate::logfile::write("warn", "diag: no X display, so the desktop places the copies' windows");
             }
         }
         self.x.as_ref()
@@ -256,7 +340,9 @@ pub fn place(p: &mut Placed, seat: usize, root_pid: u32, rect: Rect, borderless:
     let Some(x) = p.x() else { return true };
     let pids = tree(&processes(), root_pid);
     let Some(w) = x.window_of(&pids) else { return false };
+    let seen = x.rect(w);
     x.put(w, rect, borderless);
+    crate::logfile::write("info", &format!("diag: player {}'s window 0x{w:x} (\"{}\") was {} and is placed on {}", seat + 1, x.title(w), show_rect(seen), show_rect(Some(rect))));
     p.seats.insert(seat, w);
     true
 }
@@ -272,10 +358,90 @@ pub fn maintain(p: &mut Placed, seat: usize, root_pid: u32, rect: Rect, borderle
             None => return,
         },
     };
-    if x.rect(w) != Some(rect) || current != Some(w) {
+    let seen = x.rect(w);
+    let put_back = seen != Some(rect) || current != Some(w);
+    if put_back {
         x.put(w, rect, borderless);
     }
     p.seats.insert(seat, w);
+    if put_back {
+        p.note_put_back(seat, w, current, seen, rect);
+    }
+    p.summarise(seat, rect);
+}
+
+/// For the full report (issue 18): every X window of a copy's processes, where it is, the frame around it, its
+/// states, and which one Couchlink places; with the desktop's active window. Opens a connection of its own.
+pub fn describe(root_pid: u32, rect: Rect) -> String {
+    let rect = crate::session::gamemode_linux::to_nested(rect);
+    let Some(x) = X::connect() else { return "no X display to look at\n".into() };
+    let pids = copy_tree(root_pid);
+    let placed = x.window_of(&pids);
+    let mut wins = x.clients();
+    let listed = wins.len();
+    for w in x.conn.query_tree(x.root).ok().and_then(|c| c.reply().ok()).map(|t| t.children).unwrap_or_default() {
+        if !wins.contains(&w) {
+            wins.push(w);
+        }
+    }
+    let name = |a: u32| x.conn.get_atom_name(a).ok().and_then(|c| c.reply().ok()).map(|r| String::from_utf8_lossy(&r.name).to_string()).unwrap_or_else(|| a.to_string());
+    let prop32 = |w: Window, atom: &[u8], kind: AtomEnum| -> Vec<u32> {
+        let Some(a) = x.conn.intern_atom(true, atom).ok().and_then(|c| c.reply().ok()).map(|r| r.atom).filter(|a| *a != 0) else { return Vec::new() };
+        x.conn.get_property(false, w, a, kind, 0, 64).ok().and_then(|c| c.reply().ok()).and_then(|r| r.value32().map(|v| v.collect())).unwrap_or_default()
+    };
+    let mut out = format!("region {} on {}\n", show_rect(Some(rect)), if crate::session::gamemode_linux::active().is_some() { "the nested KWin (Game Mode)" } else { "the desktop" });
+    let mut found = 0;
+    for (i, w) in wins.iter().copied().enumerate() {
+        let Some(pid) = x.pid_of(w).filter(|p| pids.contains(p)) else { continue };
+        found += 1;
+        let attrs = x.conn.get_window_attributes(w).ok().and_then(|c| c.reply().ok());
+        let (mapped, override_redirect) = attrs.map_or(("?".to_string(), false), |a| (format!("{:?}", a.map_state).to_lowercase(), a.override_redirect));
+        let parent = x.conn.query_tree(w).ok().and_then(|c| c.reply().ok()).map(|t| t.parent);
+        let frame = parent.filter(|p| *p != x.root).and_then(|p| x.rect(p));
+        let states: Vec<String> = prop32(w, b"_NET_WM_STATE", AtomEnum::ATOM).into_iter().map(|a| name(a)).collect();
+        out += &format!(
+            "window 0x{w:x}{}: pid {pid}, \"{}\", {}, {mapped}{}{}\n  frame {}, extents {:?}, motif {:?}, states {:?}\n",
+            if Some(w) == placed { " (Couchlink places this one)" } else { "" },
+            x.title(w),
+            show_rect(x.rect(w)),
+            if override_redirect { ", override-redirect" } else { "" },
+            if i >= listed { ", not in the window manager's list" } else { "" },
+            show_rect(frame),
+            prop32(w, b"_NET_FRAME_EXTENTS", AtomEnum::CARDINAL),
+            prop32(w, b"_MOTIF_WM_HINTS", AtomEnum::ANY),
+            states,
+        );
+    }
+    if found == 0 {
+        out += &format!("no X window belongs to processes {pids:?}\n");
+    }
+    let active = x.conn.get_property(false, x.root, x.active_atom, AtomEnum::WINDOW, 0, 1).ok().and_then(|c| c.reply().ok()).and_then(|r| r.value32().and_then(|mut v| v.next()));
+    if let Some(a) = active {
+        out += &format!("active window: 0x{a:x}, pid {:?}, \"{}\"\n", x.pid_of(a), x.title(a));
+    }
+    out
+}
+
+/// For the full report: the X server the copies' windows are on, its screen, and its window manager.
+pub fn display_info() -> String {
+    let nested = crate::session::gamemode_linux::active().map(|a| a.display);
+    let shown = nested.clone().or_else(|| std::env::var("DISPLAY").ok()).unwrap_or_else(|| "(none)".into());
+    let Some(x) = X::connect() else { return format!("X display {shown}: cannot connect\n") };
+    let setup = x.conn.setup();
+    let screen = setup.roots.first();
+    let mut out = format!(
+        "X display {shown}: vendor \"{}\" release {}, screen {}x{}\n",
+        String::from_utf8_lossy(&setup.vendor),
+        setup.release_number,
+        screen.map_or(0, |s| s.width_in_pixels),
+        screen.map_or(0, |s| s.height_in_pixels)
+    );
+    let wm = x.conn.get_property(false, x.root, x.wm_check_atom, AtomEnum::WINDOW, 0, 1).ok().and_then(|c| c.reply().ok()).and_then(|r| r.value32().and_then(|mut v| v.next()));
+    out += &match wm {
+        Some(w) => format!("window manager: \"{}\"\n", x.title(w)),
+        None => "window manager: none\n".into(),
+    };
+    out
 }
 
 /// Every placed window to the front, player 1's last so it is on top with the keyboard (`front`), kept above every

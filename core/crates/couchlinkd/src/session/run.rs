@@ -222,6 +222,16 @@ impl Run {
             let _ = std::fs::create_dir_all(crate::logfile::dir());
             self.nested = Some(super::gamemode_linux::Nested::start(&super::gamemode_linux::dir(&self.plan.state_dir), area, &log)?);
         }
+        // For the full report (issue 18): how this session shows its windows, written before any copy starts.
+        #[cfg(target_os = "linux")]
+        {
+            let seats: Vec<_> = self.seats.iter().map(|s| (s.plan.seat, s.plan.rect, s.plan.devices.clone())).collect();
+            let text = super::diag_linux::session_log(&seats);
+            let _ = std::fs::create_dir_all(crate::logfile::dir());
+            let _ = std::fs::write(crate::logfile::dir().join("linux-session.log"), &text);
+            let mode = if self.nested.is_some() { "Game Mode, the windows go into a nested KWin" } else { "desktop mode" };
+            crate::logfile::write("info", &format!("diag: session {} starts in {mode} (more in linux-session.log)", recipe.id));
+        }
         self.copies(&recipe)?;
         self.steam(&recipe)?;
         if self.stopped() {
@@ -903,6 +913,13 @@ impl Run {
             text += &format!("\nhook:\n{}\n", child.diagnostics().unwrap_or_else(|| "(no hook in this copy)".into()));
             let path = crate::logfile::dir().join(format!("{}-player{}-input.log", self.plan.recipe.id, s.plan.seat + 1));
             let _ = std::fs::write(path, text);
+            // Linux (issue 18): the copy's Steam libraries, Goldberg settings, network ports and windows.
+            #[cfg(target_os = "linux")]
+            {
+                let text = super::diag_linux::seat_log(pid, &s.dir, s.plan.rect);
+                let path = crate::logfile::dir().join(format!("{}-player{}-linux.log", self.plan.recipe.id, s.plan.seat + 1));
+                let _ = std::fs::write(path, text);
+            }
         }
     }
 
